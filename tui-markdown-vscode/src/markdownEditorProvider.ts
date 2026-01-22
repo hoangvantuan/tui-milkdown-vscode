@@ -144,6 +144,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     const ckeditorCssUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this.context.extensionUri, 'out', 'webview', 'ckeditor5.css')
     );
+    const mainCssUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.context.extensionUri, 'out', 'webview', 'main.css')
+    );
 
     const nonce = getNonce();
 
@@ -165,6 +168,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         <meta http-equiv="Content-Security-Policy" content="${csp}">
         <title>Markdown Editor</title>
         <link rel="stylesheet" href="${ckeditorCssUri}">
+        <link rel="stylesheet" href="${mainCssUri}">
         <style>
           * { box-sizing: border-box; }
           html, body {
