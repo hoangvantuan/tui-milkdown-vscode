@@ -197,9 +197,36 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .toastui-editor-main,
           .toastui-editor-ww-container,
           .toastui-editor-md-container {
-            background: var(--vscode-editor-background);
+            background: var(--vscode-editor-background) !important;
           }
-          .ProseMirror { color: var(--vscode-editor-foreground); }
+          .toastui-editor-contents,
+          .toastui-editor-contents p,
+          .toastui-editor-contents li,
+          .toastui-editor-contents td,
+          .toastui-editor-contents th,
+          .toastui-editor-md-preview,
+          .ProseMirror,
+          .ProseMirror p,
+          .ProseMirror li,
+          .ProseMirror td,
+          .ProseMirror th {
+            color: var(--vscode-editor-foreground) !important;
+          }
+          .toastui-editor-contents h1,
+          .toastui-editor-contents h2,
+          .toastui-editor-contents h3,
+          .toastui-editor-contents h4,
+          .toastui-editor-contents h5,
+          .toastui-editor-contents h6 {
+            color: var(--vscode-textLink-foreground) !important;
+          }
+          .toastui-editor-toolbar {
+            background: var(--vscode-editor-background) !important;
+            border-bottom: 1px solid var(--vscode-editorWidget-border) !important;
+          }
+          .toastui-editor-toolbar button {
+            color: var(--vscode-editor-foreground) !important;
+          }
         </style>
       </head>
       <body>
