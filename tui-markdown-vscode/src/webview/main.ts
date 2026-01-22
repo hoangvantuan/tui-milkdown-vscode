@@ -46,7 +46,7 @@ function initEditor(): Editor | null {
     const instance = new Editor({
       el: editorEl,
       height: '100%',
-      initialEditType: 'wysiwyg',
+      initialEditType: 'markdown',
       previewStyle: 'vertical',
       usageStatistics: false,
       hideModeSwitch: false,
