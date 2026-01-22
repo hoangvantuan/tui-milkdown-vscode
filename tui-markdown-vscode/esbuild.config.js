@@ -24,15 +24,15 @@ const webviewConfig = {
   define: {
     'process.env.NODE_ENV': '"production"',
   },
+  loader: {
+    '.svg': 'text',
+    '.css': 'css',
+  },
 };
 
 function copyCss() {
   const cssFiles = [
-    'node_modules/@toast-ui/editor/dist/toastui-editor.css',
-    'node_modules/@toast-ui/editor/dist/theme/toastui-editor-dark.css',
-    'node_modules/@toast-ui/editor-plugin-code-syntax-highlight/dist/toastui-editor-plugin-code-syntax-highlight.css',
-    'node_modules/prismjs/themes/prism.css',
-    'node_modules/prismjs/themes/prism-tomorrow.css',
+    'node_modules/ckeditor5/dist/ckeditor5.css',
   ];
 
   const outDir = 'out/webview';

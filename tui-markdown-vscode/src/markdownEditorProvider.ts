@@ -141,20 +141,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       vscode.Uri.joinPath(this.context.extensionUri, 'out', 'webview', 'main.js')
     );
 
-    const editorCssUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.context.extensionUri, 'out', 'webview', 'toastui-editor.css')
-    );
-    const darkCssUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.context.extensionUri, 'out', 'webview', 'toastui-editor-dark.css')
-    );
-    const pluginCssUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.context.extensionUri, 'out', 'webview', 'toastui-editor-plugin-code-syntax-highlight.css')
-    );
-    const prismCssUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.context.extensionUri, 'out', 'webview', 'prism.css')
-    );
-    const prismDarkCssUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.context.extensionUri, 'out', 'webview', 'prism-tomorrow.css')
+    const ckeditorCssUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.context.extensionUri, 'out', 'webview', 'ckeditor5.css')
     );
 
     const nonce = getNonce();
@@ -175,12 +163,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <meta http-equiv="Content-Security-Policy" content="${csp}">
-        <title>TUI Markdown Editor</title>
-        <link rel="stylesheet" href="${editorCssUri}">
-        <link id="dark-theme" rel="stylesheet" href="${darkCssUri}" disabled>
-        <link rel="stylesheet" href="${pluginCssUri}">
-        <link id="prism-light" rel="stylesheet" href="${prismCssUri}">
-        <link id="prism-dark" rel="stylesheet" href="${prismDarkCssUri}" disabled>
+        <title>Markdown Editor</title>
+        <link rel="stylesheet" href="${ckeditorCssUri}">
         <style>
           * { box-sizing: border-box; }
           html, body {
@@ -192,40 +176,51 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             background: var(--vscode-editor-background);
             color: var(--vscode-editor-foreground);
           }
-          #editor { width: 100%; height: 100vh; }
-          .toastui-editor-defaultUI { border: none; }
-          .toastui-editor-main,
-          .toastui-editor-ww-container,
-          .toastui-editor-md-container {
-            background: var(--vscode-editor-background) !important;
+          #editor {
+            width: 100%;
+            height: 100vh;
           }
-          .toastui-editor-contents,
-          .toastui-editor-contents p,
-          .toastui-editor-contents li,
-          .toastui-editor-contents td,
-          .toastui-editor-contents th,
-          .toastui-editor-md-preview,
-          .ProseMirror,
-          .ProseMirror p,
-          .ProseMirror li,
-          .ProseMirror td,
-          .ProseMirror th {
+          .ck.ck-editor {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+          }
+          .ck.ck-editor__main {
+            flex: 1;
+            overflow: auto;
+          }
+          .ck.ck-content {
+            min-height: 100%;
+          }
+          /* Dark theme */
+          .dark-theme .ck.ck-toolbar {
+            background: var(--vscode-editor-background) !important;
+            border-color: var(--vscode-editorWidget-border) !important;
+          }
+          .dark-theme .ck.ck-toolbar__items button {
             color: var(--vscode-editor-foreground) !important;
           }
-          .toastui-editor-contents h1,
-          .toastui-editor-contents h2,
-          .toastui-editor-contents h3,
-          .toastui-editor-contents h4,
-          .toastui-editor-contents h5,
-          .toastui-editor-contents h6 {
+          .dark-theme .ck.ck-editor__main,
+          .dark-theme .ck.ck-content {
+            background: var(--vscode-editor-background) !important;
+            color: var(--vscode-editor-foreground) !important;
+          }
+          .dark-theme .ck.ck-content h1,
+          .dark-theme .ck.ck-content h2,
+          .dark-theme .ck.ck-content h3,
+          .dark-theme .ck.ck-content h4 {
             color: var(--vscode-textLink-foreground) !important;
           }
-          .toastui-editor-toolbar {
-            background: var(--vscode-editor-background) !important;
-            border-bottom: 1px solid var(--vscode-editorWidget-border) !important;
-          }
-          .toastui-editor-toolbar button {
+          .dark-theme .ck.ck-content code {
+            background: var(--vscode-textCodeBlock-background) !important;
             color: var(--vscode-editor-foreground) !important;
+          }
+          .dark-theme .ck.ck-content pre {
+            background: var(--vscode-textCodeBlock-background) !important;
+          }
+          .dark-theme .ck.ck-content blockquote {
+            border-left-color: var(--vscode-textLink-foreground) !important;
+            color: var(--vscode-descriptionForeground) !important;
           }
         </style>
       </head>

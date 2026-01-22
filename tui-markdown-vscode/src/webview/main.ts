@@ -1,6 +1,25 @@
-import Editor from '@toast-ui/editor';
-import codeSyntaxHighlight from '@toast-ui/editor-plugin-code-syntax-highlight';
-import Prism from 'prismjs';
+import {
+  ClassicEditor,
+  Essentials,
+  Paragraph,
+  Heading,
+  Bold,
+  Italic,
+  Strikethrough,
+  Code,
+  CodeBlock,
+  BlockQuote,
+  Link,
+  List,
+  TodoList,
+  Table,
+  TableToolbar,
+  HorizontalLine,
+  Autoformat,
+  Indent,
+  IndentBlock,
+} from 'ckeditor5';
+import { Markdown } from '@ckeditor/ckeditor5-markdown-gfm';
 
 declare function acquireVsCodeApi(): {
   postMessage(message: unknown): void;
@@ -10,7 +29,7 @@ declare function acquireVsCodeApi(): {
 
 const vscode = acquireVsCodeApi();
 
-let editor: Editor | null = null;
+let editor: ClassicEditor | null = null;
 let isUpdatingFromExtension = false;
 
 const DEBOUNCE_MS = 500;
@@ -35,7 +54,7 @@ function showError(message: string): void {
   }
 }
 
-function initEditor(): Editor | null {
+async function initEditor(): Promise<ClassicEditor | null> {
   const editorEl = document.getElementById('editor');
   if (!editorEl) {
     showError('Editor element not found');
@@ -43,25 +62,81 @@ function initEditor(): Editor | null {
   }
 
   try {
-    const instance = new Editor({
-      el: editorEl,
-      height: '100%',
-      initialEditType: 'markdown',
-      previewStyle: 'vertical',
-      usageStatistics: false,
-      hideModeSwitch: false,
-      toolbarItems: [
-        ['heading', 'bold', 'italic', 'strike'],
-        ['hr', 'quote'],
-        ['ul', 'ol', 'task', 'indent', 'outdent'],
-        ['table', 'link'],
-        ['code', 'codeblock'],
-        ['scrollSync'],
+    const instance = await ClassicEditor.create(editorEl, {
+      plugins: [
+        Essentials,
+        Paragraph,
+        Heading,
+        Bold,
+        Italic,
+        Strikethrough,
+        Code,
+        CodeBlock,
+        BlockQuote,
+        Link,
+        List,
+        TodoList,
+        Table,
+        TableToolbar,
+        HorizontalLine,
+        Autoformat,
+        Indent,
+        IndentBlock,
+        Markdown,
       ],
-      plugins: [[codeSyntaxHighlight, { highlighter: Prism }]],
+      toolbar: [
+        'heading',
+        '|',
+        'bold',
+        'italic',
+        'strikethrough',
+        'code',
+        '|',
+        'bulletedList',
+        'numberedList',
+        'todoList',
+        '|',
+        'outdent',
+        'indent',
+        '|',
+        'blockQuote',
+        'codeBlock',
+        'horizontalLine',
+        '|',
+        'link',
+        'insertTable',
+        '|',
+        'undo',
+        'redo',
+      ],
+      heading: {
+        options: [
+          { model: 'paragraph', title: 'Paragraph', class: 'ck-heading_paragraph' },
+          { model: 'heading1', view: 'h1', title: 'Heading 1', class: 'ck-heading_heading1' },
+          { model: 'heading2', view: 'h2', title: 'Heading 2', class: 'ck-heading_heading2' },
+          { model: 'heading3', view: 'h3', title: 'Heading 3', class: 'ck-heading_heading3' },
+          { model: 'heading4', view: 'h4', title: 'Heading 4', class: 'ck-heading_heading4' },
+        ],
+      },
+      table: {
+        contentToolbar: ['tableColumn', 'tableRow', 'mergeTableCells'],
+      },
+      codeBlock: {
+        languages: [
+          { language: 'plaintext', label: 'Plain text' },
+          { language: 'javascript', label: 'JavaScript' },
+          { language: 'typescript', label: 'TypeScript' },
+          { language: 'python', label: 'Python' },
+          { language: 'html', label: 'HTML' },
+          { language: 'css', label: 'CSS' },
+          { language: 'json', label: 'JSON' },
+          { language: 'bash', label: 'Bash' },
+          { language: 'sql', label: 'SQL' },
+        ],
+      },
     });
 
-    instance.on('change', () => {
+    instance.model.document.on('change:data', () => {
       if (isUpdatingFromExtension) return;
 
       if (debounceTimer !== null) {
@@ -69,7 +144,7 @@ function initEditor(): Editor | null {
       }
 
       debounceTimer = setTimeout(() => {
-        const markdown = instance.getMarkdown();
+        const markdown = instance.getData();
         vscode.postMessage({ type: 'edit', content: markdown });
         debounceTimer = null;
       }, DEBOUNCE_MS);
@@ -85,11 +160,11 @@ function initEditor(): Editor | null {
 function updateEditorContent(content: string): void {
   if (!editor) return;
 
-  const currentContent = editor.getMarkdown();
+  const currentContent = editor.getData();
   if (content === currentContent) return;
 
   isUpdatingFromExtension = true;
-  editor.setMarkdown(content);
+  editor.setData(content);
 
   queueMicrotask(() => {
     isUpdatingFromExtension = false;
@@ -97,19 +172,8 @@ function updateEditorContent(content: string): void {
 }
 
 function applyTheme(theme: 'dark' | 'light'): void {
-  const darkTheme = document.getElementById('dark-theme') as HTMLLinkElement | null;
-  const prismLight = document.getElementById('prism-light') as HTMLLinkElement | null;
-  const prismDark = document.getElementById('prism-dark') as HTMLLinkElement | null;
-
-  if (darkTheme) {
-    darkTheme.disabled = theme !== 'dark';
-  }
-  if (prismLight) {
-    prismLight.disabled = theme === 'dark';
-  }
-  if (prismDark) {
-    prismDark.disabled = theme !== 'dark';
-  }
+  document.body.classList.remove('dark-theme', 'light-theme');
+  document.body.classList.add(`${theme}-theme`);
 }
 
 window.addEventListener('message', (event) => {
@@ -130,12 +194,13 @@ window.addEventListener('message', (event) => {
   }
 });
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
-    editor = initEditor();
-    vscode.postMessage({ type: 'ready' });
-  });
-} else {
-  editor = initEditor();
+async function init() {
+  editor = await initEditor();
   vscode.postMessage({ type: 'ready' });
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
 }
