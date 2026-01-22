@@ -15,6 +15,23 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     webviewPanel: vscode.WebviewPanel,
     _token: vscode.CancellationToken
   ): Promise<void> {
+    const MAX_FILE_SIZE = 500 * 1024;
+    const fileSize = Buffer.byteLength(document.getText(), 'utf8');
+
+    if (fileSize > MAX_FILE_SIZE) {
+      const proceed = await vscode.window.showWarningMessage(
+        `This file is ${(fileSize / 1024).toFixed(0)}KB. Large files may cause performance issues.`,
+        'Open Anyway',
+        'Open with Default Editor'
+      );
+
+      if (proceed !== 'Open Anyway') {
+        await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+        await vscode.commands.executeCommand('vscode.open', document.uri);
+        return;
+      }
+    }
+
     webviewPanel.webview.options = {
       enableScripts: true,
       localResourceRoots: [

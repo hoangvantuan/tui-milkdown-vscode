@@ -16,45 +16,70 @@ let isUpdatingFromExtension = false;
 const DEBOUNCE_MS = 500;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-function initEditor(): Editor {
+function escapeHtml(text: string): string {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function showError(message: string): void {
+  const editorEl = document.getElementById('editor');
+  if (editorEl) {
+    editorEl.innerHTML = `
+      <div style="padding: 20px; color: var(--vscode-errorForeground);">
+        <h3>Error</h3>
+        <p>${escapeHtml(message)}</p>
+        <p>Try reopening the file or reloading the window.</p>
+      </div>
+    `;
+  }
+}
+
+function initEditor(): Editor | null {
   const editorEl = document.getElementById('editor');
   if (!editorEl) {
-    throw new Error('Editor element not found');
+    showError('Editor element not found');
+    return null;
   }
 
-  const instance = new Editor({
-    el: editorEl,
-    height: '100%',
-    initialEditType: 'wysiwyg',
-    previewStyle: 'vertical',
-    usageStatistics: false,
-    hideModeSwitch: false,
-    toolbarItems: [
-      ['heading', 'bold', 'italic', 'strike'],
-      ['hr', 'quote'],
-      ['ul', 'ol', 'task', 'indent', 'outdent'],
-      ['table', 'link'],
-      ['code', 'codeblock'],
-      ['scrollSync'],
-    ],
-    plugins: [[codeSyntaxHighlight, { highlighter: Prism }]],
-  });
+  try {
+    const instance = new Editor({
+      el: editorEl,
+      height: '100%',
+      initialEditType: 'wysiwyg',
+      previewStyle: 'vertical',
+      usageStatistics: false,
+      hideModeSwitch: false,
+      toolbarItems: [
+        ['heading', 'bold', 'italic', 'strike'],
+        ['hr', 'quote'],
+        ['ul', 'ol', 'task', 'indent', 'outdent'],
+        ['table', 'link'],
+        ['code', 'codeblock'],
+        ['scrollSync'],
+      ],
+      plugins: [[codeSyntaxHighlight, { highlighter: Prism }]],
+    });
 
-  instance.on('change', () => {
-    if (isUpdatingFromExtension) return;
+    instance.on('change', () => {
+      if (isUpdatingFromExtension) return;
 
-    if (debounceTimer !== null) {
-      clearTimeout(debounceTimer);
-    }
+      if (debounceTimer !== null) {
+        clearTimeout(debounceTimer);
+      }
 
-    debounceTimer = setTimeout(() => {
-      const markdown = instance.getMarkdown();
-      vscode.postMessage({ type: 'edit', content: markdown });
-      debounceTimer = null;
-    }, DEBOUNCE_MS);
-  });
+      debounceTimer = setTimeout(() => {
+        const markdown = instance.getMarkdown();
+        vscode.postMessage({ type: 'edit', content: markdown });
+        debounceTimer = null;
+      }, DEBOUNCE_MS);
+    });
 
-  return instance;
+    return instance;
+  } catch (error) {
+    showError(`Failed to initialize editor: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
 }
 
 function updateEditorContent(content: string): void {

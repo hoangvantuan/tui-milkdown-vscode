@@ -32,6 +32,7 @@
   "scripts": {
     "build": "node esbuild.config.js",
     "watch": "node esbuild.config.js --watch",
+    "lint": "tsc --noEmit",
     "package": "vsce package"
   },
   "devDependencies": {

@@ -1,7 +1,7 @@
 ---
 title: "TUI Markdown WYSIWYG VS Code Extension"
 description: "VS Code extension using TUI Editor for WYSIWYG markdown editing with code-syntax-highlight plugin"
-status: pending
+status: complete
 priority: P2
 effort: 8h
 branch: feat/tui-markdown-extension
@@ -51,7 +51,7 @@ VS Code Extension
 | 03 | [TUI Integration](./phase-03-tui-integration.md) | 2h | complete |
 | 04 | [Sync Logic](./phase-04-sync-logic.md) | 1.5h | complete |
 | 05 | [Plugins & Theme](./phase-05-plugins-theme.md) | 1h | complete |
-| 06 | [Polish & Test](./phase-06-polish-test.md) | 0.5h | pending |
+| 06 | [Polish & Test](./phase-06-polish-test.md) | 0.5h | complete |
 
 ## Key Dependencies
 
