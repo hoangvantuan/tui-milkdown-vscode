@@ -11,6 +11,9 @@ const vscode = acquireVsCodeApi();
 let editor: Editor | null = null;
 let isUpdatingFromExtension = false;
 
+const DEBOUNCE_MS = 500;
+let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
 function initEditor(): Editor {
   const editorEl = document.getElementById('editor');
   if (!editorEl) {
@@ -36,8 +39,16 @@ function initEditor(): Editor {
 
   instance.on('change', () => {
     if (isUpdatingFromExtension) return;
-    const markdown = instance.getMarkdown();
-    vscode.postMessage({ type: 'edit', content: markdown });
+
+    if (debounceTimer !== null) {
+      clearTimeout(debounceTimer);
+    }
+
+    debounceTimer = setTimeout(() => {
+      const markdown = instance.getMarkdown();
+      vscode.postMessage({ type: 'edit', content: markdown });
+      debounceTimer = null;
+    }, DEBOUNCE_MS);
   });
 
   return instance;

@@ -25,35 +25,70 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
     webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview);
 
+    let pendingEdit = false;
     const disposables: vscode.Disposable[] = [];
 
     const updateWebview = () => {
+      if (pendingEdit) return;
       webviewPanel.webview.postMessage({
         type: 'update',
         content: document.getText(),
       });
     };
 
-    // Listen for document changes (external edits)
+    const applyEdit = async (newContent: string) => {
+      if (newContent === document.getText()) return;
+
+      pendingEdit = true;
+      try {
+        const edit = new vscode.WorkspaceEdit();
+        const fullRange = new vscode.Range(
+          document.positionAt(0),
+          document.positionAt(document.getText().length)
+        );
+        edit.replace(document.uri, fullRange, newContent);
+        const success = await vscode.workspace.applyEdit(edit);
+        if (!success) {
+          updateWebview();
+        }
+      } finally {
+        queueMicrotask(() => { pendingEdit = false; });
+      }
+    };
+
     disposables.push(
       vscode.workspace.onDidChangeTextDocument((e) => {
         if (e.document.uri.toString() === document.uri.toString()) {
-          updateWebview();
+          if (!pendingEdit && e.contentChanges.length > 0) {
+            updateWebview();
+          }
         }
       })
     );
 
-    // Listen for messages from webview with validation
     disposables.push(
-      webviewPanel.webview.onDidReceiveMessage((message: unknown) => {
+      webviewPanel.webview.onDidReceiveMessage(async (message: unknown) => {
         if (!message || typeof message !== 'object') return;
-        const msg = message as { type?: string };
+        const msg = message as { type?: string; content?: string };
         if (typeof msg.type !== 'string') return;
 
         switch (msg.type) {
           case 'ready':
             updateWebview();
             break;
+          case 'edit':
+            if (typeof msg.content === 'string') {
+              await applyEdit(msg.content);
+            }
+            break;
+        }
+      })
+    );
+
+    disposables.push(
+      webviewPanel.onDidChangeViewState((e) => {
+        if (e.webviewPanel.visible) {
+          updateWebview();
         }
       })
     );
