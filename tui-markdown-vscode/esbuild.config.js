@@ -1,4 +1,7 @@
 const esbuild = require('esbuild');
+const path = require('path');
+const fs = require('fs');
+
 const isWatch = process.argv.includes('--watch');
 
 const extensionConfig = {
@@ -18,9 +21,35 @@ const webviewConfig = {
   format: 'iife',
   platform: 'browser',
   sourcemap: true,
+  define: {
+    'process.env.NODE_ENV': '"production"',
+  },
 };
 
+function copyCss() {
+  const cssFiles = [
+    'node_modules/@toast-ui/editor/dist/toastui-editor.css',
+  ];
+
+  const outDir = 'out/webview';
+  if (!fs.existsSync(outDir)) {
+    fs.mkdirSync(outDir, { recursive: true });
+  }
+
+  cssFiles.forEach((cssPath) => {
+    if (!fs.existsSync(cssPath)) {
+      throw new Error(`CSS file not found: ${cssPath}`);
+    }
+    const fileName = path.basename(cssPath);
+    fs.copyFileSync(cssPath, path.join(outDir, fileName));
+  });
+
+  console.log('CSS files copied');
+}
+
 async function build() {
+  copyCss();
+
   if (isWatch) {
     const extCtx = await esbuild.context(extensionConfig);
     const webCtx = await esbuild.context(webviewConfig);

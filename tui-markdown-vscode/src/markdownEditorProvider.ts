@@ -68,6 +68,10 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       vscode.Uri.joinPath(this.context.extensionUri, 'out', 'webview', 'main.js')
     );
 
+    const editorCssUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.context.extensionUri, 'out', 'webview', 'toastui-editor.css')
+    );
+
     const nonce = getNonce();
 
     const csp = `
@@ -87,27 +91,30 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <meta http-equiv="Content-Security-Policy" content="${csp}">
         <title>TUI Markdown Editor</title>
+        <link rel="stylesheet" href="${editorCssUri}">
         <style>
-          body {
-            padding: 0;
+          * { box-sizing: border-box; }
+          html, body {
             margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
             background: var(--vscode-editor-background);
             color: var(--vscode-editor-foreground);
           }
-          #editor {
-            width: 100%;
-            height: 100vh;
+          #editor { width: 100%; height: 100vh; }
+          .toastui-editor-defaultUI { border: none; }
+          .toastui-editor-main,
+          .toastui-editor-ww-container,
+          .toastui-editor-md-container {
+            background: var(--vscode-editor-background);
           }
-          .placeholder {
-            padding: 20px;
-            font-family: var(--vscode-font-family);
-          }
+          .ProseMirror { color: var(--vscode-editor-foreground); }
         </style>
       </head>
       <body>
-        <div id="editor">
-          <div class="placeholder">Loading TUI Editor...</div>
-        </div>
+        <div id="editor"></div>
         <script nonce="${nonce}" src="${scriptUri}"></script>
       </body>
       </html>

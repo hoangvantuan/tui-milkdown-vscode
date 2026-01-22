@@ -1,3 +1,5 @@
+import Editor from '@toast-ui/editor';
+
 declare function acquireVsCodeApi(): {
   postMessage(message: unknown): void;
   getState(): unknown;
@@ -6,27 +8,74 @@ declare function acquireVsCodeApi(): {
 
 const vscode = acquireVsCodeApi();
 
-let currentContent = '';
+let editor: Editor | null = null;
+let isUpdatingFromExtension = false;
 
-function escapeHtml(text: string): string {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
+function initEditor(): Editor {
+  const editorEl = document.getElementById('editor');
+  if (!editorEl) {
+    throw new Error('Editor element not found');
+  }
+
+  const instance = new Editor({
+    el: editorEl,
+    height: '100%',
+    initialEditType: 'wysiwyg',
+    previewStyle: 'vertical',
+    usageStatistics: false,
+    hideModeSwitch: false,
+    toolbarItems: [
+      ['heading', 'bold', 'italic', 'strike'],
+      ['hr', 'quote'],
+      ['ul', 'ol', 'task', 'indent', 'outdent'],
+      ['table', 'link'],
+      ['code', 'codeblock'],
+      ['scrollSync'],
+    ],
+  });
+
+  instance.on('change', () => {
+    if (isUpdatingFromExtension) return;
+    const markdown = instance.getMarkdown();
+    vscode.postMessage({ type: 'edit', content: markdown });
+  });
+
+  return instance;
+}
+
+function updateEditorContent(content: string): void {
+  if (!editor) return;
+
+  const currentContent = editor.getMarkdown();
+  if (content === currentContent) return;
+
+  isUpdatingFromExtension = true;
+  editor.setMarkdown(content);
+
+  queueMicrotask(() => {
+    isUpdatingFromExtension = false;
+  });
 }
 
 window.addEventListener('message', (event) => {
   const message = event.data;
+  if (!message || typeof message !== 'object') return;
 
   switch (message.type) {
     case 'update':
-      currentContent = message.content;
-      const editorEl = document.getElementById('editor');
-      if (editorEl) {
-        editorEl.innerHTML = `<pre style="padding: 20px; white-space: pre-wrap;">${escapeHtml(currentContent)}</pre>`;
+      if (typeof message.content === 'string') {
+        updateEditorContent(message.content);
       }
       break;
   }
 });
 
-vscode.postMessage({ type: 'ready' });
-console.log('TUI Markdown webview initialized');
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    editor = initEditor();
+    vscode.postMessage({ type: 'ready' });
+  });
+} else {
+  editor = initEditor();
+  vscode.postMessage({ type: 'ready' });
+}

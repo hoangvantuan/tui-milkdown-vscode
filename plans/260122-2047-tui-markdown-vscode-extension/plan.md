@@ -47,7 +47,7 @@ VS Code Extension
 | Phase | Name | Effort | Status |
 |-------|------|--------|--------|
 | 01 | [Project Setup](./phase-01-project-setup.md) | 1h | complete |
-| 02 | [Basic Provider](./phase-02-basic-provider.md) | 1.5h | pending |
+| 02 | [Basic Provider](./phase-02-basic-provider.md) | 1.5h | complete |
 | 03 | [TUI Integration](./phase-03-tui-integration.md) | 2h | pending |
 | 04 | [Sync Logic](./phase-04-sync-logic.md) | 1.5h | pending |
 | 05 | [Plugins & Theme](./phase-05-plugins-theme.md) | 1.5h | pending |
