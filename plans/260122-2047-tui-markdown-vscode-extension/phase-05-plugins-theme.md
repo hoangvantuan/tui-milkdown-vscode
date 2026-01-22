@@ -10,7 +10,7 @@
 | Field | Value |
 |-------|-------|
 | Priority | P2 |
-| Status | pending |
+| Status | complete |
 | Effort | 1h |
 | Description | Add code-syntax-highlight plugin and sync theme with VS Code |
 
@@ -428,16 +428,17 @@ echo "Hello, World!"
 
 ## Todo List
 
-- [ ] Install code-syntax-highlight plugin + prismjs
-- [ ] Update esbuild to copy CSS files
-- [ ] Add theme detection to markdownEditorProvider.ts
-- [ ] Update getHtmlForWebview with CSS links
-- [ ] Update webview/main.ts with plugin import
-- [ ] Add Prism language imports (15 languages)
-- [ ] Implement theme change handler
-- [ ] Build and test
-- [ ] Test code syntax highlighting
-- [ ] Test theme switching (light/dark)
+- [x] Install code-syntax-highlight plugin + prismjs
+- [x] Update esbuild to copy CSS files (5 CSS files)
+- [x] Add theme detection to markdownEditorProvider.ts
+- [x] Update getHtmlForWebview with CSS links
+- [x] Update webview/main.ts with plugin import
+- [x] Implement theme change handler (CSS-based approach)
+- [x] Build and test
+- [x] Test code syntax highlighting
+- [x] Test theme switching (light/dark)
+
+**Note:** Prism languages auto-loaded by plugin (deviation from plan - reduces bundle size)
 
 ## Success Criteria
 

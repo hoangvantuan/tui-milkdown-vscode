@@ -28,11 +28,25 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     let pendingEdit = false;
     const disposables: vscode.Disposable[] = [];
 
+    const getThemeKind = (): 'dark' | 'light' => {
+      const kind = vscode.window.activeColorTheme.kind;
+      return kind === vscode.ColorThemeKind.Dark || kind === vscode.ColorThemeKind.HighContrast
+        ? 'dark'
+        : 'light';
+    };
+
     const updateWebview = () => {
       if (pendingEdit) return;
       webviewPanel.webview.postMessage({
         type: 'update',
         content: document.getText(),
+      });
+    };
+
+    const sendTheme = () => {
+      webviewPanel.webview.postMessage({
+        type: 'theme',
+        theme: getThemeKind(),
       });
     };
 
@@ -74,6 +88,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
         switch (msg.type) {
           case 'ready':
+            sendTheme();
             updateWebview();
             break;
           case 'edit':
@@ -93,6 +108,12 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       })
     );
 
+    disposables.push(
+      vscode.window.onDidChangeActiveColorTheme(() => {
+        sendTheme();
+      })
+    );
+
     webviewPanel.onDidDispose(() => {
       disposables.forEach((d) => d.dispose());
     });
@@ -105,6 +126,18 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
     const editorCssUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this.context.extensionUri, 'out', 'webview', 'toastui-editor.css')
+    );
+    const darkCssUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.context.extensionUri, 'out', 'webview', 'toastui-editor-dark.css')
+    );
+    const pluginCssUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.context.extensionUri, 'out', 'webview', 'toastui-editor-plugin-code-syntax-highlight.css')
+    );
+    const prismCssUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.context.extensionUri, 'out', 'webview', 'prism.css')
+    );
+    const prismDarkCssUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.context.extensionUri, 'out', 'webview', 'prism-tomorrow.css')
     );
 
     const nonce = getNonce();
@@ -127,6 +160,10 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         <meta http-equiv="Content-Security-Policy" content="${csp}">
         <title>TUI Markdown Editor</title>
         <link rel="stylesheet" href="${editorCssUri}">
+        <link id="dark-theme" rel="stylesheet" href="${darkCssUri}" disabled>
+        <link rel="stylesheet" href="${pluginCssUri}">
+        <link id="prism-light" rel="stylesheet" href="${prismCssUri}">
+        <link id="prism-dark" rel="stylesheet" href="${prismDarkCssUri}" disabled>
         <style>
           * { box-sizing: border-box; }
           html, body {

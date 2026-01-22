@@ -1,4 +1,6 @@
 import Editor from '@toast-ui/editor';
+import codeSyntaxHighlight from '@toast-ui/editor-plugin-code-syntax-highlight';
+import Prism from 'prismjs';
 
 declare function acquireVsCodeApi(): {
   postMessage(message: unknown): void;
@@ -35,6 +37,7 @@ function initEditor(): Editor {
       ['code', 'codeblock'],
       ['scrollSync'],
     ],
+    plugins: [[codeSyntaxHighlight, { highlighter: Prism }]],
   });
 
   instance.on('change', () => {
@@ -68,6 +71,22 @@ function updateEditorContent(content: string): void {
   });
 }
 
+function applyTheme(theme: 'dark' | 'light'): void {
+  const darkTheme = document.getElementById('dark-theme') as HTMLLinkElement | null;
+  const prismLight = document.getElementById('prism-light') as HTMLLinkElement | null;
+  const prismDark = document.getElementById('prism-dark') as HTMLLinkElement | null;
+
+  if (darkTheme) {
+    darkTheme.disabled = theme !== 'dark';
+  }
+  if (prismLight) {
+    prismLight.disabled = theme === 'dark';
+  }
+  if (prismDark) {
+    prismDark.disabled = theme !== 'dark';
+  }
+}
+
 window.addEventListener('message', (event) => {
   const message = event.data;
   if (!message || typeof message !== 'object') return;
@@ -76,6 +95,11 @@ window.addEventListener('message', (event) => {
     case 'update':
       if (typeof message.content === 'string') {
         updateEditorContent(message.content);
+      }
+      break;
+    case 'theme':
+      if (message.theme === 'dark' || message.theme === 'light') {
+        applyTheme(message.theme);
       }
       break;
   }

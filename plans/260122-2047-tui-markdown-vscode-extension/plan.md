@@ -49,8 +49,8 @@ VS Code Extension
 | 01 | [Project Setup](./phase-01-project-setup.md) | 1h | complete |
 | 02 | [Basic Provider](./phase-02-basic-provider.md) | 1.5h | complete |
 | 03 | [TUI Integration](./phase-03-tui-integration.md) | 2h | complete |
-| 04 | [Sync Logic](./phase-04-sync-logic.md) | 1.5h | pending |
-| 05 | [Plugins & Theme](./phase-05-plugins-theme.md) | 1.5h | pending |
+| 04 | [Sync Logic](./phase-04-sync-logic.md) | 1.5h | complete |
+| 05 | [Plugins & Theme](./phase-05-plugins-theme.md) | 1h | complete |
 | 06 | [Polish & Test](./phase-06-polish-test.md) | 0.5h | pending |
 
 ## Key Dependencies
@@ -92,7 +92,7 @@ VS Code Extension
 ### Action Items
 
 - [x] Update package.json: Change `priority: "option"` → `priority: "default"`
-- [ ] Update DEBOUNCE_MS: 300 → 500
+- [x] Update DEBOUNCE_MS: 300 → 500
 - [x] Remove all plugins except code-syntax-highlight
 - [ ] Add Phase 07: Settings Configuration với contributes.configuration
 - [ ] Update effort estimate: 8h → 9h (thêm settings phase)
