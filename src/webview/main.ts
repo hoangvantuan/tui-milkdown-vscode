@@ -112,6 +112,21 @@ const getEditorEl = () => document.getElementById("editor");
 const getThemeSelect = () =>
   document.getElementById("theme-select") as HTMLSelectElement | null;
 const getSourceBtn = () => document.getElementById("btn-source");
+const getLoadingIndicator = () => document.getElementById("loading-indicator");
+
+function hideLoading(): void {
+  const loading = getLoadingIndicator();
+  if (loading) {
+    loading.classList.add("hidden");
+  }
+}
+
+function showLoading(): void {
+  const loading = getLoadingIndicator();
+  if (loading) {
+    loading.classList.remove("hidden");
+  }
+}
 
 function escapeHtml(text: string): string {
   const div = document.createElement("div");
@@ -174,6 +189,11 @@ function viewSource(): void {
   vscode.postMessage({ type: "viewSource" });
 }
 
+function applyFontSize(size: number): void {
+  if (!Number.isFinite(size) || size < 8 || size > 32) return;
+  document.documentElement.style.setProperty("--editor-font-size", `${size}px`);
+}
+
 // Editor initialization
 async function initEditor(initialContent: string = ""): Promise<Crepe | null> {
   console.log("[Crepe] Starting initialization...");
@@ -200,6 +220,7 @@ async function initEditor(initialContent: string = ""): Promise<Crepe | null> {
     await instance.create();
 
     applyThemeVariables(currentTheme);
+    hideLoading();
 
     console.log("[Crepe] Editor created successfully!");
     return instance;
@@ -216,7 +237,15 @@ async function updateEditorContent(content: string): Promise<void> {
   if (!crepe) return;
 
   isUpdatingFromExtension = true;
+  showLoading();
   try {
+    // Restore theme from persisted state before recreating editor
+    const state = vscode.getState();
+    const savedTheme = state?.theme as ThemeName | undefined;
+    if (savedTheme && THEMES.includes(savedTheme)) {
+      currentTheme = savedTheme;
+    }
+
     crepe.destroy();
     crepe = null;
 
@@ -228,6 +257,7 @@ async function updateEditorContent(content: string): Promise<void> {
   } catch (err) {
     console.error("[Crepe] Failed to update content:", err);
     crepe = null;
+    hideLoading();
   } finally {
     queueMicrotask(() => {
       isUpdatingFromExtension = false;
@@ -267,8 +297,6 @@ function setupToolbarHandlers(): void {
   });
 }
 
-let pendingContent: string | null = null;
-
 window.addEventListener("message", async (event) => {
   const message = event.data;
   if (!message || typeof message !== "object") return;
@@ -278,7 +306,8 @@ window.addEventListener("message", async (event) => {
       if (typeof message.content === "string") {
         try {
           if (!crepe) {
-            pendingContent = message.content;
+            // First time: create editor with actual content (not empty)
+            crepe = await initEditor(message.content);
           } else {
             await updateEditorContent(message.content);
           }
@@ -296,18 +325,22 @@ window.addEventListener("message", async (event) => {
         initTheme(message.theme);
       }
       break;
+    case "config":
+      if (typeof message.fontSize === "number") {
+        applyFontSize(message.fontSize);
+      }
+      break;
   }
 });
 
-async function init() {
+function init() {
   console.log("[Crepe] init() called");
 
   setupToolbarHandlers();
 
-  crepe = await initEditor(pendingContent || "");
-  pendingContent = null;
-
-  console.log("[Crepe] init() complete, editor:", crepe ? "created" : "null");
+  // Don't create editor yet - wait for content from extension
+  // This prevents showing empty placeholder "Please enter..."
+  console.log("[Crepe] init() complete, sending ready signal");
   vscode.postMessage({ type: "ready" });
 }
 

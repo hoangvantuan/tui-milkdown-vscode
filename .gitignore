@@ -1,2 +1,4 @@
 .claude
 plans/
+out/
+node_modules/

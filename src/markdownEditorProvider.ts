@@ -67,6 +67,18 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       });
     };
 
+    const getFontSize = (): number => {
+      const config = vscode.workspace.getConfiguration('tuiMarkdown');
+      return config.get<number>('fontSize', 16);
+    };
+
+    const sendConfig = () => {
+      webviewPanel.webview.postMessage({
+        type: 'config',
+        fontSize: getFontSize(),
+      });
+    };
+
     const applyEdit = async (newContent: string) => {
       if (newContent === document.getText()) return;
 
@@ -102,6 +114,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         switch (msg.type) {
           case 'ready':
             sendTheme();
+            sendConfig();
             updateWebview();
             break;
           case 'edit':
@@ -120,7 +133,12 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       webviewPanel.onDidChangeViewState((e) => {
         if (e.webviewPanel.visible) updateWebview();
       }),
-      vscode.window.onDidChangeActiveColorTheme(sendTheme)
+      vscode.window.onDidChangeActiveColorTheme(sendTheme),
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration('tuiMarkdown.fontSize')) {
+          sendConfig();
+        }
+      })
     );
 
     webviewPanel.onDidDispose(() => {
@@ -157,8 +175,34 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         <title>Markdown Editor</title>
         <link rel="stylesheet" href="${cssUri}">
         <style>
+          :root {
+            --editor-font-size: 16px;
+            /* Default Milkdown theme variables (dark) - prevents flash */
+            --crepe-color-background: var(--vscode-editor-background, #1e1e1e);
+            --crepe-color-on-background: var(--vscode-editor-foreground, #d4d4d4);
+            --crepe-color-surface: #262626;
+            --crepe-color-surface-low: #303030;
+            --crepe-color-on-surface: #e0e0e0;
+            --crepe-color-on-surface-variant: #b0b0b0;
+            --crepe-color-outline: #6b6b6b;
+            --crepe-color-primary: #e0e0e0;
+            --crepe-color-secondary: #404040;
+            --crepe-color-on-secondary: #ffffff;
+            --crepe-color-selected: #4a4a4a;
+          }
           * { box-sizing: border-box; }
-          html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
+          html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: var(--vscode-editor-background, #1e1e1e);
+            color: var(--vscode-editor-foreground, #d4d4d4);
+          }
+          .milkdown {
+            font-size: var(--editor-font-size);
+          }
 
           #toolbar {
             display: flex;
@@ -197,13 +241,46 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           #editor-container {
             height: calc(100vh - 40px);
             overflow: auto;
+            position: relative;
           }
           #editor { width: 100%; min-height: 100%; }
           #editor.hidden { display: none; }
 
+          /* Loading state */
+          #loading-indicator {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            background: var(--vscode-editor-background, #1e1e1e);
+            z-index: 10;
+          }
+          #loading-indicator.hidden { display: none; }
+          .loading-spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid var(--vscode-editor-foreground, #888);
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+          }
+          .loading-text {
+            color: var(--vscode-descriptionForeground, #888);
+            font-size: 13px;
+          }
+          @keyframes spin {
+            to { transform: rotate(360deg); }
+          }
+
         </style>
       </head>
-      <body>
+      <body style="background: var(--vscode-editor-background, #1e1e1e);">
         <div id="toolbar">
           <select id="theme-select" aria-label="Editor theme">
             <option value="frame">Frame</option>
@@ -214,6 +291,10 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           <button id="btn-source" class="view-source-btn" aria-label="View source in text editor">View Source</button>
         </div>
         <div id="editor-container">
+          <div id="loading-indicator">
+            <div class="loading-spinner"></div>
+            <span class="loading-text">Loading editor...</span>
+          </div>
           <div id="editor"></div>
         </div>
         <script nonce="${nonce}" src="${scriptUri}"></script>

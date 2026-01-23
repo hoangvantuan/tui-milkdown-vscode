@@ -13,6 +13,18 @@
   "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
+    "configuration": {
+      "title": "Milkdown Markdown",
+      "properties": {
+        "tuiMarkdown.fontSize": {
+          "type": "number",
+          "default": 16,
+          "minimum": 8,
+          "maximum": 32,
+          "description": "Font size for the Markdown editor (in pixels)"
+        }
+      }
+    },
     "customEditors": [
       {
         "viewType": "tuiMarkdown.editor",
