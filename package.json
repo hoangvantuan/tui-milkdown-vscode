@@ -1,14 +1,33 @@
 {
-  "name": "tui-markdown-vscode",
+  "name": "tui-milkdown-vscode",
   "displayName": "Milkdown Markdown WYSIWYG",
-  "description": "WYSIWYG Markdown editor using Milkdown",
-  "version": "0.0.1",
-  "publisher": "shun",
+  "description": "A beautiful WYSIWYG Markdown editor powered by Milkdown Crepe. Edit markdown files with rich text experience and theme selection.",
+  "version": "1.0.0",
+  "publisher": "hoangvantuan",
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hoangvantuan/tui-milkdown-vscode.git"
+  },
+  "bugs": {
+    "url": "https://github.com/hoangvantuan/tui-milkdown-vscode/issues"
+  },
+  "homepage": "https://github.com/hoangvantuan/tui-milkdown-vscode#readme",
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
-    "Other"
+    "Other",
+    "Visualization"
+  ],
+  "keywords": [
+    "markdown",
+    "wysiwyg",
+    "milkdown",
+    "editor",
+    "rich text",
+    "preview"
   ],
   "activationEvents": [],
   "main": "./out/extension.js",
@@ -51,6 +70,7 @@
     "@types/node": "^25.0.10",
     "@types/vscode": "^1.85.0",
     "esbuild": "^0.20.0",
+    "sharp": "^0.34.5",
     "typescript": "^5.3.0"
   },
   "dependencies": {
