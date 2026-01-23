@@ -203,7 +203,9 @@ function viewSource(): void {
 
 function applyFontSize(size: number): void {
   if (!Number.isFinite(size) || size < 8 || size > 32) return;
-  document.documentElement.style.setProperty("--editor-font-size", `${size}px`);
+  // Scale factor relative to base 16px
+  const scaleFactor = size / 16;
+  document.documentElement.style.setProperty("--editor-font-scale", String(scaleFactor));
 }
 
 // Editor initialization

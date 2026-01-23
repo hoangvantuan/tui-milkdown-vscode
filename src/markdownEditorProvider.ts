@@ -189,7 +189,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         <link rel="stylesheet" href="${cssUri}">
         <style>
           :root {
-            --editor-font-size: 16px;
+            --editor-font-scale: 1;
             /* Default Milkdown theme variables (dark) - prevents flash */
             --crepe-color-background: var(--vscode-editor-background, #1e1e1e);
             --crepe-color-on-background: var(--vscode-editor-foreground, #d4d4d4);
@@ -213,9 +213,28 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             background: var(--vscode-editor-background, #1e1e1e);
             color: var(--vscode-editor-foreground, #d4d4d4);
           }
-          /* Apply font size directly to editor - avoids cursor offset from transform */
-          .milkdown {
-            font-size: var(--editor-font-size, 16px);
+          /* Override body text font size only (headings unchanged) */
+          .milkdown .ProseMirror p,
+          .milkdown .ProseMirror blockquote {
+            font-size: calc(16px * var(--editor-font-scale, 1));
+            line-height: calc(24px * var(--editor-font-scale, 1));
+          }
+          .milkdown .ProseMirror li {
+            font-size: calc(16px * var(--editor-font-scale, 1));
+            gap: calc(10px * var(--editor-font-scale, 1)) !important;
+          }
+          .milkdown .label-wrapper {
+            height: calc(32px * var(--editor-font-scale, 1)) !important;
+            transform: scale(var(--editor-font-scale, 1));
+            transform-origin: left center;
+            margin-right: calc(4px * var(--editor-font-scale, 1));
+          }
+          .milkdown .ProseMirror code,
+          .milkdown .ProseMirror pre,
+          .milkdown .cm-editor,
+          .milkdown .cm-content {
+            font-size: calc(14px * var(--editor-font-scale, 1)) !important;
+            line-height: calc(20px * var(--editor-font-scale, 1)) !important;
           }
 
           #toolbar {
