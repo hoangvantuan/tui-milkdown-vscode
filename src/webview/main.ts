@@ -98,6 +98,7 @@ let crepe: Crepe | null = null;
 let isUpdatingFromExtension = false;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let currentTheme: ThemeName = "frame";
+let globalThemeReceived: ThemeName | null = null; // Theme from extension globalState
 
 function debouncedPostEdit(content: string): void {
   if (debounceTimer !== null) clearTimeout(debounceTimer);
@@ -158,7 +159,7 @@ function applyThemeVariables(themeName: ThemeName): void {
   }
 }
 
-function setTheme(themeName: ThemeName): void {
+function setTheme(themeName: ThemeName, saveGlobal = true): void {
   currentTheme = themeName;
   applyThemeVariables(themeName);
 
@@ -168,20 +169,31 @@ function setTheme(themeName: ThemeName): void {
   const select = getThemeSelect();
   if (select) select.value = themeName;
 
-  const state = vscode.getState() || {};
-  vscode.setState({ ...state, theme: themeName });
+  // Save theme globally via extension (only source of truth)
+  if (saveGlobal) {
+    globalThemeReceived = themeName; // Update local cache
+    vscode.postMessage({ type: "themeChange", theme: themeName });
+  }
 }
 
 function initTheme(vsCodeTheme: "dark" | "light"): void {
-  const state = vscode.getState();
-  let theme = state?.theme as ThemeName | undefined;
-
-  if (!theme || !THEMES.includes(theme)) {
-    theme = vsCodeTheme === "dark" ? "frame-dark" : "frame";
+  // Priority: globalThemeReceived > default based on VS Code theme
+  if (globalThemeReceived) {
+    // Global theme already applied, just ensure it's set
+    applyThemeVariables(globalThemeReceived);
+    return;
   }
 
-  currentTheme = theme;
-  setTheme(theme);
+  // No global theme yet, use default based on VS Code theme
+  const defaultTheme = vsCodeTheme === "dark" ? "frame-dark" : "frame";
+  currentTheme = defaultTheme;
+  applyThemeVariables(defaultTheme);
+
+  THEMES.forEach((t) => document.body.classList.remove(`theme-${t}`));
+  document.body.classList.add(`theme-${defaultTheme}`);
+
+  const select = getThemeSelect();
+  if (select) select.value = defaultTheme;
 }
 
 function viewSource(): void {
@@ -239,13 +251,6 @@ async function updateEditorContent(content: string): Promise<void> {
   isUpdatingFromExtension = true;
   showLoading();
   try {
-    // Restore theme from persisted state before recreating editor
-    const state = vscode.getState();
-    const savedTheme = state?.theme as ThemeName | undefined;
-    if (savedTheme && THEMES.includes(savedTheme)) {
-      currentTheme = savedTheme;
-    }
-
     crepe.destroy();
     crepe = null;
 
@@ -266,14 +271,9 @@ async function updateEditorContent(content: string): Promise<void> {
 }
 
 function applyTheme(theme: "dark" | "light"): void {
+  // Only apply VS Code theme class - DO NOT save to global
   document.body.classList.remove("dark-theme", "light-theme");
   document.body.classList.add(`${theme}-theme`);
-
-  const state = vscode.getState();
-  if (!state?.theme) {
-    const newTheme = theme === "dark" ? "frame-dark" : "frame";
-    setTheme(newTheme);
-  }
 }
 
 // Toolbar event handlers
@@ -328,6 +328,12 @@ window.addEventListener("message", async (event) => {
     case "config":
       if (typeof message.fontSize === "number") {
         applyFontSize(message.fontSize);
+      }
+      break;
+    case "savedTheme":
+      if (typeof message.theme === "string" && THEMES.includes(message.theme as ThemeName)) {
+        globalThemeReceived = message.theme as ThemeName;
+        setTheme(globalThemeReceived, false); // Apply but don't save back
       }
       break;
   }

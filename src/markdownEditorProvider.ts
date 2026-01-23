@@ -112,11 +112,17 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         if (typeof msg.type !== 'string') return;
 
         switch (msg.type) {
-          case 'ready':
+          case 'ready': {
+            // Send saved global theme FIRST, before VS Code theme
+            const savedTheme = this.context.globalState.get<string>('markdownEditorTheme');
+            if (savedTheme) {
+              webviewPanel.webview.postMessage({ type: 'savedTheme', theme: savedTheme });
+            }
             sendTheme();
             sendConfig();
             updateWebview();
             break;
+          }
           case 'edit':
             if (typeof msg.content === 'string') {
               await applyEdit(msg.content);
@@ -126,6 +132,13 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             // Open with default text editor, then close this custom editor
             const uri = document.uri;
             await vscode.commands.executeCommand('vscode.openWith', uri, 'default');
+            break;
+          }
+          case 'themeChange': {
+            const theme = (msg as { theme?: string }).theme;
+            if (typeof theme === 'string') {
+              await this.context.globalState.update('markdownEditorTheme', theme);
+            }
             break;
           }
         }
@@ -203,6 +216,34 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .milkdown {
             font-size: var(--editor-font-size);
           }
+          /* Override Milkdown hardcoded font sizes - use relative units for scaling */
+          .milkdown .ProseMirror {
+            font-size: var(--editor-font-size) !important;
+            line-height: 1.8 !important;
+          }
+          .milkdown .ProseMirror p {
+            font-size: 1em !important;
+            line-height: 1.8 !important;
+          }
+          .milkdown .ProseMirror ul,
+          .milkdown .ProseMirror ol {
+            line-height: 1.6 !important;
+          }
+          .milkdown .ProseMirror li {
+            font-size: 1em !important;
+            line-height: 1.6 !important;
+          }
+          .milkdown .ProseMirror li::marker {
+            font-size: 1em !important;
+          }
+          .milkdown .ProseMirror h1 { font-size: 2.625em !important; line-height: 1.3 !important; }
+          .milkdown .ProseMirror h2 { font-size: 2.25em !important; line-height: 1.3 !important; }
+          .milkdown .ProseMirror h3 { font-size: 2em !important; line-height: 1.4 !important; }
+          .milkdown .ProseMirror h4 { font-size: 1.75em !important; line-height: 1.4 !important; }
+          .milkdown .ProseMirror h5 { font-size: 1.5em !important; line-height: 1.5 !important; }
+          .milkdown .ProseMirror h6 { font-size: 1.125em !important; line-height: 1.5 !important; }
+          .milkdown .ProseMirror code { font-size: 0.875em !important; }
+          .milkdown .ProseMirror table { font-size: 1em !important; }
 
           #toolbar {
             display: flex;
