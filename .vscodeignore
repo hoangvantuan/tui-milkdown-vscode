@@ -5,3 +5,10 @@ node_modules/**
 tsconfig.json
 esbuild.config.js
 .gitignore
+.git/**
+.claude/**
+plans/**
+docs/**
+CLAUDE.md
+package-lock.json
+*.vsix
