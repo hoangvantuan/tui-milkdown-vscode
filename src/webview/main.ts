@@ -211,6 +211,17 @@ function applyFontSize(size: number): void {
   );
 }
 
+function applyHeadingSizes(sizes: Record<string, number>): void {
+  const root = document.documentElement;
+  const headings = ["h1", "h2", "h3", "h4", "h5", "h6"] as const;
+  for (const h of headings) {
+    const size = sizes[h];
+    if (Number.isFinite(size) && size >= 12 && size <= 72) {
+      root.style.setProperty(`--heading-${h}-size`, `${size}px`);
+    }
+  }
+}
+
 // Editor initialization
 async function initEditor(initialContent: string = ""): Promise<Crepe | null> {
   console.log("[Crepe] Starting initialization...");
@@ -337,6 +348,9 @@ window.addEventListener("message", async (event) => {
     case "config":
       if (typeof message.fontSize === "number") {
         applyFontSize(message.fontSize);
+      }
+      if (message.headingSizes && typeof message.headingSizes === "object") {
+        applyHeadingSizes(message.headingSizes as Record<string, number>);
       }
       break;
     case "savedTheme":

@@ -2,6 +2,16 @@
 
 All notable changes to "Milkdown Markdown WYSIWYG" extension.
 
+## \[1.1.0] - 2026-01-23
+
+### Added
+
+* Configurable font sizes for each heading level (h1-h6, range 12-72px)
+
+### Fixed
+
+* Disable WYSIWYG editor in git diff view, use default text diff instead
+
 ## \[1.0.1] - 2026-01-23
 
 ### Changed

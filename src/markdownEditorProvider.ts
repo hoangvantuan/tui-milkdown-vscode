@@ -75,10 +75,23 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       return config.get<number>("fontSize", 16);
     };
 
+    const getHeadingSizes = (): Record<string, number> => {
+      const config = vscode.workspace.getConfiguration("tuiMarkdown.headingSizes");
+      return {
+        h1: config.get<number>("h1", 32),
+        h2: config.get<number>("h2", 28),
+        h3: config.get<number>("h3", 24),
+        h4: config.get<number>("h4", 20),
+        h5: config.get<number>("h5", 18),
+        h6: config.get<number>("h6", 16),
+      };
+    };
+
     const sendConfig = () => {
       webviewPanel.webview.postMessage({
         type: "config",
         fontSize: getFontSize(),
+        headingSizes: getHeadingSizes(),
       });
     };
 
@@ -168,7 +181,10 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       }),
       vscode.window.onDidChangeActiveColorTheme(sendTheme),
       vscode.workspace.onDidChangeConfiguration((e) => {
-        if (e.affectsConfiguration("tuiMarkdown.fontSize")) {
+        if (
+          e.affectsConfiguration("tuiMarkdown.fontSize") ||
+          e.affectsConfiguration("tuiMarkdown.headingSizes")
+        ) {
           sendConfig();
         }
       }),
@@ -222,6 +238,12 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         <style>
           :root {
             --editor-font-scale: 1;
+            --heading-h1-size: 32px;
+            --heading-h2-size: 28px;
+            --heading-h3-size: 24px;
+            --heading-h4-size: 20px;
+            --heading-h5-size: 18px;
+            --heading-h6-size: 16px;
             /* Default Milkdown theme variables (dark) - prevents flash */
             --crepe-color-background: var(--vscode-editor-background, #1e1e1e);
             --crepe-color-on-background: var(--vscode-editor-foreground, #d4d4d4);
@@ -271,6 +293,13 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             font-size: calc(16px * var(--editor-font-scale, 1)) !important;
             line-height: calc(24px * var(--editor-font-scale, 1)) !important;
           }
+          /* Heading font sizes */
+          .milkdown .ProseMirror h1 { font-size: var(--heading-h1-size, 32px) !important; }
+          .milkdown .ProseMirror h2 { font-size: var(--heading-h2-size, 28px) !important; }
+          .milkdown .ProseMirror h3 { font-size: var(--heading-h3-size, 24px) !important; }
+          .milkdown .ProseMirror h4 { font-size: var(--heading-h4-size, 20px) !important; }
+          .milkdown .ProseMirror h5 { font-size: var(--heading-h5-size, 18px) !important; }
+          .milkdown .ProseMirror h6 { font-size: var(--heading-h6-size, 16px) !important; }
 
           #toolbar {
             display: flex;

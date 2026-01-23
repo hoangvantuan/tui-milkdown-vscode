@@ -2,7 +2,7 @@
   "name": "tui-milkdown-vscode",
   "displayName": "Milkdown Markdown WYSIWYG",
   "description": "A beautiful WYSIWYG Markdown editor powered by Milkdown Crepe. Edit markdown files with rich text experience and theme selection.",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "publisher": "hoangvantuan",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -41,6 +41,48 @@
           "minimum": 8,
           "maximum": 32,
           "description": "Font size for the Markdown editor (in pixels)"
+        },
+        "tuiMarkdown.headingSizes.h1": {
+          "type": "number",
+          "default": 32,
+          "minimum": 12,
+          "maximum": 72,
+          "description": "Font size for H1 headings (in pixels)"
+        },
+        "tuiMarkdown.headingSizes.h2": {
+          "type": "number",
+          "default": 28,
+          "minimum": 12,
+          "maximum": 72,
+          "description": "Font size for H2 headings (in pixels)"
+        },
+        "tuiMarkdown.headingSizes.h3": {
+          "type": "number",
+          "default": 24,
+          "minimum": 12,
+          "maximum": 72,
+          "description": "Font size for H3 headings (in pixels)"
+        },
+        "tuiMarkdown.headingSizes.h4": {
+          "type": "number",
+          "default": 20,
+          "minimum": 12,
+          "maximum": 72,
+          "description": "Font size for H4 headings (in pixels)"
+        },
+        "tuiMarkdown.headingSizes.h5": {
+          "type": "number",
+          "default": 18,
+          "minimum": 12,
+          "maximum": 72,
+          "description": "Font size for H5 headings (in pixels)"
+        },
+        "tuiMarkdown.headingSizes.h6": {
+          "type": "number",
+          "default": 16,
+          "minimum": 12,
+          "maximum": 72,
+          "description": "Font size for H6 headings (in pixels)"
         }
       }
     },
@@ -58,7 +100,13 @@
         ],
         "priority": "default"
       }
-    ]
+    ],
+    "configurationDefaults": {
+      "workbench.editorAssociations": {
+        "{git,gitlens}:/**/*.md": "default",
+        "{git,gitlens}:/**/*.markdown": "default"
+      }
+    }
   },
   "scripts": {
     "build": "node esbuild.config.js",
