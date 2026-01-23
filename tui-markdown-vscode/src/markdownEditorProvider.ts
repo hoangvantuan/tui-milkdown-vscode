@@ -89,15 +89,11 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
     disposables.push(
       vscode.workspace.onDidChangeTextDocument((e) => {
-        if (e.document.uri.toString() === document.uri.toString()) {
-          if (!pendingEdit && e.contentChanges.length > 0) {
-            updateWebview();
-          }
+        if (e.document.uri.toString() === document.uri.toString() &&
+            !pendingEdit && e.contentChanges.length > 0) {
+          updateWebview();
         }
-      })
-    );
-
-    disposables.push(
+      }),
       webviewPanel.webview.onDidReceiveMessage(async (message: unknown) => {
         if (!message || typeof message !== 'object') return;
         const msg = message as { type?: string; content?: string };
@@ -113,22 +109,18 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
               await applyEdit(msg.content);
             }
             break;
+          case 'viewSource': {
+            // Open with default text editor, then close this custom editor
+            const uri = document.uri;
+            await vscode.commands.executeCommand('vscode.openWith', uri, 'default');
+            break;
+          }
         }
-      })
-    );
-
-    disposables.push(
+      }),
       webviewPanel.onDidChangeViewState((e) => {
-        if (e.webviewPanel.visible) {
-          updateWebview();
-        }
-      })
-    );
-
-    disposables.push(
-      vscode.window.onDidChangeActiveColorTheme(() => {
-        sendTheme();
-      })
+        if (e.webviewPanel.visible) updateWebview();
+      }),
+      vscode.window.onDidChangeActiveColorTheme(sendTheme)
     );
 
     webviewPanel.onDidDispose(() => {
@@ -166,12 +158,64 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         <link rel="stylesheet" href="${cssUri}">
         <style>
           * { box-sizing: border-box; }
-          html, body { margin: 0; padding: 0; width: 100%; height: 100%; }
-          #editor { width: 100%; min-height: 100vh; }
+          html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
+
+          #toolbar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 6px 12px;
+            background: var(--vscode-editor-background);
+            border-bottom: 1px solid var(--vscode-panel-border);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+          }
+          #theme-select {
+            padding: 4px 8px;
+            background: var(--vscode-dropdown-background);
+            color: var(--vscode-dropdown-foreground);
+            border: 1px solid var(--vscode-dropdown-border);
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+          }
+          .view-source-btn {
+            padding: 4px 12px;
+            background: var(--vscode-button-secondaryBackground);
+            border: none;
+            color: var(--vscode-button-secondaryForeground);
+            font-size: 12px;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: background 0.15s ease;
+          }
+          .view-source-btn:hover {
+            background: var(--vscode-list-hoverBackground);
+          }
+
+          #editor-container {
+            height: calc(100vh - 40px);
+            overflow: auto;
+          }
+          #editor { width: 100%; min-height: 100%; }
+          #editor.hidden { display: none; }
+
         </style>
       </head>
       <body>
-        <div id="editor"></div>
+        <div id="toolbar">
+          <select id="theme-select" aria-label="Editor theme">
+            <option value="frame">Frame</option>
+            <option value="frame-dark">Frame Dark</option>
+            <option value="nord">Nord</option>
+            <option value="nord-dark">Nord Dark</option>
+          </select>
+          <button id="btn-source" class="view-source-btn" aria-label="View source in text editor">View Source</button>
+        </div>
+        <div id="editor-container">
+          <div id="editor"></div>
+        </div>
         <script nonce="${nonce}" src="${scriptUri}"></script>
       </body>
       </html>
