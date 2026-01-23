@@ -27,5 +27,23 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Check if version exists
+        id: version-check
+        run: |
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          EXTENSION_ID="tuanhv.tui-milkdown-vscode"
+
+          # Get published version from marketplace
+          PUBLISHED_VERSION=$(npx vsce show $EXTENSION_ID --json 2>/dev/null | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).versions[0].version" 2>/dev/null || echo "")
+
+          if [ "$PACKAGE_VERSION" = "$PUBLISHED_VERSION" ]; then
+            echo "Version $PACKAGE_VERSION already published, skipping"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "Publishing new version $PACKAGE_VERSION"
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Publish to VS Code Marketplace
+        if: steps.version-check.outputs.skip != 'true'
         run: npx vsce publish -p ${{ secrets.VSCE_PAT }}
