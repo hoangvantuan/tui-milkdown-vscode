@@ -25,34 +25,22 @@ const webviewConfig = {
     'process.env.NODE_ENV': '"production"',
   },
   loader: {
-    '.svg': 'text',
     '.css': 'css',
+    '.woff': 'dataurl',
+    '.woff2': 'dataurl',
+    '.ttf': 'dataurl',
   },
 };
 
-function copyCss() {
-  const cssFiles = [
-    'node_modules/ckeditor5/dist/ckeditor5.css',
-  ];
-
+function ensureOutDir() {
   const outDir = 'out/webview';
   if (!fs.existsSync(outDir)) {
     fs.mkdirSync(outDir, { recursive: true });
   }
-
-  cssFiles.forEach((cssPath) => {
-    if (!fs.existsSync(cssPath)) {
-      throw new Error(`CSS file not found: ${cssPath}`);
-    }
-    const fileName = path.basename(cssPath);
-    fs.copyFileSync(cssPath, path.join(outDir, fileName));
-  });
-
-  console.log('CSS files copied');
 }
 
 async function build() {
-  copyCss();
+  ensureOutDir();
 
   if (isWatch) {
     const extCtx = await esbuild.context(extensionConfig);

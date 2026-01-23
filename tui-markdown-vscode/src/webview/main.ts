@@ -1,25 +1,6 @@
-import {
-  ClassicEditor,
-  Essentials,
-  Paragraph,
-  Heading,
-  Bold,
-  Italic,
-  Strikethrough,
-  Code,
-  CodeBlock,
-  BlockQuote,
-  Link,
-  List,
-  TodoList,
-  Table,
-  TableToolbar,
-  HorizontalLine,
-  Autoformat,
-  Indent,
-  IndentBlock,
-} from 'ckeditor5';
-import { Markdown } from '@ckeditor/ckeditor5-markdown-gfm';
+import { Crepe } from '@milkdown/crepe';
+import '@milkdown/crepe/theme/common/style.css';
+import '@milkdown/crepe/theme/frame.css';
 
 declare function acquireVsCodeApi(): {
   postMessage(message: unknown): void;
@@ -29,7 +10,7 @@ declare function acquireVsCodeApi(): {
 
 const vscode = acquireVsCodeApi();
 
-let editor: ClassicEditor | null = null;
+let crepe: Crepe | null = null;
 let isUpdatingFromExtension = false;
 
 const DEBOUNCE_MS = 500;
@@ -54,117 +35,59 @@ function showError(message: string): void {
   }
 }
 
-async function initEditor(): Promise<ClassicEditor | null> {
+async function initEditor(initialContent: string = ''): Promise<Crepe | null> {
+  console.log('[Crepe] Starting initialization...');
   const editorEl = document.getElementById('editor');
   if (!editorEl) {
+    console.error('[Crepe] Editor element not found');
     showError('Editor element not found');
     return null;
   }
+  console.log('[Crepe] Editor element found:', editorEl);
 
   try {
-    const instance = await ClassicEditor.create(editorEl, {
-      plugins: [
-        Essentials,
-        Paragraph,
-        Heading,
-        Bold,
-        Italic,
-        Strikethrough,
-        Code,
-        CodeBlock,
-        BlockQuote,
-        Link,
-        List,
-        TodoList,
-        Table,
-        TableToolbar,
-        HorizontalLine,
-        Autoformat,
-        Indent,
-        IndentBlock,
-        Markdown,
-      ],
-      toolbar: [
-        'heading',
-        '|',
-        'bold',
-        'italic',
-        'strikethrough',
-        'code',
-        '|',
-        'bulletedList',
-        'numberedList',
-        'todoList',
-        '|',
-        'outdent',
-        'indent',
-        '|',
-        'blockQuote',
-        'codeBlock',
-        'horizontalLine',
-        '|',
-        'link',
-        'insertTable',
-        '|',
-        'undo',
-        'redo',
-      ],
-      heading: {
-        options: [
-          { model: 'paragraph', title: 'Paragraph', class: 'ck-heading_paragraph' },
-          { model: 'heading1', view: 'h1', title: 'Heading 1', class: 'ck-heading_heading1' },
-          { model: 'heading2', view: 'h2', title: 'Heading 2', class: 'ck-heading_heading2' },
-          { model: 'heading3', view: 'h3', title: 'Heading 3', class: 'ck-heading_heading3' },
-          { model: 'heading4', view: 'h4', title: 'Heading 4', class: 'ck-heading_heading4' },
-        ],
-      },
-      table: {
-        contentToolbar: ['tableColumn', 'tableRow', 'mergeTableCells'],
-      },
-      codeBlock: {
-        languages: [
-          { language: 'plaintext', label: 'Plain text' },
-          { language: 'javascript', label: 'JavaScript' },
-          { language: 'typescript', label: 'TypeScript' },
-          { language: 'python', label: 'Python' },
-          { language: 'html', label: 'HTML' },
-          { language: 'css', label: 'CSS' },
-          { language: 'json', label: 'JSON' },
-          { language: 'bash', label: 'Bash' },
-          { language: 'sql', label: 'SQL' },
-        ],
-      },
+    console.log('[Crepe] Creating Crepe editor...');
+    const instance = new Crepe({
+      root: editorEl,
+      defaultValue: initialContent,
     });
 
-    instance.model.document.on('change:data', () => {
-      if (isUpdatingFromExtension) return;
+    instance.on((listener) => {
+      listener.markdownUpdated((_, markdown) => {
+        if (isUpdatingFromExtension) return;
 
-      if (debounceTimer !== null) {
-        clearTimeout(debounceTimer);
-      }
+        if (debounceTimer !== null) {
+          clearTimeout(debounceTimer);
+        }
 
-      debounceTimer = setTimeout(() => {
-        const markdown = instance.getData();
-        vscode.postMessage({ type: 'edit', content: markdown });
-        debounceTimer = null;
-      }, DEBOUNCE_MS);
+        debounceTimer = setTimeout(() => {
+          vscode.postMessage({ type: 'edit', content: markdown });
+          debounceTimer = null;
+        }, DEBOUNCE_MS);
+      });
     });
 
+    await instance.create();
+    console.log('[Crepe] Editor created successfully!');
     return instance;
   } catch (error) {
+    console.error('[Crepe] Failed to create editor:', error);
     showError(`Failed to initialize editor: ${error instanceof Error ? error.message : String(error)}`);
     return null;
   }
 }
 
-function updateEditorContent(content: string): void {
-  if (!editor) return;
-
-  const currentContent = editor.getData();
-  if (content === currentContent) return;
+async function updateEditorContent(content: string): Promise<void> {
+  if (!crepe) return;
 
   isUpdatingFromExtension = true;
-  editor.setData(content);
+  crepe.destroy();
+
+  const editorEl = document.getElementById('editor');
+  if (editorEl) {
+    editorEl.innerHTML = '';
+    crepe = await initEditor(content);
+  }
 
   queueMicrotask(() => {
     isUpdatingFromExtension = false;
@@ -176,14 +99,20 @@ function applyTheme(theme: 'dark' | 'light'): void {
   document.body.classList.add(`${theme}-theme`);
 }
 
-window.addEventListener('message', (event) => {
+let pendingContent: string | null = null;
+
+window.addEventListener('message', async (event) => {
   const message = event.data;
   if (!message || typeof message !== 'object') return;
 
   switch (message.type) {
     case 'update':
       if (typeof message.content === 'string') {
-        updateEditorContent(message.content);
+        if (!crepe) {
+          pendingContent = message.content;
+        } else {
+          await updateEditorContent(message.content);
+        }
       }
       break;
     case 'theme':
@@ -195,12 +124,18 @@ window.addEventListener('message', (event) => {
 });
 
 async function init() {
-  editor = await initEditor();
+  console.log('[Crepe] init() called');
+  crepe = await initEditor(pendingContent || '');
+  pendingContent = null;
+  console.log('[Crepe] init() complete, editor:', crepe ? 'created' : 'null');
   vscode.postMessage({ type: 'ready' });
 }
 
+console.log('[Crepe] Script loaded, readyState:', document.readyState);
 if (document.readyState === 'loading') {
+  console.log('[Crepe] Adding DOMContentLoaded listener');
   document.addEventListener('DOMContentLoaded', init);
 } else {
+  console.log('[Crepe] DOM already ready, calling init()');
   init();
 }

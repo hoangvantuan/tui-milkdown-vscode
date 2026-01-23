@@ -140,11 +140,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     const scriptUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this.context.extensionUri, 'out', 'webview', 'main.js')
     );
-
-    const ckeditorCssUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.context.extensionUri, 'out', 'webview', 'ckeditor5.css')
-    );
-    const mainCssUri = webview.asWebviewUri(
+    const cssUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this.context.extensionUri, 'out', 'webview', 'main.css')
     );
 
@@ -167,65 +163,11 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <meta http-equiv="Content-Security-Policy" content="${csp}">
         <title>Markdown Editor</title>
-        <link rel="stylesheet" href="${ckeditorCssUri}">
-        <link rel="stylesheet" href="${mainCssUri}">
+        <link rel="stylesheet" href="${cssUri}">
         <style>
           * { box-sizing: border-box; }
-          html, body {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-            background: var(--vscode-editor-background);
-            color: var(--vscode-editor-foreground);
-          }
-          #editor {
-            width: 100%;
-            height: 100vh;
-          }
-          .ck.ck-editor {
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-          }
-          .ck.ck-editor__main {
-            flex: 1;
-            overflow: auto;
-          }
-          .ck.ck-content {
-            min-height: 100%;
-          }
-          /* Dark theme */
-          .dark-theme .ck.ck-toolbar {
-            background: var(--vscode-editor-background) !important;
-            border-color: var(--vscode-editorWidget-border) !important;
-          }
-          .dark-theme .ck.ck-toolbar__items button {
-            color: var(--vscode-editor-foreground) !important;
-          }
-          .dark-theme .ck.ck-editor__main,
-          .dark-theme .ck.ck-content {
-            background: var(--vscode-editor-background) !important;
-            color: var(--vscode-editor-foreground) !important;
-          }
-          .dark-theme .ck.ck-content h1,
-          .dark-theme .ck.ck-content h2,
-          .dark-theme .ck.ck-content h3,
-          .dark-theme .ck.ck-content h4 {
-            color: var(--vscode-textLink-foreground) !important;
-          }
-          .dark-theme .ck.ck-content code {
-            background: var(--vscode-textCodeBlock-background) !important;
-            color: var(--vscode-editor-foreground) !important;
-          }
-          .dark-theme .ck.ck-content pre {
-            background: var(--vscode-textCodeBlock-background) !important;
-          }
-          .dark-theme .ck.ck-content blockquote {
-            border-left-color: var(--vscode-textLink-foreground) !important;
-            color: var(--vscode-descriptionForeground) !important;
-          }
+          html, body { margin: 0; padding: 0; width: 100%; height: 100%; }
+          #editor { width: 100%; min-height: 100vh; }
         </style>
       </head>
       <body>
