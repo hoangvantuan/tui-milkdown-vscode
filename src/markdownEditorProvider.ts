@@ -265,7 +265,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .milkdown .ProseMirror pre,
           .milkdown .cm-editor,
           .milkdown .cm-content {
-            font-size: calc(14px * var(--editor-font-scale, 1)) !important;
+            font-size: calc(16px * var(--editor-font-scale, 1)) !important;
             line-height: calc(20px * var(--editor-font-scale, 1)) !important;
           }
 
