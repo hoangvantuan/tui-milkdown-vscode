@@ -205,7 +205,10 @@ function applyFontSize(size: number): void {
   if (!Number.isFinite(size) || size < 8 || size > 32) return;
   // Scale factor relative to base 16px
   const scaleFactor = size / 16;
-  document.documentElement.style.setProperty("--editor-font-scale", String(scaleFactor));
+  document.documentElement.style.setProperty(
+    "--editor-font-scale",
+    String(scaleFactor),
+  );
 }
 
 // Editor initialization
@@ -222,6 +225,10 @@ async function initEditor(initialContent: string = ""): Promise<Crepe | null> {
     const instance = new Crepe({
       root: editorEl,
       defaultValue: initialContent,
+      features: {
+        [Crepe.Feature.LinkTooltip]: false,
+        [Crepe.Feature.Toolbar]: false,
+      },
     });
 
     instance.on((listener) => {
@@ -333,7 +340,10 @@ window.addEventListener("message", async (event) => {
       }
       break;
     case "savedTheme":
-      if (typeof message.theme === "string" && THEMES.includes(message.theme as ThemeName)) {
+      if (
+        typeof message.theme === "string" &&
+        THEMES.includes(message.theme as ThemeName)
+      ) {
         globalThemeReceived = message.theme as ThemeName;
         setTheme(globalThemeReceived, false); // Apply but don't save back
       }
