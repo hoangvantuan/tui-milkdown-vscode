@@ -2,3 +2,4 @@
 plans/
 out/
 node_modules/
+*.vsix

@@ -245,11 +245,14 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             background: var(--vscode-editor-background, #1e1e1e);
             color: var(--vscode-editor-foreground, #d4d4d4);
           }
+          .milkdown .ProseMirror {
+            padding: 10px 40px;
+          }
           /* Override body text font size only (headings unchanged) */
           .milkdown .ProseMirror p,
           .milkdown .ProseMirror blockquote {
             font-size: calc(16px * var(--editor-font-scale, 1));
-            line-height: calc(20px * var(--editor-font-scale, 1));
+            line-height: calc(24px * var(--editor-font-scale, 1));
           }
           .milkdown .ProseMirror li {
             font-size: calc(16px * var(--editor-font-scale, 1));
@@ -266,7 +269,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .milkdown .cm-editor,
           .milkdown .cm-content {
             font-size: calc(16px * var(--editor-font-scale, 1)) !important;
-            line-height: calc(20px * var(--editor-font-scale, 1)) !important;
+            line-height: calc(24px * var(--editor-font-scale, 1)) !important;
           }
 
           #toolbar {
