@@ -2,7 +2,7 @@
   "name": "tui-milkdown-vscode",
   "displayName": "Milkdown Markdown WYSIWYG",
   "description": "A beautiful WYSIWYG Markdown editor powered by Milkdown Crepe. Edit markdown files with rich text experience and theme selection.",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "publisher": "tuanhv",
   "license": "MIT",
   "icon": "media/icon.png",

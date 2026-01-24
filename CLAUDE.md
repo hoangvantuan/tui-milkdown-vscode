@@ -51,7 +51,19 @@ src/
 └── webview/
     ├── main.ts               # Browser-side Milkdown Crepe editor
     ├── frontmatter.ts        # YAML parsing & validation utilities
-    └── line-highlight-plugin.ts # ProseMirror plugin for cursor line highlight
+    ├── line-highlight-plugin.ts # ProseMirror plugin for cursor line highlight
+    └── themes/               # Theme CSS files (scoped by body class)
+        ├── index.css              # Imports all theme CSS
+        ├── frame.css              # Frame light theme
+        ├── frame-dark.css         # Frame dark theme
+        ├── nord.css               # Nord light theme
+        ├── nord-dark.css          # Nord dark theme
+        ├── crepe.css              # Crepe light theme
+        ├── crepe-dark.css         # Crepe dark theme
+        ├── catppuccin-latte.css   # Catppuccin Latte (light)
+        ├── catppuccin-frappe.css  # Catppuccin Frappé (dark)
+        ├── catppuccin-macchiato.css # Catppuccin Macchiato (dark)
+        └── catppuccin-mocha.css   # Catppuccin Mocha (dark)
 ```
 
 ## Configuration Settings
@@ -62,7 +74,7 @@ Extension provides these settings via `tuiMarkdown.*` namespace:
 
 ## Milkdown Crepe Integration
 
-Uses `@milkdown/crepe` package. Theme variables are manually applied via CSS custom properties in `THEME_VARIABLES` map. Editor recreates on content updates (no incremental update API).
+Uses `@milkdown/crepe` package. Theme CSS variables loaded from `src/webview/themes/` directory, scoped by body class (e.g., `.theme-frame .milkdown`). Available themes: frame, frame-dark, nord, nord-dark, crepe, crepe-dark, catppuccin-latte, catppuccin-frappe, catppuccin-macchiato, catppuccin-mocha. Editor recreates on content updates (no incremental update API).
 
 ## Metadata Panel
 
@@ -97,5 +109,5 @@ Uses `@milkdown/crepe` package. Theme variables are manually applied via CSS cus
 
 **CSS** (in `src/markdownEditorProvider.ts`):
 - Uses `::before` pseudo-element with `z-index: -1` stacking
-- Light themes: `rgba(0, 0, 0, 0.08)` background
-- Dark themes (`theme-frame-dark`, `theme-nord-dark`): `rgba(255, 255, 255, 0.08)`
+- Light themes (`theme-frame`, `theme-nord`, `theme-crepe`, `theme-catppuccin-latte`): `rgba(0, 0, 0, 0.08)` background
+- Dark themes (`theme-frame-dark`, `theme-nord-dark`, `theme-crepe-dark`, `theme-catppuccin-frappe`, `theme-catppuccin-macchiato`, `theme-catppuccin-mocha`): `rgba(255, 255, 255, 0.08)`

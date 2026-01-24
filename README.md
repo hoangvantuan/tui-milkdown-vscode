@@ -2,10 +2,12 @@
 
 A beautiful WYSIWYG Markdown editor for VS Code powered by Milkdown Crepe.
 
+![Preview](media/preview.png)
+
 ## Features
 
 - **Rich Text Editing**: Edit markdown with a WYSIWYG interface
-- **Theme Selection**: Choose from multiple editor themes (Frame, Nord, etc.)
+- **Theme Selection**: 10 editor themes including Catppuccin palette
 - **View Source**: Toggle between WYSIWYG and source view
 - **Cursor Line Highlight**: Visual highlight of current block/paragraph
 - **Metadata Panel**: Collapsible YAML frontmatter editor with validation
@@ -32,6 +34,21 @@ A beautiful WYSIWYG Markdown editor for VS Code powered by Milkdown Crepe.
 | `tuiMarkdown.headingSizes.h4` | 20 | H4 heading font size (12-72px) |
 | `tuiMarkdown.headingSizes.h5` | 18 | H5 heading font size (12-72px) |
 | `tuiMarkdown.headingSizes.h6` | 16 | H6 heading font size (12-72px) |
+
+## Themes
+
+| Theme | Style |
+|-------|-------|
+| Frame | Light |
+| Frame Dark | Dark |
+| Nord | Light |
+| Nord Dark | Dark |
+| Crepe | Light |
+| Crepe Dark | Dark |
+| Catppuccin Latte | Light |
+| Catppuccin Frappé | Dark |
+| Catppuccin Macchiato | Dark |
+| Catppuccin Mocha | Dark |
 
 ## Requirements
 

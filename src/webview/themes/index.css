@@ -1,0 +1,11 @@
+/* Theme imports - CSS variables scoped by body class */
+@import "./frame.css";
+@import "./frame-dark.css";
+@import "./nord.css";
+@import "./nord-dark.css";
+@import "./crepe.css";
+@import "./crepe-dark.css";
+@import "./catppuccin-latte.css";
+@import "./catppuccin-frappe.css";
+@import "./catppuccin-macchiato.css";
+@import "./catppuccin-mocha.css";

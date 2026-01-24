@@ -2,6 +2,16 @@
 
 All notable changes to "Milkdown Markdown WYSIWYG" extension.
 
+## \[1.4.0] - 2026-01-24
+
+### Added
+
+* Catppuccin theme palette with 4 variants
+  * Catppuccin Latte (light)
+  * Catppuccin Frappé (dark, subdued)
+  * Catppuccin Macchiato (dark, medium contrast)
+  * Catppuccin Mocha (dark, original)
+
 ## \[1.3.0] - 2026-01-24
 
 ### Added
