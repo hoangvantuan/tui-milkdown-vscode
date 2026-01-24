@@ -23,8 +23,8 @@ export function createLineHighlightPlugin(): Plugin {
         // Return empty if cursor at document root (depth 0)
         if ($from.depth === 0) return DecorationSet.empty;
 
-        // Walk up from cursor to find the nearest highlightable block
-        // Skip: code blocks, and stop at list items or paragraphs
+        // First pass: check for excluded nodes and find list_item
+        let listItemDepth: number | null = null;
         for (let depth = $from.depth; depth >= 1; depth--) {
           const node = $from.node(depth);
           const nodeType = node.type.name;
@@ -34,23 +34,32 @@ export function createLineHighlightPlugin(): Plugin {
             return DecorationSet.empty;
           }
 
-          // For list items: highlight the list_item itself
+          // Remember list_item depth for priority handling
           if (nodeType === "list_item") {
-            const start = $from.start(depth);
-            const end = $from.end(depth);
-            const decoration = Decoration.node(start - 1, end + 1, {
-              class: "line-highlight",
-            });
-            return DecorationSet.create(state.doc, [decoration]);
+            listItemDepth = depth;
+            break;
           }
+        }
 
-          // For paragraphs/headings at depth 1 (top-level): highlight them
-          if (depth === 1) {
-            const start = $from.start(depth);
-            const end = $from.end(depth);
-            const decoration = Decoration.node(start - 1, end + 1, {
-              class: "line-highlight",
-            });
+        // If inside list_item, highlight it (priority over textblocks)
+        if (listItemDepth !== null) {
+          const decoration = Decoration.node(
+            $from.before(listItemDepth),
+            $from.after(listItemDepth),
+            { class: "line-highlight" }
+          );
+          return DecorationSet.create(state.doc, [decoration]);
+        }
+
+        // Second pass: find nearest textblock (paragraph, heading, etc.)
+        for (let depth = $from.depth; depth >= 1; depth--) {
+          const node = $from.node(depth);
+          if (node.isTextblock) {
+            const decoration = Decoration.node(
+              $from.before(depth),
+              $from.after(depth),
+              { class: "line-highlight" }
+            );
             return DecorationSet.create(state.doc, [decoration]);
           }
         }
