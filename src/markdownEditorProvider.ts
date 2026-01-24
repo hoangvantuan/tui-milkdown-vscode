@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { MAX_FILE_SIZE } from "./constants";
 import { getNonce } from "./utils/getNonce";
 
 /**
@@ -15,7 +16,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     webviewPanel: vscode.WebviewPanel,
     _token: vscode.CancellationToken,
   ): Promise<void> {
-    const MAX_FILE_SIZE = 500 * 1024;
     const fileSize = Buffer.byteLength(document.getText(), "utf8");
 
     if (fileSize > MAX_FILE_SIZE) {
@@ -87,11 +87,17 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       };
     };
 
+    const getHighlightCurrentLine = (): boolean => {
+      const config = vscode.workspace.getConfiguration("tuiMarkdown");
+      return config.get<boolean>("highlightCurrentLine", true);
+    };
+
     const sendConfig = () => {
       webviewPanel.webview.postMessage({
         type: "config",
         fontSize: getFontSize(),
         headingSizes: getHeadingSizes(),
+        highlightCurrentLine: getHighlightCurrentLine(),
       });
     };
 
@@ -183,7 +189,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (
           e.affectsConfiguration("tuiMarkdown.fontSize") ||
-          e.affectsConfiguration("tuiMarkdown.headingSizes")
+          e.affectsConfiguration("tuiMarkdown.headingSizes") ||
+          e.affectsConfiguration("tuiMarkdown.highlightCurrentLine")
         ) {
           sendConfig();
         }
@@ -262,6 +269,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             --crepe-color-secondary: #404040;
             --crepe-color-on-secondary: #ffffff;
             --crepe-color-selected: #4a4a4a;
+            --content-max-width: 1200px;
           }
           * { box-sizing: border-box; }
           html, body {
@@ -274,7 +282,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             color: var(--vscode-editor-foreground, #d4d4d4);
           }
           .milkdown .ProseMirror {
-            padding: 10px 40px;
+            padding: 10px 40px 100px 40px;
+            caret-color: var(--crepe-color-caret, var(--crepe-color-primary));
           }
           /* Override body text font size only (headings unchanged) */
           .milkdown .ProseMirror p,
@@ -306,6 +315,28 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .milkdown .ProseMirror h4 { font-size: var(--heading-h4-size, 20px) !important; margin-top: var(--heading-h4-margin, 12px) !important; }
           .milkdown .ProseMirror h5 { font-size: var(--heading-h5-size, 18px) !important; margin-top: var(--heading-h5-margin, 8px) !important; }
           .milkdown .ProseMirror h6 { font-size: var(--heading-h6-size, 16px) !important; margin-top: var(--heading-h6-margin, 8px) !important; }
+
+          /* Line highlight for current cursor position */
+          .milkdown .ProseMirror .line-highlight {
+            position: relative;
+            z-index: 0; /* Create stacking context so ::before z-index:-1 stays above parent bg */
+          }
+          .milkdown .ProseMirror .line-highlight::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0, 0, 0, 0.08);
+            pointer-events: none;
+            z-index: -1;
+          }
+          /* Dark themes override */
+          body.theme-frame-dark .milkdown .ProseMirror .line-highlight::before,
+          body.theme-nord-dark .milkdown .ProseMirror .line-highlight::before {
+            background: rgba(255, 255, 255, 0.08);
+          }
 
           #toolbar {
             display: flex;
@@ -343,7 +374,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
           #editor-container {
             height: calc(100vh - 40px);
-            overflow: auto;
+            overflow-x: hidden;
+            overflow-y: auto;
             position: relative;
           }
           #editor { width: 100%; min-height: 100%; }
@@ -381,6 +413,97 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             to { transform: rotate(360deg); }
           }
 
+          /* Metadata Panel */
+          #metadata-panel {
+            border-bottom: 1px solid var(--vscode-panel-border);
+            background: var(--vscode-editor-background);
+          }
+          #metadata-details { margin: 0; }
+          #metadata-summary {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            cursor: pointer;
+            user-select: none;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--vscode-editor-foreground);
+            background: var(--vscode-editor-background);
+          }
+          #metadata-summary:hover {
+            background: var(--vscode-list-hoverBackground);
+          }
+          #metadata-summary:focus {
+            outline: 2px solid var(--vscode-focusBorder);
+            outline-offset: -2px;
+          }
+          .toggle-icon::before {
+            content: '▼';
+            display: inline-block;
+            font-size: 10px;
+            transition: transform 0.15s ease;
+          }
+          #metadata-details:not([open]) .toggle-icon::before {
+            transform: rotate(-90deg);
+          }
+          .error-indicator {
+            color: var(--vscode-errorForeground);
+            font-size: 11px;
+          }
+          .error-indicator.hidden { display: none; }
+          .metadata-content { padding: 0 12px 12px; }
+          #metadata-textarea {
+            width: 100%;
+            min-height: 80px;
+            max-height: 300px;
+            padding: 8px;
+            font-family: var(--vscode-editor-font-family, monospace);
+            font-size: 13px;
+            line-height: 1.4;
+            color: var(--vscode-input-foreground);
+            background: var(--vscode-input-background);
+            border: 1px solid var(--vscode-input-border);
+            border-radius: 4px;
+            resize: vertical;
+            overflow-y: auto;
+          }
+          #metadata-textarea:focus {
+            outline: none;
+            border-color: var(--vscode-focusBorder);
+          }
+          #metadata-textarea.error {
+            border-color: var(--vscode-inputValidation-errorBorder, #be1100);
+          }
+          #add-metadata-btn {
+            display: block;
+            width: calc(100% - 24px);
+            margin: 8px 12px;
+            padding: 8px 12px;
+            font-size: 12px;
+            color: var(--vscode-button-secondaryForeground);
+            background: var(--vscode-button-secondaryBackground);
+            border: 1px dashed var(--vscode-input-border);
+            border-radius: 4px;
+            cursor: pointer;
+            text-align: center;
+          }
+          #add-metadata-btn:hover {
+            background: var(--vscode-list-hoverBackground);
+          }
+          #add-metadata-btn.hidden { display: none; }
+          #metadata-details.hidden { display: none; }
+
+          /* Responsive editor content for large screens */
+          .milkdown .ProseMirror {
+            max-width: var(--content-max-width, 1200px);
+            margin-left: auto;
+            margin-right: auto;
+          }
+          @media (max-width: 1200px) {
+            .milkdown .ProseMirror { max-width: 100%; }
+          }
+
         </style>
       </head>
       <body style="background: var(--vscode-editor-background, #1e1e1e);">
@@ -392,6 +515,25 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             <option value="nord-dark">Nord Dark</option>
           </select>
           <button id="btn-source" class="view-source-btn" aria-label="View source in text editor">View Source</button>
+        </div>
+        <div id="metadata-panel">
+          <details id="metadata-details" class="hidden">
+            <summary id="metadata-summary">
+              <span class="toggle-icon"></span>
+              <span class="panel-label">Metadata</span>
+              <span id="metadata-error" class="error-indicator hidden" role="status" aria-live="polite"></span>
+            </summary>
+            <div class="metadata-content">
+              <textarea
+                id="metadata-textarea"
+                spellcheck="false"
+                placeholder="key: value"
+                aria-label="YAML frontmatter"></textarea>
+            </div>
+          </details>
+          <button id="add-metadata-btn" class="hidden" aria-label="Add metadata">
+            + Add Metadata
+          </button>
         </div>
         <div id="editor-container">
           <div id="loading-indicator">

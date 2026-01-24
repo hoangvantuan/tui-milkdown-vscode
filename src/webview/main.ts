@@ -1,5 +1,12 @@
 import { Crepe } from "@milkdown/crepe";
 import "@milkdown/crepe/theme/common/style.css";
+import { prosePluginsCtx } from "@milkdown/kit/core";
+import {
+  parseContent,
+  reconstructContent,
+  validateYaml,
+} from "./frontmatter";
+import { createLineHighlightPlugin } from "./line-highlight-plugin";
 
 declare function acquireVsCodeApi(): {
   postMessage(message: unknown): void;
@@ -32,6 +39,7 @@ const THEME_VARIABLES: Record<ThemeName, Record<string, string>> = {
     "--crepe-color-hover": "#e0e0e0",
     "--crepe-color-selected": "#d5d5d5",
     "--crepe-color-inline-area": "#cacaca",
+    "--crepe-color-caret": "#333333",
   },
   "frame-dark": {
     "--crepe-color-background": "#1a1a1a",
@@ -51,6 +59,7 @@ const THEME_VARIABLES: Record<ThemeName, Record<string, string>> = {
     "--crepe-color-hover": "#3a3a3a",
     "--crepe-color-selected": "#4a4a4a",
     "--crepe-color-inline-area": "#505050",
+    "--crepe-color-caret": "#ffffff",
   },
   nord: {
     "--crepe-color-background": "#fdfcff",
@@ -70,6 +79,7 @@ const THEME_VARIABLES: Record<ThemeName, Record<string, string>> = {
     "--crepe-color-hover": "#eceef4",
     "--crepe-color-selected": "#e1e2e8",
     "--crepe-color-inline-area": "#d8dae0",
+    "--crepe-color-caret": "#37618e",
   },
   "nord-dark": {
     "--crepe-color-background": "#2e3440",
@@ -89,6 +99,7 @@ const THEME_VARIABLES: Record<ThemeName, Record<string, string>> = {
     "--crepe-color-hover": "#434c5e",
     "--crepe-color-selected": "#4c566a",
     "--crepe-color-inline-area": "#4c566a",
+    "--crepe-color-caret": "#88c0d0",
   },
 };
 
@@ -99,10 +110,15 @@ let isUpdatingFromExtension = false;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let currentTheme: ThemeName = "frame";
 let globalThemeReceived: ThemeName | null = null; // Theme from extension globalState
+let currentFrontmatter: string | null = null; // Current frontmatter YAML content
+let currentBody: string = ""; // Current body content (without frontmatter)
+let lastSentContent: string | null = null; // Track last sent content to prevent echo loops
+let highlightCurrentLine = true; // Line highlight feature toggle (default enabled)
 
 function debouncedPostEdit(content: string): void {
   if (debounceTimer !== null) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
+    lastSentContent = content;
     vscode.postMessage({ type: "edit", content });
     debounceTimer = null;
   }, DEBOUNCE_MS);
@@ -115,6 +131,13 @@ const getThemeSelect = () =>
 const getSourceBtn = () => document.getElementById("btn-source");
 const getLoadingIndicator = () => document.getElementById("loading-indicator");
 
+// Metadata panel DOM elements
+const getMetadataDetails = () => document.getElementById("metadata-details");
+const getMetadataTextarea = () =>
+  document.getElementById("metadata-textarea") as HTMLTextAreaElement | null;
+const getAddMetadataBtn = () => document.getElementById("add-metadata-btn");
+const getMetadataError = () => document.getElementById("metadata-error");
+
 function hideLoading(): void {
   const loading = getLoadingIndicator();
   if (loading) {
@@ -126,6 +149,145 @@ function showLoading(): void {
   const loading = getLoadingIndicator();
   if (loading) {
     loading.classList.remove("hidden");
+  }
+}
+
+// Metadata panel functions
+function autoResizeTextarea(textarea: HTMLTextAreaElement): void {
+  textarea.style.height = "auto";
+  const newHeight = Math.min(Math.max(textarea.scrollHeight, 80), 300);
+  textarea.style.height = `${newHeight}px`;
+}
+
+function updateMetadataPanel(
+  frontmatter: string | null,
+  isValid: boolean,
+  error?: string
+): void {
+  const details = getMetadataDetails();
+  const textarea = getMetadataTextarea();
+  const addBtn = getAddMetadataBtn();
+  const errorEl = getMetadataError();
+
+  if (!details || !textarea || !addBtn || !errorEl) return;
+
+  if (frontmatter === null) {
+    // No frontmatter - show Add button
+    details.classList.add("hidden");
+    addBtn.classList.remove("hidden");
+    textarea.classList.remove("error");
+    errorEl.classList.add("hidden");
+  } else {
+    // Has frontmatter - show panel
+    details.classList.remove("hidden");
+    addBtn.classList.add("hidden");
+    textarea.value = frontmatter;
+    autoResizeTextarea(textarea);
+
+    // Show/hide error with styling sync
+    if (!isValid && error) {
+      errorEl.textContent = `(${error})`;
+      errorEl.classList.remove("hidden");
+      textarea.classList.add("error");
+    } else {
+      errorEl.classList.add("hidden");
+      textarea.classList.remove("error");
+    }
+  }
+}
+
+let metadataDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+function sendFullContent(): void {
+  const fullContent = reconstructContent(currentFrontmatter, currentBody);
+  lastSentContent = fullContent;
+  vscode.postMessage({ type: "edit", content: fullContent });
+}
+
+function debouncedMetadataEdit(): void {
+  if (metadataDebounceTimer) clearTimeout(metadataDebounceTimer);
+  metadataDebounceTimer = setTimeout(() => {
+    const textarea = getMetadataTextarea();
+    if (!textarea) return;
+
+    // If textarea is empty, remove frontmatter entirely
+    currentFrontmatter = textarea.value.trim() === "" ? null : textarea.value;
+    sendFullContent();
+  }, DEBOUNCE_MS);
+}
+
+function validateAndShowError(): void {
+  const textarea = getMetadataTextarea();
+  const errorEl = getMetadataError();
+
+  if (!textarea || !errorEl) return;
+
+  const result = validateYaml(textarea.value);
+
+  if (result.isValid) {
+    errorEl.classList.add("hidden");
+    textarea.classList.remove("error");
+  } else {
+    const errorMsg =
+      result.line !== undefined
+        ? `Line ${result.line + 1}: ${result.error}`
+        : result.error;
+    errorEl.textContent = `(${errorMsg})`;
+    errorEl.classList.remove("hidden");
+    textarea.classList.add("error");
+  }
+}
+
+function setupMetadataHandlers(): void {
+  const textarea = getMetadataTextarea();
+  const addBtn = getAddMetadataBtn();
+
+  if (textarea) {
+    textarea.addEventListener("input", () => {
+      autoResizeTextarea(textarea);
+      debouncedMetadataEdit();
+    });
+
+    // Validate on blur
+    textarea.addEventListener("blur", () => {
+      validateAndShowError();
+    });
+
+    textarea.addEventListener("keydown", (e) => {
+      // Tab inserts 2 spaces (YAML standard)
+      if (e.key === "Tab") {
+        e.preventDefault();
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const indent = "  ";
+
+        textarea.value =
+          textarea.value.substring(0, start) +
+          indent +
+          textarea.value.substring(end);
+        textarea.selectionStart = textarea.selectionEnd = start + indent.length;
+
+        // Trigger input for auto-resize and debounced save
+        textarea.dispatchEvent(new Event("input", { bubbles: true }));
+        return;
+      }
+
+      // Ctrl/Cmd+S triggers validation
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        e.preventDefault();
+        validateAndShowError();
+      }
+    });
+  }
+
+  if (addBtn) {
+    addBtn.addEventListener("click", () => {
+      currentFrontmatter = "";
+      updateMetadataPanel("", true);
+      const ta = getMetadataTextarea();
+      if (ta) ta.focus();
+      sendFullContent();
+    });
   }
 }
 
@@ -242,10 +404,26 @@ async function initEditor(initialContent: string = ""): Promise<Crepe | null> {
       },
     });
 
+    // Inject line highlight plugin if enabled
+    if (highlightCurrentLine) {
+      try {
+        instance.editor.config((ctx) => {
+          ctx.update(prosePluginsCtx, (plugins) => [
+            ...plugins,
+            createLineHighlightPlugin(),
+          ]);
+        });
+      } catch (err) {
+        console.warn("[Crepe] Failed to inject line highlight plugin:", err);
+      }
+    }
+
     instance.on((listener) => {
       listener.markdownUpdated((_, markdown) => {
         if (isUpdatingFromExtension) return;
-        debouncedPostEdit(markdown);
+        // Store new body and reconstruct with frontmatter
+        currentBody = markdown;
+        debouncedPostEdit(reconstructContent(currentFrontmatter, currentBody));
       });
     });
 
@@ -268,7 +446,7 @@ async function initEditor(initialContent: string = ""): Promise<Crepe | null> {
 async function updateEditorContent(content: string): Promise<void> {
   if (!crepe) return;
 
-  isUpdatingFromExtension = true;
+  // Note: isUpdatingFromExtension managed by caller (case "update")
   showLoading();
   try {
     crepe.destroy();
@@ -283,10 +461,6 @@ async function updateEditorContent(content: string): Promise<void> {
     console.error("[Crepe] Failed to update content:", err);
     crepe = null;
     hideLoading();
-  } finally {
-    queueMicrotask(() => {
-      isUpdatingFromExtension = false;
-    });
   }
 }
 
@@ -324,18 +498,38 @@ window.addEventListener("message", async (event) => {
   switch (message.type) {
     case "update":
       if (typeof message.content === "string") {
+        // Skip if this is an echo of our own edit
+        if (message.content === lastSentContent) {
+          lastSentContent = null;
+          break;
+        }
+
         try {
+          isUpdatingFromExtension = true;
+
+          // Parse incoming content
+          const parsed = parseContent(message.content);
+          currentFrontmatter = parsed.frontmatter;
+          currentBody = parsed.body;
+
+          // Update metadata panel
+          updateMetadataPanel(parsed.frontmatter, parsed.isValid, parsed.error);
+
+          // Update Milkdown with body only
           if (!crepe) {
-            // First time: create editor with actual content (not empty)
-            crepe = await initEditor(message.content);
+            crepe = await initEditor(parsed.body);
           } else {
-            await updateEditorContent(message.content);
+            await updateEditorContent(parsed.body);
           }
         } catch (err) {
           console.error("[Crepe] Update failed:", err);
           showError(
             `Failed to update content: ${err instanceof Error ? err.message : String(err)}`,
           );
+        } finally {
+          queueMicrotask(() => {
+            isUpdatingFromExtension = false;
+          });
         }
       }
       break;
@@ -351,6 +545,10 @@ window.addEventListener("message", async (event) => {
       }
       if (message.headingSizes && typeof message.headingSizes === "object") {
         applyHeadingSizes(message.headingSizes as Record<string, number>);
+      }
+      if (typeof message.highlightCurrentLine === "boolean") {
+        highlightCurrentLine = message.highlightCurrentLine;
+        // Effect applied on next editor init (recreate)
       }
       break;
     case "savedTheme":
@@ -369,6 +567,7 @@ function init() {
   console.log("[Crepe] init() called");
 
   setupToolbarHandlers();
+  setupMetadataHandlers();
 
   // Don't create editor yet - wait for content from extension
   // This prevents showing empty placeholder "Please enter..."
