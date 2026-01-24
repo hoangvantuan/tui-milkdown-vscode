@@ -6,6 +6,16 @@ All notable changes to "Milkdown Markdown WYSIWYG" extension.
 
 ### Added
 
+* Cursor line highlight with theme support
+  * Highlights current block/paragraph containing cursor
+  * Individual list item highlighting (not entire list)
+  * Skips code blocks (they have built-in highlighting)
+  * Configurable via `tuiMarkdown.highlightCurrentLine` setting
+
+* Responsive max-width layout (1200px) for editor content on large screens
+  * Improves readability on 4K/ultrawide monitors
+  * Full-width on screens ≤1200px (split view compatible)
+
 * Collapsible metadata panel for editing YAML frontmatter
 
 * YAML validation with line number error display

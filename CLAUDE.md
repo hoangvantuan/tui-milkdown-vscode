@@ -50,13 +50,15 @@ src/
 ├── utils/getNonce.ts         # CSP nonce generator
 └── webview/
     ├── main.ts               # Browser-side Milkdown Crepe editor
-    └── frontmatter.ts        # YAML parsing & validation utilities
+    ├── frontmatter.ts        # YAML parsing & validation utilities
+    └── line-highlight-plugin.ts # ProseMirror plugin for cursor line highlight
 ```
 
 ## Configuration Settings
 
 Extension provides these settings via `tuiMarkdown.*` namespace:
 - Font size (8-32px), heading sizes H1-H6 (12-72px)
+- `highlightCurrentLine` (boolean, default: true) - Enable cursor line highlight
 
 ## Milkdown Crepe Integration
 
@@ -84,3 +86,16 @@ Uses `@milkdown/crepe` package. Theme variables are manually applied via CSS cus
 4. Empty metadata → Remove frontmatter delimiters from document
 
 **Dependencies**: `js-yaml@^4.1.1`, `@types/js-yaml` (dev)
+
+## Line Highlight
+
+**Plugin** (`src/webview/line-highlight-plugin.ts`):
+- ProseMirror plugin using Decoration API
+- Highlights immediate block containing cursor (paragraph, heading, list item)
+- Skips code blocks (they have built-in line highlighting from CodeMirror)
+- Injected via `prosePluginsCtx` before Crepe instance creation
+
+**CSS** (in `src/markdownEditorProvider.ts`):
+- Uses `::before` pseudo-element with `z-index: -1` stacking
+- Light themes: `rgba(0, 0, 0, 0.08)` background
+- Dark themes (`theme-frame-dark`, `theme-nord-dark`): `rgba(255, 255, 255, 0.08)`

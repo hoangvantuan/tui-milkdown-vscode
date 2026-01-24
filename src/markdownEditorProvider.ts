@@ -269,6 +269,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             --crepe-color-secondary: #404040;
             --crepe-color-on-secondary: #ffffff;
             --crepe-color-selected: #4a4a4a;
+            --content-max-width: 1200px;
           }
           * { box-sizing: border-box; }
           html, body {
@@ -316,20 +317,25 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .milkdown .ProseMirror h6 { font-size: var(--heading-h6-size, 16px) !important; margin-top: var(--heading-h6-margin, 8px) !important; }
 
           /* Line highlight for current cursor position */
-          .milkdown .ProseMirror .line-highlight { position: relative; }
+          .milkdown .ProseMirror .line-highlight {
+            position: relative;
+            z-index: 0; /* Create stacking context so ::before z-index:-1 stays above parent bg */
+          }
           .milkdown .ProseMirror .line-highlight::before {
             content: '';
             position: absolute;
             top: 0;
             bottom: 0;
-            left: -9999px;
-            right: -9999px;
-            background: rgba(0, 0, 0, 0.04);
+            left: 0;
+            right: 0;
+            background: rgba(0, 0, 0, 0.08);
             pointer-events: none;
             z-index: -1;
           }
-          body.dark-theme .milkdown .ProseMirror .line-highlight::before {
-            background: rgba(255, 255, 255, 0.04);
+          /* Dark themes override */
+          body.theme-frame-dark .milkdown .ProseMirror .line-highlight::before,
+          body.theme-nord-dark .milkdown .ProseMirror .line-highlight::before {
+            background: rgba(255, 255, 255, 0.08);
           }
 
           #toolbar {
@@ -487,6 +493,16 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           }
           #add-metadata-btn.hidden { display: none; }
           #metadata-details.hidden { display: none; }
+
+          /* Responsive editor content for large screens */
+          .milkdown .ProseMirror {
+            max-width: var(--content-max-width, 1200px);
+            margin-left: auto;
+            margin-right: auto;
+          }
+          @media (max-width: 1200px) {
+            .milkdown .ProseMirror { max-width: 100%; }
+          }
 
         </style>
       </head>
