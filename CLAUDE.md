@@ -72,6 +72,7 @@ Uses `@milkdown/crepe` package. Theme variables are manually applied via CSS cus
 **Panel UI** (integrated in `src/markdownEditorProvider.ts` HTML):
 - Collapsible `<details>` element styled with VSCode theme variables
 - Textarea for YAML editing with syntax error display (red border + error message)
+- Tab key inserts 2 spaces (YAML standard indentation)
 - "Add Metadata" button when no frontmatter exists
 - Panel integrates seamlessly below toolbar, above editor
 

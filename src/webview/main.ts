@@ -239,8 +239,26 @@ function setupMetadataHandlers(): void {
       validateAndShowError();
     });
 
-    // Ctrl/Cmd+S triggers validation
     textarea.addEventListener("keydown", (e) => {
+      // Tab inserts 2 spaces (YAML standard)
+      if (e.key === "Tab") {
+        e.preventDefault();
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const indent = "  ";
+
+        textarea.value =
+          textarea.value.substring(0, start) +
+          indent +
+          textarea.value.substring(end);
+        textarea.selectionStart = textarea.selectionEnd = start + indent.length;
+
+        // Trigger input for auto-resize and debounced save
+        textarea.dispatchEvent(new Event("input", { bubbles: true }));
+        return;
+      }
+
+      // Ctrl/Cmd+S triggers validation
       if ((e.ctrlKey || e.metaKey) && e.key === "s") {
         e.preventDefault();
         validateAndShowError();

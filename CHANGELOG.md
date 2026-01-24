@@ -10,6 +10,7 @@ All notable changes to "Milkdown Markdown WYSIWYG" extension.
 * YAML validation with line number error display
 * "Add Metadata" button when document has no frontmatter
 * Bidirectional sync between metadata panel and Milkdown editor
+* Tab key support in metadata textarea (inserts 2 spaces for YAML indentation)
 * `gray-matter` and `js-yaml` dependencies for frontmatter parsing and validation
 
 ## \[1.2.1] - 2026-01-24
