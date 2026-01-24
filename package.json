@@ -83,6 +83,11 @@
           "minimum": 12,
           "maximum": 72,
           "description": "Font size for H6 headings (in pixels)"
+        },
+        "tuiMarkdown.highlightCurrentLine": {
+          "type": "boolean",
+          "default": true,
+          "description": "Highlight the line containing the cursor in the editor"
         }
       }
     },

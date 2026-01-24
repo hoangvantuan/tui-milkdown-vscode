@@ -87,11 +87,17 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       };
     };
 
+    const getHighlightCurrentLine = (): boolean => {
+      const config = vscode.workspace.getConfiguration("tuiMarkdown");
+      return config.get<boolean>("highlightCurrentLine", true);
+    };
+
     const sendConfig = () => {
       webviewPanel.webview.postMessage({
         type: "config",
         fontSize: getFontSize(),
         headingSizes: getHeadingSizes(),
+        highlightCurrentLine: getHighlightCurrentLine(),
       });
     };
 
@@ -183,7 +189,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (
           e.affectsConfiguration("tuiMarkdown.fontSize") ||
-          e.affectsConfiguration("tuiMarkdown.headingSizes")
+          e.affectsConfiguration("tuiMarkdown.headingSizes") ||
+          e.affectsConfiguration("tuiMarkdown.highlightCurrentLine")
         ) {
           sendConfig();
         }
@@ -274,7 +281,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             color: var(--vscode-editor-foreground, #d4d4d4);
           }
           .milkdown .ProseMirror {
-            padding: 10px 40px;
+            padding: 10px 40px 100px 40px;
             caret-color: var(--crepe-color-caret, var(--crepe-color-primary));
           }
           /* Override body text font size only (headings unchanged) */
@@ -307,6 +314,23 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .milkdown .ProseMirror h4 { font-size: var(--heading-h4-size, 20px) !important; margin-top: var(--heading-h4-margin, 12px) !important; }
           .milkdown .ProseMirror h5 { font-size: var(--heading-h5-size, 18px) !important; margin-top: var(--heading-h5-margin, 8px) !important; }
           .milkdown .ProseMirror h6 { font-size: var(--heading-h6-size, 16px) !important; margin-top: var(--heading-h6-margin, 8px) !important; }
+
+          /* Line highlight for current cursor position */
+          .milkdown .ProseMirror .line-highlight { position: relative; }
+          .milkdown .ProseMirror .line-highlight::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: -9999px;
+            right: -9999px;
+            background: rgba(0, 0, 0, 0.04);
+            pointer-events: none;
+            z-index: -1;
+          }
+          body.dark-theme .milkdown .ProseMirror .line-highlight::before {
+            background: rgba(255, 255, 255, 0.04);
+          }
 
           #toolbar {
             display: flex;
@@ -344,7 +368,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
           #editor-container {
             height: calc(100vh - 40px);
-            overflow: auto;
+            overflow-x: hidden;
+            overflow-y: auto;
             position: relative;
           }
           #editor { width: 100%; min-height: 100%; }

@@ -1,10 +1,12 @@
 import { Crepe } from "@milkdown/crepe";
 import "@milkdown/crepe/theme/common/style.css";
+import { prosePluginsCtx } from "@milkdown/kit/core";
 import {
   parseContent,
   reconstructContent,
   validateYaml,
 } from "./frontmatter";
+import { createLineHighlightPlugin } from "./line-highlight-plugin";
 
 declare function acquireVsCodeApi(): {
   postMessage(message: unknown): void;
@@ -111,6 +113,7 @@ let globalThemeReceived: ThemeName | null = null; // Theme from extension global
 let currentFrontmatter: string | null = null; // Current frontmatter YAML content
 let currentBody: string = ""; // Current body content (without frontmatter)
 let lastSentContent: string | null = null; // Track last sent content to prevent echo loops
+let highlightCurrentLine = true; // Line highlight feature toggle (default enabled)
 
 function debouncedPostEdit(content: string): void {
   if (debounceTimer !== null) clearTimeout(debounceTimer);
@@ -401,6 +404,20 @@ async function initEditor(initialContent: string = ""): Promise<Crepe | null> {
       },
     });
 
+    // Inject line highlight plugin if enabled
+    if (highlightCurrentLine) {
+      try {
+        instance.editor.config((ctx) => {
+          ctx.update(prosePluginsCtx, (plugins) => [
+            ...plugins,
+            createLineHighlightPlugin(),
+          ]);
+        });
+      } catch (err) {
+        console.warn("[Crepe] Failed to inject line highlight plugin:", err);
+      }
+    }
+
     instance.on((listener) => {
       listener.markdownUpdated((_, markdown) => {
         if (isUpdatingFromExtension) return;
@@ -528,6 +545,10 @@ window.addEventListener("message", async (event) => {
       }
       if (message.headingSizes && typeof message.headingSizes === "object") {
         applyHeadingSizes(message.headingSizes as Record<string, number>);
+      }
+      if (typeof message.highlightCurrentLine === "boolean") {
+        highlightCurrentLine = message.highlightCurrentLine;
+        // Effect applied on next editor init (recreate)
       }
       break;
     case "savedTheme":
