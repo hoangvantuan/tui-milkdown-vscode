@@ -99,3 +99,10 @@ Uses `@milkdown/crepe` package. Theme variables are manually applied via CSS cus
 - Uses `::before` pseudo-element with `z-index: -1` stacking
 - Light themes: `rgba(0, 0, 0, 0.08)` background
 - Dark themes (`theme-frame-dark`, `theme-nord-dark`): `rgba(255, 255, 255, 0.08)`
+
+## Table Styling
+
+**CSS** (in `src/markdownEditorProvider.ts`):
+- `table-layout: auto` - Columns size proportionally to content
+- `width: 100%` - Table spans full editor width
+- `white-space: normal`, `word-wrap: break-word`, `overflow-wrap: break-word` - Cell text wraps naturally for responsive display
