@@ -479,7 +479,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             <summary id="metadata-summary">
               <span class="toggle-icon"></span>
               <span class="panel-label">Metadata</span>
-              <span id="metadata-error" class="error-indicator hidden"></span>
+              <span id="metadata-error" class="error-indicator hidden" role="status" aria-live="polite"></span>
             </summary>
             <div class="metadata-content">
               <textarea

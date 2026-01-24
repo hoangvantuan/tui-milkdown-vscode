@@ -106,10 +106,12 @@ let currentTheme: ThemeName = "frame";
 let globalThemeReceived: ThemeName | null = null; // Theme from extension globalState
 let currentFrontmatter: string | null = null; // Current frontmatter YAML content
 let currentBody: string = ""; // Current body content (without frontmatter)
+let lastSentContent: string | null = null; // Track last sent content to prevent echo loops
 
 function debouncedPostEdit(content: string): void {
   if (debounceTimer !== null) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
+    lastSentContent = content;
     vscode.postMessage({ type: "edit", content });
     debounceTimer = null;
   }, DEBOUNCE_MS);
@@ -187,6 +189,7 @@ let metadataDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 function sendFullContent(): void {
   const fullContent = reconstructContent(currentFrontmatter, currentBody);
+  lastSentContent = fullContent;
   vscode.postMessage({ type: "edit", content: fullContent });
 }
 
@@ -470,6 +473,12 @@ window.addEventListener("message", async (event) => {
   switch (message.type) {
     case "update":
       if (typeof message.content === "string") {
+        // Skip if this is an echo of our own edit
+        if (message.content === lastSentContent) {
+          lastSentContent = null;
+          break;
+        }
+
         try {
           isUpdatingFromExtension = true;
 

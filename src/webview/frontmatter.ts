@@ -27,7 +27,7 @@ export function parseContent(markdown: string): ParsedContent {
     return {
       frontmatter: null,
       body: markdown,
-      isValid: true,
+      isValid: false,
       error: "Content too large for frontmatter parsing",
     };
   }
