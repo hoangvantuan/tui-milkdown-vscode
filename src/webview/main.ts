@@ -242,6 +242,7 @@ function setupMetadataHandlers(): void {
     // Ctrl/Cmd+S triggers validation
     textarea.addEventListener("keydown", (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        e.preventDefault();
         validateAndShowError();
       }
     });
