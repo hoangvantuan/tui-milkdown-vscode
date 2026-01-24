@@ -2,7 +2,9 @@ const esbuild = require('esbuild');
 const path = require('path');
 const fs = require('fs');
 
+const isDev = process.argv.includes('--dev');
 const isWatch = process.argv.includes('--watch');
+const isProduction = !isDev && !isWatch;
 
 const extensionConfig = {
   entryPoints: ['src/extension.ts'],
@@ -11,7 +13,9 @@ const extensionConfig = {
   external: ['vscode'],
   format: 'cjs',
   platform: 'node',
-  sourcemap: true,
+  sourcemap: !isProduction,
+  minify: isProduction,
+  treeShaking: true,
 };
 
 const webviewConfig = {
@@ -20,9 +24,11 @@ const webviewConfig = {
   outfile: 'out/webview/main.js',
   format: 'iife',
   platform: 'browser',
-  sourcemap: true,
+  sourcemap: !isProduction,
+  minify: isProduction,
+  treeShaking: true,
   define: {
-    'process.env.NODE_ENV': '"production"',
+    'process.env.NODE_ENV': isProduction ? '"production"' : '"development"',
   },
   loader: {
     '.css': 'css',
@@ -40,6 +46,7 @@ function ensureOutDir() {
 }
 
 async function build() {
+  console.log(`Building (${isProduction ? 'production' : 'development'})...`);
   ensureOutDir();
 
   if (isWatch) {
@@ -50,7 +57,7 @@ async function build() {
   } else {
     await esbuild.build(extensionConfig);
     await esbuild.build(webviewConfig);
-    console.log('Build complete');
+    console.log(`Build complete (${isProduction ? 'production' : 'development'})`);
   }
 }
 

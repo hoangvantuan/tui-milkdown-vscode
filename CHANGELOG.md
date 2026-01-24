@@ -2,6 +2,12 @@
 
 All notable changes to "Milkdown Markdown WYSIWYG" extension.
 
+## \[1.2.0] - 2026-01-24
+
+### Changed
+
+* Optimized build configuration with production/development modes
+
 ## \[1.1.0] - 2026-01-23
 
 ### Added
