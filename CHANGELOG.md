@@ -2,6 +2,12 @@
 
 All notable changes to "Milkdown Markdown WYSIWYG" extension.
 
+## \[1.2.1] - 2026-01-24
+
+### Fixed
+
+* Fixed heading margin-top values for better visual spacing (h1:24px, h2:20px, h3:16px, h4:12px, h5:8px, h6:8px)
+
 ## \[1.2.0] - 2026-01-24
 
 ### Changed
