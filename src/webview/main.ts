@@ -37,6 +37,7 @@ const THEME_VARIABLES: Record<ThemeName, Record<string, string>> = {
     "--crepe-color-hover": "#e0e0e0",
     "--crepe-color-selected": "#d5d5d5",
     "--crepe-color-inline-area": "#cacaca",
+    "--crepe-color-caret": "#333333",
   },
   "frame-dark": {
     "--crepe-color-background": "#1a1a1a",
@@ -56,6 +57,7 @@ const THEME_VARIABLES: Record<ThemeName, Record<string, string>> = {
     "--crepe-color-hover": "#3a3a3a",
     "--crepe-color-selected": "#4a4a4a",
     "--crepe-color-inline-area": "#505050",
+    "--crepe-color-caret": "#ffffff",
   },
   nord: {
     "--crepe-color-background": "#fdfcff",
@@ -75,6 +77,7 @@ const THEME_VARIABLES: Record<ThemeName, Record<string, string>> = {
     "--crepe-color-hover": "#eceef4",
     "--crepe-color-selected": "#e1e2e8",
     "--crepe-color-inline-area": "#d8dae0",
+    "--crepe-color-caret": "#37618e",
   },
   "nord-dark": {
     "--crepe-color-background": "#2e3440",
@@ -94,6 +97,7 @@ const THEME_VARIABLES: Record<ThemeName, Record<string, string>> = {
     "--crepe-color-hover": "#434c5e",
     "--crepe-color-selected": "#4c566a",
     "--crepe-color-inline-area": "#4c566a",
+    "--crepe-color-caret": "#88c0d0",
   },
 };
 

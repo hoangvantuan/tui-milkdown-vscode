@@ -275,6 +275,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           }
           .milkdown .ProseMirror {
             padding: 10px 40px;
+            caret-color: var(--crepe-color-caret, var(--crepe-color-primary));
           }
           /* Override body text font size only (headings unchanged) */
           .milkdown .ProseMirror p,
@@ -475,7 +476,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           <button id="btn-source" class="view-source-btn" aria-label="View source in text editor">View Source</button>
         </div>
         <div id="metadata-panel">
-          <details id="metadata-details" class="hidden" open>
+          <details id="metadata-details" class="hidden">
             <summary id="metadata-summary">
               <span class="toggle-icon"></span>
               <span class="panel-label">Metadata</span>
