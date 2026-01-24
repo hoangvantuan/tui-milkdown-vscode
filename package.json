@@ -83,18 +83,6 @@
           "minimum": 12,
           "maximum": 72,
           "description": "Font size for H6 headings (in pixels)"
-        },
-        "tuiMarkdown.lineHeight": {
-          "type": "number",
-          "default": 1.6,
-          "minimum": 1.0,
-          "maximum": 3.0,
-          "description": "Line height multiplier (e.g., 1.6 for 160% spacing)"
-        },
-        "tuiMarkdown.maxWidth": {
-          "type": "string",
-          "default": "800px",
-          "description": "Maximum width of the editor content (e.g., '800px', '90%', '65ch')"
         }
       }
     },

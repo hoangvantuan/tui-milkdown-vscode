@@ -54,8 +54,6 @@ src/
 
 Extension provides these settings via `tuiMarkdown.*` namespace:
 - Font size (8-32px), heading sizes H1-H6 (12-72px)
-- Line height multiplier (1.0-3.0)
-- Max editor width (supports px, %, ch units)
 
 ## Milkdown Crepe Integration
 

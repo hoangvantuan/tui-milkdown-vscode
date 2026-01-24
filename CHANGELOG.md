@@ -4,11 +4,6 @@ All notable changes to "Milkdown Markdown WYSIWYG" extension.
 
 ## \[1.2.0] - 2026-01-24
 
-### Added
-
-* Configurable line height multiplier (1.0-3.0)
-* Configurable max width for editor content (e.g., '800px', '90%', '65ch')
-
 ### Changed
 
 * Optimized build configuration with production/development modes
