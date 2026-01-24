@@ -111,3 +111,10 @@ Uses `@milkdown/crepe` package. Theme CSS variables loaded from `src/webview/the
 - Uses `::before` pseudo-element with `z-index: -1` stacking
 - Light themes (`theme-frame`, `theme-nord`, `theme-crepe`, `theme-catppuccin-latte`): `rgba(0, 0, 0, 0.08)` background
 - Dark themes (`theme-frame-dark`, `theme-nord-dark`, `theme-crepe-dark`, `theme-catppuccin-frappe`, `theme-catppuccin-macchiato`, `theme-catppuccin-mocha`): `rgba(255, 255, 255, 0.08)`
+
+## Table Styling
+
+**CSS** (in `src/markdownEditorProvider.ts`):
+- `table-layout: auto` - Columns size proportionally to content
+- `width: 100%` - Table spans full editor width
+- `white-space: normal`, `word-wrap: break-word`, `overflow-wrap: break-word` - Cell text wraps naturally for responsive display

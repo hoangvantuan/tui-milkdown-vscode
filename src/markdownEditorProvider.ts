@@ -499,6 +499,19 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             .milkdown .ProseMirror { max-width: 100%; }
           }
 
+          /* Table auto-width: columns size proportionally to content */
+          .milkdown .ProseMirror table {
+            table-layout: auto;
+            width: 100%;
+            border-collapse: collapse;
+          }
+          .milkdown .ProseMirror th,
+          .milkdown .ProseMirror td {
+            white-space: normal;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+          }
+
         </style>
       </head>
       <body style="background: var(--vscode-editor-background, #1e1e1e);">
