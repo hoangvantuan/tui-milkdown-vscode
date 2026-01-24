@@ -408,6 +408,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           }
           .toggle-icon::before {
             content: '▼';
+            display: inline-block;
             font-size: 10px;
             transition: transform 0.15s ease;
           }
