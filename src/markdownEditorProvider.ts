@@ -1,7 +1,12 @@
 import * as vscode from "vscode";
 import { MAX_FILE_SIZE } from "./constants";
 import { getNonce } from "./utils/getNonce";
-import { detectImageRenames } from "./utils/image-rename-handler";
+import {
+  detectImageRenames,
+  executeImageRenames,
+  showRenameConfirmation,
+  updateWorkspaceReferences,
+} from "./utils/image-rename-handler";
 
 // Image URL helpers
 function isRemoteUrl(url: string): boolean {
@@ -401,8 +406,37 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         );
         if (renames.length === 0) return;
 
-        // Phase 04: Show dialog and execute rename
-        console.log("[Image Rename] Detected renames:", renames);
+        // Show confirmation dialog
+        const confirmed = await showRenameConfirmation(renames);
+        if (!confirmed || confirmed.length === 0) return;
+
+        // Execute renames
+        const { succeeded, failed } = await executeImageRenames(confirmed);
+
+        if (succeeded.length > 0) {
+          // Update workspace references (excluding current document)
+          const updatedFiles = await updateWorkspaceReferences(
+            succeeded,
+            document.uri,
+          );
+
+          // Update stored originalPaths map for future detections
+          for (const rename of succeeded) {
+            originalMap.delete(rename.oldRelative);
+            originalMap.set(rename.newRelative, rename.newAbsolute);
+          }
+
+          vscode.window.showInformationMessage(
+            `Renamed ${succeeded.length} image(s). Updated ${updatedFiles} file(s).`,
+          );
+        }
+
+        if (failed.length > 0) {
+          console.warn("[Image Rename] Failed:", failed);
+          vscode.window.showWarningMessage(
+            `Failed to rename ${failed.length} image(s).`,
+          );
+        }
       }),
     );
 

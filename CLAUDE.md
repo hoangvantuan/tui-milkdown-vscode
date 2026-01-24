@@ -145,3 +145,10 @@ Uses `@milkdown/crepe` package. Theme CSS variables loaded from `src/webview/the
 **Path Transformation**:
 - On load: Local paths → webview URIs (for display)
 - On save: Webview URIs → original paths (preserve markdown)
+
+**Auto Rename Images** (`src/markdownEditorProvider.ts`):
+- When user edits image path in markdown (same folder, different filename)
+- On save: Extension detects path change and prompts user via QuickPick dialog
+- If confirmed: Renames image file on disk, updates all `.md` files in workspace with new path
+- Controlled by `tuiMarkdown.autoRenameImages` setting (boolean, default: true)
+- Only triggers when image folder remains the same
