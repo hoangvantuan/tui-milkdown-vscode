@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { MAX_FILE_SIZE } from "./constants";
 import { getNonce } from "./utils/getNonce";
+import { detectImageRenames } from "./utils/image-rename-handler";
 
 // Image URL helpers
 function isRemoteUrl(url: string): boolean {
@@ -375,6 +376,33 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         ) {
           sendConfig();
         }
+      }),
+      vscode.workspace.onDidSaveTextDocument(async (savedDoc) => {
+        if (savedDoc.uri.toString() !== document.uri.toString()) return;
+
+        // Check setting
+        const config = vscode.workspace.getConfiguration("tuiMarkdown");
+        if (!config.get<boolean>("autoRenameImages", true)) return;
+
+        // Get original paths
+        const originalMap = this.originalImagePaths.get(docKey);
+        if (!originalMap || originalMap.size === 0) return;
+
+        // Get current paths (filter remote URLs)
+        const currentPaths = extractImagePaths(savedDoc.getText()).filter(
+          (p) => !isRemoteUrl(p),
+        );
+
+        // Detect renames
+        const renames = detectImageRenames(
+          originalMap,
+          currentPaths,
+          document.uri,
+        );
+        if (renames.length === 0) return;
+
+        // Phase 04: Show dialog and execute rename
+        console.log("[Image Rename] Detected renames:", renames);
       }),
     );
 
