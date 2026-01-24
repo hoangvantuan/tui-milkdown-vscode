@@ -71,6 +71,7 @@ src/
 Extension provides these settings via `tuiMarkdown.*` namespace:
 - Font size (8-32px), heading sizes H1-H6 (12-72px)
 - `highlightCurrentLine` (boolean, default: true) - Enable cursor line highlight
+- `imageSaveFolder` (string, default: `images`) - Folder to save pasted images (relative to document)
 
 ## Milkdown Crepe Integration
 
@@ -118,3 +119,28 @@ Uses `@milkdown/crepe` package. Theme CSS variables loaded from `src/webview/the
 - `table-layout: auto` - Columns size proportionally to content
 - `width: 100%` - Table spans full editor width
 - `white-space: normal`, `word-wrap: break-word`, `overflow-wrap: break-word` - Cell text wraps naturally for responsive display
+
+## Image Handling
+
+**Local Image Display** (`src/markdownEditorProvider.ts`):
+- `extractImagePaths()`: Extracts image paths from markdown (both `![](path)` and `<img src="">`)
+- `resolveImagePath()`: Resolves relative/absolute paths against document location
+- `buildImageMap()`: Creates mapping from original paths to webview URIs
+- `localResourceRoots` includes document folder and workspace for image access
+
+**Image Upload** (`src/webview/main.ts`):
+- Paste from clipboard: Intercepts paste events with image data
+- Crepe file picker: Uses `onUpload` callback for image uploads
+- Converts images to base64, sends to extension for saving
+- Extension saves to configured folder (`tuiMarkdown.imageSaveFolder`)
+- Returns saved path, updates markdown with relative path
+
+**Message Flow**:
+1. Webview detects image (paste or upload) → converts to base64
+2. Sends `saveImage` message with base64 data and filename
+3. Extension saves to disk, returns `imageSaved` with relative path
+4. Webview updates markdown content with new image path
+
+**Path Transformation**:
+- On load: Local paths → webview URIs (for display)
+- On save: Webview URIs → original paths (preserve markdown)

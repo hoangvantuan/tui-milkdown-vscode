@@ -2,6 +2,72 @@ import * as vscode from "vscode";
 import { MAX_FILE_SIZE } from "./constants";
 import { getNonce } from "./utils/getNonce";
 
+// Image URL helpers
+function isRemoteUrl(url: string): boolean {
+  return /^(https?:\/\/|data:)/i.test(url);
+}
+
+function extractImagePaths(content: string): string[] {
+  const paths: string[] = [];
+
+  // Markdown: ![alt](path)
+  const mdRegex = /!\[[^\]]*\]\(([^)]+)\)/g;
+  let match;
+  while ((match = mdRegex.exec(content)) !== null) {
+    paths.push(match[1].trim());
+  }
+
+  // HTML: <img src="path">
+  const htmlRegex = /<img[^>]+src=["']([^"']+)["']/gi;
+  while ((match = htmlRegex.exec(content)) !== null) {
+    paths.push(match[1].trim());
+  }
+
+  return [...new Set(paths)]; // Dedupe
+}
+
+function resolveImagePath(
+  imagePath: string,
+  documentUri: vscode.Uri,
+): vscode.Uri | null {
+  if (isRemoteUrl(imagePath)) return null;
+
+  const documentFolder = vscode.Uri.joinPath(documentUri, "..");
+
+  if (imagePath.startsWith("/")) {
+    // Absolute path - resolve from workspace root
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(documentUri);
+    if (workspaceFolder) {
+      return vscode.Uri.joinPath(workspaceFolder.uri, imagePath);
+    }
+    // Fallback: treat as file system absolute path
+    return vscode.Uri.file(imagePath);
+  }
+
+  // Relative path - resolve from document folder
+  return vscode.Uri.joinPath(documentFolder, imagePath);
+}
+
+function buildImageMap(
+  content: string,
+  documentUri: vscode.Uri,
+  webview: vscode.Webview,
+): Record<string, string> {
+  const imageMap: Record<string, string> = {};
+  const paths = extractImagePaths(content);
+
+  for (const path of paths) {
+    if (isRemoteUrl(path)) continue;
+
+    const resolvedUri = resolveImagePath(path, documentUri);
+    if (resolvedUri) {
+      imageMap[path] = webview.asWebviewUri(resolvedUri).toString();
+    }
+  }
+
+  return imageMap;
+}
+
 /**
  * CustomTextEditorProvider for Markdown WYSIWYG editing.
  * Registers for .md files via package.json customEditors.
@@ -34,12 +100,22 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       }
     }
 
+    // Build localResourceRoots with document folder and workspace
+    const documentFolder = vscode.Uri.joinPath(document.uri, "..");
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri)?.uri;
+
+    const localResourceRoots = [
+      vscode.Uri.joinPath(this.context.extensionUri, "out"),
+      vscode.Uri.joinPath(this.context.extensionUri, "node_modules"),
+      documentFolder,
+    ];
+    if (workspaceFolder) {
+      localResourceRoots.push(workspaceFolder);
+    }
+
     webviewPanel.webview.options = {
       enableScripts: true,
-      localResourceRoots: [
-        vscode.Uri.joinPath(this.context.extensionUri, "out"),
-        vscode.Uri.joinPath(this.context.extensionUri, "node_modules"),
-      ],
+      localResourceRoots,
     };
 
     webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview);
@@ -57,9 +133,12 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
     const updateWebview = () => {
       if (pendingEdit) return;
+      const content = document.getText();
+      const imageMap = buildImageMap(content, document.uri, webviewPanel.webview);
       webviewPanel.webview.postMessage({
         type: "update",
-        content: document.getText(),
+        content,
+        imageMap,
       });
     };
 
@@ -112,10 +191,10 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           document.positionAt(document.getText().length),
         );
         edit.replace(document.uri, fullRange, newContent);
-        const success = await vscode.workspace.applyEdit(edit);
-        if (!success) {
-          updateWebview();
-        }
+        await vscode.workspace.applyEdit(edit);
+        // Always send updated imageMap (for newly saved images)
+        // Loop prevented by lastSentContent check in webview
+        updateWebview();
       } finally {
         queueMicrotask(() => {
           pendingEdit = false;
@@ -176,6 +255,73 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
               await this.context.globalState.update(
                 "markdownEditorTheme",
                 theme,
+              );
+            }
+            break;
+          }
+          case "saveImage": {
+            const imgMsg = msg as {
+              data?: string;
+              filename?: string;
+              blobUrl?: string;
+            };
+            if (!imgMsg.data || !imgMsg.filename || !imgMsg.blobUrl) break;
+
+            // Validate filename to prevent path traversal
+            const filename = imgMsg.filename;
+            if (
+              filename.includes("..") ||
+              filename.includes("/") ||
+              filename.includes("\\")
+            ) {
+              console.error("[Image Save] Invalid filename:", filename);
+              break;
+            }
+
+            try {
+              // Get configured folder
+              const config = vscode.workspace.getConfiguration("tuiMarkdown");
+              const saveFolder = config.get<string>("imageSaveFolder", "images");
+
+              // Resolve folder path relative to document
+              const documentFolder = vscode.Uri.joinPath(document.uri, "..");
+              const imageFolder = vscode.Uri.joinPath(documentFolder, saveFolder);
+
+              // Create folder if not exists
+              try {
+                await vscode.workspace.fs.createDirectory(imageFolder);
+              } catch {
+                // Folder may already exist
+              }
+
+              // Decode base64 and save file
+              const base64Data = imgMsg.data.replace(
+                /^data:image\/\w+;base64,/,
+                "",
+              );
+              const buffer = Buffer.from(base64Data, "base64");
+              const fileUri = vscode.Uri.joinPath(imageFolder, filename);
+              await vscode.workspace.fs.writeFile(fileUri, buffer);
+
+              // Build relative path for markdown
+              const relativePath =
+                saveFolder === "." ? filename : `${saveFolder}/${filename}`;
+
+              // Create webview URI for immediate display
+              const webviewUri =
+                webviewPanel.webview.asWebviewUri(fileUri).toString();
+
+              // Send back the saved path and webviewUri
+              webviewPanel.webview.postMessage({
+                type: "imageSaved",
+                blobUrl: imgMsg.blobUrl,
+                savedPath: relativePath,
+                webviewUri,
+              });
+            } catch (err) {
+              console.error("[Image Save] Failed:", err);
+              vscode.window.showErrorMessage(
+                `Failed to save image: ${err instanceof Error ? err.message : String(err)}`,
               );
             }
             break;

@@ -2,6 +2,26 @@
 
 All notable changes to "Milkdown Markdown WYSIWYG" extension.
 
+## \[1.5.0] - 2026-01-24
+
+### Added
+
+* **Image Upload & Paste Support**
+  * Paste images from clipboard directly into the editor
+  * Upload images via Crepe's file picker button
+  * Images saved automatically to configurable folder
+  * Configurable via `tuiMarkdown.imageSaveFolder` setting (default: `images`)
+  * Use `.` for same folder as document
+
+* **Local Image Display**
+  * Renders local images from document folder and workspace
+  * Supports both relative and absolute paths
+  * Automatic path resolution for webview display
+
+### Changed
+
+* Extended `localResourceRoots` to include document folder and workspace for image loading
+
 ## \[1.4.0] - 2026-01-24
 
 ### Added
@@ -96,4 +116,3 @@ All notable changes to "Milkdown Markdown WYSIWYG" extension.
 * Configurable font size (8-32px)
 
 * Support for .md and .markdown files
-

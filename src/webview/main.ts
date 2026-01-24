@@ -52,10 +52,206 @@ let currentFrontmatter: string | null = null; // Current frontmatter YAML conten
 let currentBody: string = ""; // Current body content (without frontmatter)
 let lastSentContent: string | null = null; // Track last sent content to prevent echo loops
 let highlightCurrentLine = true; // Line highlight feature toggle (default enabled)
+let currentImageMap: Record<string, string> = {}; // Image path → webviewUri mapping
+
+// Image URL transform helpers
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function transformForDisplay(
+  content: string,
+  imageMap: Record<string, string>,
+): string {
+  let result = content;
+  for (const [originalPath, webviewUri] of Object.entries(imageMap)) {
+    const escaped = escapeRegex(originalPath);
+    result = result.replace(new RegExp(escaped, "g"), webviewUri);
+  }
+  return result;
+}
+
+function transformForSave(
+  content: string,
+  imageMap: Record<string, string>,
+): string {
+  let result = content;
+  for (const [originalPath, webviewUri] of Object.entries(imageMap)) {
+    const escaped = escapeRegex(webviewUri);
+    result = result.replace(new RegExp(escaped, "g"), originalPath);
+  }
+  return result;
+}
+
+// Inline image handling - save pasted images to file
+// Matches both blob: URLs and data: URIs
+const INLINE_IMAGE_REGEX = /!\[([^\]]*)\]\(((?:blob:|data:image\/)[^)]+)\)/g;
+const pendingImageSaves = new Map<string, number>(); // Track images being saved with timestamp
+const PENDING_IMAGE_TIMEOUT = 10000; // 10 seconds timeout for pending images
+
+// Promise-based upload tracking for Crepe onUpload handler
+interface UploadPromiseHandlers {
+  resolve: (path: string) => void;
+  reject: (err: Error) => void;
+}
+const pendingUploads = new Map<string, UploadPromiseHandlers>();
+const UPLOAD_TIMEOUT = 30000; // 30 seconds timeout for uploads
+
+async function getBase64FromUrl(url: string): Promise<string | null> {
+  // If already base64 data URI, return as-is
+  if (url.startsWith("data:")) {
+    return url;
+  }
+  // Fetch blob URL and convert to base64
+  try {
+    const response = await fetch(url);
+    const blob = await response.blob();
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = () => {
+        console.error("[Image] FileReader failed to read blob");
+        resolve(null);
+      };
+      reader.readAsDataURL(blob);
+    });
+  } catch (err) {
+    console.error("[Image] Failed to fetch blob URL:", err);
+    return null;
+  }
+}
+
+function generateImageFilename(mimeType: string): string {
+  const ext = mimeType.split("/")[1]?.replace(/;.*/, "") || "png";
+  const timestamp = Date.now();
+  const random = Math.random().toString(36).substring(2, 8);
+  return `image-${timestamp}-${random}.${ext}`;
+}
+
+/**
+ * Handle image upload from Crepe file picker
+ * Returns Promise that resolves with saved file path
+ */
+async function handleCrepeImageUpload(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64 = reader.result as string;
+      const mimeType = file.type || "image/png";
+      const filename = generateImageFilename(mimeType);
+      const uploadId = `upload-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+
+      // Store promise handlers
+      pendingUploads.set(uploadId, { resolve, reject });
+
+      // Send to extension
+      vscode.postMessage({
+        type: "saveImage",
+        data: base64,
+        filename,
+        uploadId,
+        blobUrl: uploadId, // Use uploadId as blobUrl for compatibility
+      });
+
+      // Timeout
+      setTimeout(() => {
+        if (pendingUploads.has(uploadId)) {
+          pendingUploads.delete(uploadId);
+          reject(new Error("Image upload timed out"));
+        }
+      }, UPLOAD_TIMEOUT);
+    };
+    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * Process inline images (blob URLs and data URIs) - send to extension for saving
+ * Returns true if there are images being processed (don't save content yet)
+ */
+async function processInlineImages(content: string): Promise<boolean> {
+  const matches = [...content.matchAll(INLINE_IMAGE_REGEX)];
+  if (matches.length === 0) return false;
+
+  let hasPendingImages = false;
+  for (const match of matches) {
+    const [, , imageUrl] = match;
+
+    // Skip if already being processed (with timeout cleanup)
+    const pendingTimestamp = pendingImageSaves.get(imageUrl);
+    if (pendingTimestamp) {
+      if (Date.now() - pendingTimestamp < PENDING_IMAGE_TIMEOUT) {
+        hasPendingImages = true;
+        continue;
+      }
+      // Timeout expired, allow retry
+      pendingImageSaves.delete(imageUrl);
+    }
+
+    // Get base64 data (convert blob if needed)
+    const base64 = await getBase64FromUrl(imageUrl);
+    if (base64) {
+      pendingImageSaves.set(imageUrl, Date.now());
+      hasPendingImages = true;
+      const mimeMatch = base64.match(/^data:(image\/[^;]+);/);
+      const mimeType = mimeMatch ? mimeMatch[1] : "image/png";
+      const filename = generateImageFilename(mimeType);
+
+      vscode.postMessage({
+        type: "saveImage",
+        data: base64,
+        filename,
+        blobUrl: imageUrl, // Keep field name for compatibility
+      });
+    }
+  }
+  return hasPendingImages;
+}
+
+function replaceInlineImage(imageUrl: string, savedPath: string): void {
+  pendingImageSaves.delete(imageUrl);
+
+  // Replace in currentBody using string replacement (regex fails on long data URIs)
+  // Find pattern: ![...](imageUrl) and replace with ![...](savedPath)
+  const searchStart = "](";
+  const searchEnd = ")";
+  let result = currentBody;
+  let searchPos = 0;
+
+  while (true) {
+    const urlStart = result.indexOf(searchStart + imageUrl + searchEnd, searchPos);
+    if (urlStart === -1) break;
+
+    // Found the URL, replace it
+    const replaceStart = urlStart + searchStart.length;
+    const replaceEnd = replaceStart + imageUrl.length;
+    result =
+      result.substring(0, replaceStart) + savedPath + result.substring(replaceEnd);
+    searchPos = replaceStart + savedPath.length;
+  }
+
+  currentBody = result;
+
+  // Send updated content to extension
+  // Extension will respond with update message containing imageMap
+  // imageMapChanged check in handler will force editor refresh
+  const fullContent = reconstructContent(currentFrontmatter, currentBody);
+  lastSentContent = fullContent;
+  vscode.postMessage({ type: "edit", content: fullContent });
+}
 
 function debouncedPostEdit(content: string): void {
   if (debounceTimer !== null) clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(() => {
+  debounceTimer = setTimeout(async () => {
+    // Process blob URLs - send to extension for saving
+    // If blobs are pending, don't save yet - wait for imageSaved callback
+    const hasPendingBlobs = await processInlineImages(content);
+    if (hasPendingBlobs) {
+      debounceTimer = null;
+      return; // Don't save content with blob URLs - wait for imageSaved
+    }
+
     lastSentContent = content;
     vscode.postMessage({ type: "edit", content });
     debounceTimer = null;
@@ -136,8 +332,12 @@ function updateMetadataPanel(
 
 let metadataDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-function sendFullContent(): void {
+async function sendFullContent(): Promise<void> {
   const fullContent = reconstructContent(currentFrontmatter, currentBody);
+  const hasPendingBlobs = await processInlineImages(fullContent);
+  if (hasPendingBlobs) {
+    return; // Don't save content with blob URLs - wait for imageSaved
+  }
   lastSentContent = fullContent;
   vscode.postMessage({ type: "edit", content: fullContent });
 }
@@ -327,6 +527,9 @@ async function initEditor(initialContent: string = ""): Promise<Crepe | null> {
         [Crepe.Feature.Placeholder]: {
           text: "Type something...",
         },
+        [Crepe.Feature.ImageBlock]: {
+          onUpload: handleCrepeImageUpload,
+        },
       },
     });
 
@@ -347,8 +550,8 @@ async function initEditor(initialContent: string = ""): Promise<Crepe | null> {
     instance.on((listener) => {
       listener.markdownUpdated((_, markdown) => {
         if (isUpdatingFromExtension) return;
-        // Store new body and reconstruct with frontmatter
-        currentBody = markdown;
+        // Reverse transform: webviewUris back to original paths
+        currentBody = transformForSave(markdown, currentImageMap);
         debouncedPostEdit(reconstructContent(currentFrontmatter, currentBody));
       });
     });
@@ -422,11 +625,18 @@ window.addEventListener("message", async (event) => {
   switch (message.type) {
     case "update":
       if (typeof message.content === "string") {
-        // Skip if this is an echo of our own edit
-        if (message.content === lastSentContent) {
+        const newImageMap = message.imageMap || {};
+        const imageMapChanged =
+          JSON.stringify(newImageMap) !== JSON.stringify(currentImageMap);
+        currentImageMap = newImageMap;
+
+        // Skip content update if echo AND imageMap unchanged
+        // (force update when new images were saved to refresh display)
+        if (message.content === lastSentContent && !imageMapChanged) {
           lastSentContent = null;
           break;
         }
+        lastSentContent = null;
 
         try {
           isUpdatingFromExtension = true;
@@ -434,16 +644,19 @@ window.addEventListener("message", async (event) => {
           // Parse incoming content
           const parsed = parseContent(message.content);
           currentFrontmatter = parsed.frontmatter;
-          currentBody = parsed.body;
+          currentBody = parsed.body; // Keep original for saving
 
           // Update metadata panel
           updateMetadataPanel(parsed.frontmatter, parsed.isValid, parsed.error);
 
-          // Update Milkdown with body only
+          // Transform body for display (apply imageMap)
+          const displayBody = transformForDisplay(parsed.body, currentImageMap);
+
+          // Update Milkdown with transformed body
           if (!crepe) {
-            crepe = await initEditor(parsed.body);
+            crepe = await initEditor(displayBody);
           } else {
-            await updateEditorContent(parsed.body);
+            await updateEditorContent(displayBody);
           }
         } catch (err) {
           console.error("[Crepe] Update failed:", err);
@@ -482,6 +695,28 @@ window.addEventListener("message", async (event) => {
       ) {
         globalThemeReceived = message.theme as ThemeName;
         setTheme(globalThemeReceived, false); // Apply but don't save back
+      }
+      break;
+    case "imageSaved":
+      if (
+        typeof message.blobUrl === "string" &&
+        typeof message.savedPath === "string"
+      ) {
+        // Update imageMap if webviewUri provided
+        if (typeof message.webviewUri === "string") {
+          currentImageMap[message.savedPath] = message.webviewUri;
+        }
+
+        // Check if this is a Promise-based upload (from Crepe onUpload)
+        const uploadHandlers = pendingUploads.get(message.blobUrl);
+        if (uploadHandlers) {
+          pendingUploads.delete(message.blobUrl);
+          // Return webviewUri for immediate display, fallback to savedPath
+          uploadHandlers.resolve(message.webviewUri || message.savedPath);
+        } else {
+          // Legacy: blob URL replacement for pasted images
+          replaceInlineImage(message.blobUrl, message.savedPath);
+        }
       }
       break;
   }
