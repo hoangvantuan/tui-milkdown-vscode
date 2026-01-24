@@ -1,10 +1,6 @@
 import { Crepe } from "@milkdown/crepe";
 import "@milkdown/crepe/theme/common/style.css";
-import {
-  parseContent,
-  reconstructContent,
-  type ParsedContent,
-} from "./frontmatter";
+import { parseContent, reconstructContent } from "./frontmatter";
 
 declare function acquireVsCodeApi(): {
   postMessage(message: unknown): void;
@@ -104,7 +100,8 @@ let isUpdatingFromExtension = false;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let currentTheme: ThemeName = "frame";
 let globalThemeReceived: ThemeName | null = null; // Theme from extension globalState
-let currentParsed: ParsedContent | null = null; // Current parsed frontmatter state
+let currentFrontmatter: string | null = null; // Current frontmatter YAML content
+let currentBody: string = ""; // Current body content (without frontmatter)
 
 function debouncedPostEdit(content: string): void {
   if (debounceTimer !== null) clearTimeout(debounceTimer);
@@ -142,20 +139,85 @@ function showLoading(): void {
   }
 }
 
-// Metadata panel auto-resize
+// Metadata panel functions
 function autoResizeTextarea(textarea: HTMLTextAreaElement): void {
   textarea.style.height = "auto";
   const newHeight = Math.min(Math.max(textarea.scrollHeight, 80), 300);
   textarea.style.height = `${newHeight}px`;
 }
 
-function setupMetadataTextareaHandlers(): void {
+function updateMetadataPanel(
+  frontmatter: string | null,
+  isValid: boolean,
+  error?: string
+): void {
+  const details = getMetadataDetails();
   const textarea = getMetadataTextarea();
-  if (!textarea) return;
+  const addBtn = getAddMetadataBtn();
+  const errorEl = getMetadataError();
 
-  textarea.addEventListener("input", () => {
+  if (!details || !textarea || !addBtn || !errorEl) return;
+
+  if (frontmatter === null) {
+    // No frontmatter - show Add button
+    details.classList.add("hidden");
+    addBtn.classList.remove("hidden");
+  } else {
+    // Has frontmatter - show panel
+    details.classList.remove("hidden");
+    addBtn.classList.add("hidden");
+    textarea.value = frontmatter;
     autoResizeTextarea(textarea);
-  });
+
+    // Show/hide error
+    if (!isValid && error) {
+      errorEl.textContent = `(${error})`;
+      errorEl.classList.remove("hidden");
+    } else {
+      errorEl.classList.add("hidden");
+    }
+  }
+}
+
+let metadataDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+function sendFullContent(): void {
+  const fullContent = reconstructContent(currentFrontmatter, currentBody);
+  vscode.postMessage({ type: "edit", content: fullContent });
+}
+
+function debouncedMetadataEdit(): void {
+  if (metadataDebounceTimer) clearTimeout(metadataDebounceTimer);
+  metadataDebounceTimer = setTimeout(() => {
+    const textarea = getMetadataTextarea();
+    if (!textarea) return;
+
+    // If textarea is empty, remove frontmatter entirely
+    currentFrontmatter = textarea.value.trim() === "" ? null : textarea.value;
+    sendFullContent();
+  }, DEBOUNCE_MS);
+}
+
+function setupMetadataHandlers(): void {
+  const textarea = getMetadataTextarea();
+  const addBtn = getAddMetadataBtn();
+
+  if (textarea) {
+    textarea.addEventListener("input", () => {
+      autoResizeTextarea(textarea);
+      debouncedMetadataEdit();
+    });
+  }
+
+  if (addBtn) {
+    addBtn.addEventListener("click", () => {
+      currentFrontmatter = "";
+      updateMetadataPanel("", true);
+      const ta = getMetadataTextarea();
+      if (ta) ta.focus();
+      sendFullContent();
+    });
+  }
 }
 
 function escapeHtml(text: string): string {
@@ -274,7 +336,9 @@ async function initEditor(initialContent: string = ""): Promise<Crepe | null> {
     instance.on((listener) => {
       listener.markdownUpdated((_, markdown) => {
         if (isUpdatingFromExtension) return;
-        debouncedPostEdit(markdown);
+        // Store new body and reconstruct with frontmatter
+        currentBody = markdown;
+        debouncedPostEdit(reconstructContent(currentFrontmatter, currentBody));
       });
     });
 
@@ -297,7 +361,7 @@ async function initEditor(initialContent: string = ""): Promise<Crepe | null> {
 async function updateEditorContent(content: string): Promise<void> {
   if (!crepe) return;
 
-  isUpdatingFromExtension = true;
+  // Note: isUpdatingFromExtension managed by caller (case "update")
   showLoading();
   try {
     crepe.destroy();
@@ -312,10 +376,6 @@ async function updateEditorContent(content: string): Promise<void> {
     console.error("[Crepe] Failed to update content:", err);
     crepe = null;
     hideLoading();
-  } finally {
-    queueMicrotask(() => {
-      isUpdatingFromExtension = false;
-    });
   }
 }
 
@@ -354,17 +414,31 @@ window.addEventListener("message", async (event) => {
     case "update":
       if (typeof message.content === "string") {
         try {
+          isUpdatingFromExtension = true;
+
+          // Parse incoming content
+          const parsed = parseContent(message.content);
+          currentFrontmatter = parsed.frontmatter;
+          currentBody = parsed.body;
+
+          // Update metadata panel
+          updateMetadataPanel(parsed.frontmatter, parsed.isValid, parsed.error);
+
+          // Update Milkdown with body only
           if (!crepe) {
-            // First time: create editor with actual content (not empty)
-            crepe = await initEditor(message.content);
+            crepe = await initEditor(parsed.body);
           } else {
-            await updateEditorContent(message.content);
+            await updateEditorContent(parsed.body);
           }
         } catch (err) {
           console.error("[Crepe] Update failed:", err);
           showError(
             `Failed to update content: ${err instanceof Error ? err.message : String(err)}`,
           );
+        } finally {
+          queueMicrotask(() => {
+            isUpdatingFromExtension = false;
+          });
         }
       }
       break;
@@ -398,7 +472,7 @@ function init() {
   console.log("[Crepe] init() called");
 
   setupToolbarHandlers();
-  setupMetadataTextareaHandlers();
+  setupMetadataHandlers();
 
   // Don't create editor yet - wait for content from extension
   // This prevents showing empty placeholder "Please enter..."
