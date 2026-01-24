@@ -2,6 +2,32 @@
 
 All notable changes to "Milkdown Markdown WYSIWYG" extension.
 
+## \[1.3.0] - 2026-01-24
+
+### Added
+
+* Cursor line highlight with theme support
+  * Highlights current block/paragraph containing cursor
+  * Individual list item highlighting (not entire list)
+  * Skips code blocks (they have built-in highlighting)
+  * Configurable via `tuiMarkdown.highlightCurrentLine` setting
+
+* Responsive max-width layout (1200px) for editor content on large screens
+  * Improves readability on 4K/ultrawide monitors
+  * Full-width on screens ≤1200px (split view compatible)
+
+* Collapsible metadata panel for editing YAML frontmatter
+
+* YAML validation with line number error display
+
+* "Add Metadata" button when document has no frontmatter
+
+* Bidirectional sync between metadata panel and Milkdown editor
+
+* Tab key support in metadata textarea (inserts 2 spaces for YAML indentation)
+
+* `js-yaml` dependency for frontmatter parsing and validation
+
 ## \[1.2.1] - 2026-01-24
 
 ### Fixed

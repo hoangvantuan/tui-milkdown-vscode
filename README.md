@@ -5,8 +5,10 @@ A beautiful WYSIWYG Markdown editor for VS Code powered by Milkdown Crepe.
 ## Features
 
 - **Rich Text Editing**: Edit markdown with a WYSIWYG interface
-- **Theme Selection**: Choose from multiple editor themes (Nord, GitHub, Tokyo Night, etc.)
+- **Theme Selection**: Choose from multiple editor themes (Frame, Nord, etc.)
 - **View Source**: Toggle between WYSIWYG and source view
+- **Cursor Line Highlight**: Visual highlight of current block/paragraph
+- **Metadata Panel**: Collapsible YAML frontmatter editor with validation
 - **Large File Warning**: Protection for files >500KB
 - **Configurable Font Size**: Adjust editor font size (8-32px)
 - **Configurable Heading Sizes**: Customize font sizes for H1-H6 headings (12-72px)
@@ -23,6 +25,7 @@ A beautiful WYSIWYG Markdown editor for VS Code powered by Milkdown Crepe.
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `tuiMarkdown.fontSize` | 16 | Editor font size (8-32px) |
+| `tuiMarkdown.highlightCurrentLine` | true | Enable cursor line highlight |
 | `tuiMarkdown.headingSizes.h1` | 32 | H1 heading font size (12-72px) |
 | `tuiMarkdown.headingSizes.h2` | 28 | H2 heading font size (12-72px) |
 | `tuiMarkdown.headingSizes.h3` | 24 | H3 heading font size (12-72px) |

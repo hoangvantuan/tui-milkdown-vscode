@@ -2,7 +2,7 @@
   "name": "tui-milkdown-vscode",
   "displayName": "Milkdown Markdown WYSIWYG",
   "description": "A beautiful WYSIWYG Markdown editor powered by Milkdown Crepe. Edit markdown files with rich text experience and theme selection.",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "publisher": "tuanhv",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -83,6 +83,11 @@
           "minimum": 12,
           "maximum": 72,
           "description": "Font size for H6 headings (in pixels)"
+        },
+        "tuiMarkdown.highlightCurrentLine": {
+          "type": "boolean",
+          "default": true,
+          "description": "Highlight the line containing the cursor in the editor"
         }
       }
     },
@@ -116,6 +121,7 @@
     "package": "vsce package"
   },
   "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^25.0.10",
     "@types/vscode": "^1.85.0",
     "esbuild": "^0.20.0",
@@ -123,6 +129,7 @@
     "typescript": "^5.3.0"
   },
   "dependencies": {
-    "@milkdown/crepe": "^7.18.0"
+    "@milkdown/crepe": "^7.18.0",
+    "js-yaml": "^4.1.1"
   }
 }
