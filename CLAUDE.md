@@ -72,6 +72,7 @@ Extension provides these settings via `tuiMarkdown.*` namespace:
 - Font size (8-32px), heading sizes H1-H6 (12-72px)
 - `highlightCurrentLine` (boolean, default: true) - Enable cursor line highlight
 - `imageSaveFolder` (string, default: `images`) - Folder to save pasted images (relative to document)
+- `autoRenameImages` (boolean, default: true) - Automatically rename image files when you change the image path in markdown (only when folder stays the same)
 
 ## Milkdown Crepe Integration
 

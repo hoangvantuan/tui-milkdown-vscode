@@ -93,6 +93,11 @@
           "type": "string",
           "default": "images",
           "description": "Folder to save pasted images (relative to document). Use '.' for same folder as document."
+        },
+        "tuiMarkdown.autoRenameImages": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically rename image files when you change the image path in markdown (only when folder stays the same)"
         }
       }
     },
