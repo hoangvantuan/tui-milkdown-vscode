@@ -65,8 +65,8 @@ Uses `@milkdown/crepe` package. Theme variables are manually applied via CSS cus
 ## Metadata Panel
 
 **Frontmatter Handling** (`src/webview/frontmatter.ts`):
-- Parses YAML frontmatter using `gray-matter` library
-- Validates YAML syntax with `js-yaml`, returns error with line numbers
+- Parses and validates YAML frontmatter using `js-yaml` library
+- Returns validation errors with line numbers
 - Reconstructs markdown with frontmatter delimiters (`---`)
 - Handles edge cases: empty frontmatter, missing delimiters, invalid YAML
 
@@ -83,4 +83,4 @@ Uses `@milkdown/crepe` package. Theme variables are manually applied via CSS cus
 3. External document change → Reparse → Refresh metadata display
 4. Empty metadata → Remove frontmatter delimiters from document
 
-**Dependencies**: `gray-matter@^4.0.3`, `@types/js-yaml` (dev)
+**Dependencies**: `js-yaml@^4.1.1`, `@types/js-yaml` (dev)

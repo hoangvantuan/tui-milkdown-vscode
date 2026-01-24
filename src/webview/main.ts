@@ -168,6 +168,8 @@ function updateMetadataPanel(
     // No frontmatter - show Add button
     details.classList.add("hidden");
     addBtn.classList.remove("hidden");
+    textarea.classList.remove("error");
+    errorEl.classList.add("hidden");
   } else {
     // Has frontmatter - show panel
     details.classList.remove("hidden");
@@ -175,12 +177,14 @@ function updateMetadataPanel(
     textarea.value = frontmatter;
     autoResizeTextarea(textarea);
 
-    // Show/hide error
+    // Show/hide error with styling sync
     if (!isValid && error) {
       errorEl.textContent = `(${error})`;
       errorEl.classList.remove("hidden");
+      textarea.classList.add("error");
     } else {
       errorEl.classList.add("hidden");
+      textarea.classList.remove("error");
     }
   }
 }
