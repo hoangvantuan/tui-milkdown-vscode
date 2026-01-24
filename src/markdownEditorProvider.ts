@@ -439,6 +439,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             outline: none;
             border-color: var(--vscode-focusBorder);
           }
+          #metadata-textarea.error {
+            border-color: var(--vscode-inputValidation-errorBorder, #be1100);
+          }
           #add-metadata-btn {
             display: block;
             width: calc(100% - 24px);

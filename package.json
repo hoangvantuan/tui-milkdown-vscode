@@ -116,6 +116,7 @@
     "package": "vsce package"
   },
   "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^25.0.10",
     "@types/vscode": "^1.85.0",
     "esbuild": "^0.20.0",

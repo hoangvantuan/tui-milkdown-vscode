@@ -1,6 +1,10 @@
 import { Crepe } from "@milkdown/crepe";
 import "@milkdown/crepe/theme/common/style.css";
-import { parseContent, reconstructContent } from "./frontmatter";
+import {
+  parseContent,
+  reconstructContent,
+  validateYaml,
+} from "./frontmatter";
 
 declare function acquireVsCodeApi(): {
   postMessage(message: unknown): void;
@@ -198,6 +202,28 @@ function debouncedMetadataEdit(): void {
   }, DEBOUNCE_MS);
 }
 
+function validateAndShowError(): void {
+  const textarea = getMetadataTextarea();
+  const errorEl = getMetadataError();
+
+  if (!textarea || !errorEl) return;
+
+  const result = validateYaml(textarea.value);
+
+  if (result.isValid) {
+    errorEl.classList.add("hidden");
+    textarea.classList.remove("error");
+  } else {
+    const errorMsg =
+      result.line !== undefined
+        ? `Line ${result.line + 1}: ${result.error}`
+        : result.error;
+    errorEl.textContent = `(${errorMsg})`;
+    errorEl.classList.remove("hidden");
+    textarea.classList.add("error");
+  }
+}
+
 function setupMetadataHandlers(): void {
   const textarea = getMetadataTextarea();
   const addBtn = getAddMetadataBtn();
@@ -206,6 +232,18 @@ function setupMetadataHandlers(): void {
     textarea.addEventListener("input", () => {
       autoResizeTextarea(textarea);
       debouncedMetadataEdit();
+    });
+
+    // Validate on blur
+    textarea.addEventListener("blur", () => {
+      validateAndShowError();
+    });
+
+    // Ctrl/Cmd+S triggers validation
+    textarea.addEventListener("keydown", (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        validateAndShowError();
+      }
     });
   }
 

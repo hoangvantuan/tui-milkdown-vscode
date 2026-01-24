@@ -1,4 +1,5 @@
 import matter from "gray-matter";
+import yaml from "js-yaml";
 
 export interface ParsedContent {
   frontmatter: string | null;
@@ -85,9 +86,9 @@ export function reconstructContent(
     return safeBody;
   }
 
-  const yaml = frontmatter.trim();
+  const yamlContent = frontmatter.trim();
   const bodyTrimmed = safeBody.replace(/^\n+/, "");
-  return `---\n${yaml}\n---\n\n${bodyTrimmed}`;
+  return `---\n${yamlContent}\n---\n\n${bodyTrimmed}`;
 }
 
 /**
@@ -98,4 +99,33 @@ export function hasFrontmatter(markdown: string): boolean {
     return false;
   }
   return matter.test(markdown);
+}
+
+export interface ValidationResult {
+  isValid: boolean;
+  error?: string;
+  line?: number;
+}
+
+/**
+ * Validate YAML content syntax
+ */
+export function validateYaml(content: string): ValidationResult {
+  if (!content || content.trim() === "") {
+    return { isValid: true }; // Empty is valid (will remove frontmatter)
+  }
+
+  try {
+    yaml.load(content);
+    return { isValid: true };
+  } catch (err) {
+    if (err instanceof yaml.YAMLException) {
+      return {
+        isValid: false,
+        error: err.reason || "Invalid YAML syntax",
+        line: err.mark?.line,
+      };
+    }
+    return { isValid: false, error: "Invalid YAML" };
+  }
 }
