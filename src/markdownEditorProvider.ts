@@ -244,6 +244,12 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             --heading-h4-size: 20px;
             --heading-h5-size: 18px;
             --heading-h6-size: 16px;
+            --heading-h1-margin: 24px;
+            --heading-h2-margin: 20px;
+            --heading-h3-margin: 16px;
+            --heading-h4-margin: 12px;
+            --heading-h5-margin: 8px;
+            --heading-h6-margin: 8px;
             /* Default Milkdown theme variables (dark) - prevents flash */
             --crepe-color-background: var(--vscode-editor-background, #1e1e1e);
             --crepe-color-on-background: var(--vscode-editor-foreground, #d4d4d4);
@@ -294,12 +300,12 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             line-height: calc(24px * var(--editor-font-scale, 1)) !important;
           }
           /* Heading font sizes */
-          .milkdown .ProseMirror h1 { font-size: var(--heading-h1-size, 32px) !important; }
-          .milkdown .ProseMirror h2 { font-size: var(--heading-h2-size, 28px) !important; }
-          .milkdown .ProseMirror h3 { font-size: var(--heading-h3-size, 24px) !important; }
-          .milkdown .ProseMirror h4 { font-size: var(--heading-h4-size, 20px) !important; }
-          .milkdown .ProseMirror h5 { font-size: var(--heading-h5-size, 18px) !important; }
-          .milkdown .ProseMirror h6 { font-size: var(--heading-h6-size, 16px) !important; }
+          .milkdown .ProseMirror h1 { font-size: var(--heading-h1-size, 32px) !important; margin-top: var(--heading-h1-margin, 24px) !important; }
+          .milkdown .ProseMirror h2 { font-size: var(--heading-h2-size, 28px) !important; margin-top: var(--heading-h2-margin, 20px) !important; }
+          .milkdown .ProseMirror h3 { font-size: var(--heading-h3-size, 24px) !important; margin-top: var(--heading-h3-margin, 16px) !important; }
+          .milkdown .ProseMirror h4 { font-size: var(--heading-h4-size, 20px) !important; margin-top: var(--heading-h4-margin, 12px) !important; }
+          .milkdown .ProseMirror h5 { font-size: var(--heading-h5-size, 18px) !important; margin-top: var(--heading-h5-margin, 8px) !important; }
+          .milkdown .ProseMirror h6 { font-size: var(--heading-h6-size, 16px) !important; margin-top: var(--heading-h6-margin, 8px) !important; }
 
           #toolbar {
             display: flex;
