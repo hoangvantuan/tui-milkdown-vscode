@@ -1,5 +1,6 @@
 import { Crepe } from "@milkdown/crepe";
 import "@milkdown/crepe/theme/common/style.css";
+import "./themes/index.css";
 import { prosePluginsCtx } from "@milkdown/kit/core";
 import {
   parseContent,
@@ -14,94 +15,31 @@ declare function acquireVsCodeApi(): {
   setState(state: unknown): void;
 };
 
-type ThemeName = "frame" | "frame-dark" | "nord" | "nord-dark";
+type ThemeName =
+  | "frame"
+  | "frame-dark"
+  | "nord"
+  | "nord-dark"
+  | "crepe"
+  | "crepe-dark"
+  | "catppuccin-latte"
+  | "catppuccin-frappe"
+  | "catppuccin-macchiato"
+  | "catppuccin-mocha";
 
-const THEMES: ThemeName[] = ["frame", "frame-dark", "nord", "nord-dark"];
+const THEMES: ThemeName[] = [
+  "frame",
+  "frame-dark",
+  "nord",
+  "nord-dark",
+  "crepe",
+  "crepe-dark",
+  "catppuccin-latte",
+  "catppuccin-frappe",
+  "catppuccin-macchiato",
+  "catppuccin-mocha",
+];
 const DEBOUNCE_MS = 300;
-
-// Theme CSS variables for each Milkdown theme
-const THEME_VARIABLES: Record<ThemeName, Record<string, string>> = {
-  frame: {
-    "--crepe-color-background": "#ffffff",
-    "--crepe-color-on-background": "#000000",
-    "--crepe-color-surface": "#f7f7f7",
-    "--crepe-color-surface-low": "#ededed",
-    "--crepe-color-on-surface": "#1c1c1c",
-    "--crepe-color-on-surface-variant": "#4d4d4d",
-    "--crepe-color-outline": "#a8a8a8",
-    "--crepe-color-primary": "#333333",
-    "--crepe-color-secondary": "#cfcfcf",
-    "--crepe-color-on-secondary": "#000000",
-    "--crepe-color-inverse": "#f0f0f0",
-    "--crepe-color-on-inverse": "#1a1a1a",
-    "--crepe-color-inline-code": "#ba1a1a",
-    "--crepe-color-error": "#ba1a1a",
-    "--crepe-color-hover": "#e0e0e0",
-    "--crepe-color-selected": "#d5d5d5",
-    "--crepe-color-inline-area": "#cacaca",
-    "--crepe-color-caret": "#333333",
-  },
-  "frame-dark": {
-    "--crepe-color-background": "#1a1a1a",
-    "--crepe-color-on-background": "#ffffff",
-    "--crepe-color-surface": "#262626",
-    "--crepe-color-surface-low": "#303030",
-    "--crepe-color-on-surface": "#e0e0e0",
-    "--crepe-color-on-surface-variant": "#b0b0b0",
-    "--crepe-color-outline": "#6b6b6b",
-    "--crepe-color-primary": "#e0e0e0",
-    "--crepe-color-secondary": "#404040",
-    "--crepe-color-on-secondary": "#ffffff",
-    "--crepe-color-inverse": "#2a2a2a",
-    "--crepe-color-on-inverse": "#e0e0e0",
-    "--crepe-color-inline-code": "#ff6b6b",
-    "--crepe-color-error": "#ff6b6b",
-    "--crepe-color-hover": "#3a3a3a",
-    "--crepe-color-selected": "#4a4a4a",
-    "--crepe-color-inline-area": "#505050",
-    "--crepe-color-caret": "#ffffff",
-  },
-  nord: {
-    "--crepe-color-background": "#fdfcff",
-    "--crepe-color-on-background": "#1b1c1d",
-    "--crepe-color-surface": "#f8f9ff",
-    "--crepe-color-surface-low": "#f2f3fa",
-    "--crepe-color-on-surface": "#191c20",
-    "--crepe-color-on-surface-variant": "#43474e",
-    "--crepe-color-outline": "#73777f",
-    "--crepe-color-primary": "#37618e",
-    "--crepe-color-secondary": "#d7e3f8",
-    "--crepe-color-on-secondary": "#101c2b",
-    "--crepe-color-inverse": "#2e3135",
-    "--crepe-color-on-inverse": "#eff0f7",
-    "--crepe-color-inline-code": "#ba1a1a",
-    "--crepe-color-error": "#ba1a1a",
-    "--crepe-color-hover": "#eceef4",
-    "--crepe-color-selected": "#e1e2e8",
-    "--crepe-color-inline-area": "#d8dae0",
-    "--crepe-color-caret": "#37618e",
-  },
-  "nord-dark": {
-    "--crepe-color-background": "#2e3440",
-    "--crepe-color-on-background": "#eceff4",
-    "--crepe-color-surface": "#3b4252",
-    "--crepe-color-surface-low": "#434c5e",
-    "--crepe-color-on-surface": "#e5e9f0",
-    "--crepe-color-on-surface-variant": "#d8dee9",
-    "--crepe-color-outline": "#4c566a",
-    "--crepe-color-primary": "#88c0d0",
-    "--crepe-color-secondary": "#434c5e",
-    "--crepe-color-on-secondary": "#eceff4",
-    "--crepe-color-inverse": "#3b4252",
-    "--crepe-color-on-inverse": "#eceff4",
-    "--crepe-color-inline-code": "#bf616a",
-    "--crepe-color-error": "#bf616a",
-    "--crepe-color-hover": "#434c5e",
-    "--crepe-color-selected": "#4c566a",
-    "--crepe-color-inline-area": "#4c566a",
-    "--crepe-color-caret": "#88c0d0",
-  },
-};
 
 const vscode = acquireVsCodeApi();
 
@@ -311,19 +249,8 @@ function showError(message: string): void {
 }
 
 // Theme management
-function applyThemeVariables(themeName: ThemeName): void {
-  const milkdownEl = document.querySelector(".milkdown") as HTMLElement | null;
-  if (milkdownEl) {
-    const variables = THEME_VARIABLES[themeName];
-    for (const [prop, value] of Object.entries(variables)) {
-      milkdownEl.style.setProperty(prop, value);
-    }
-  }
-}
-
 function setTheme(themeName: ThemeName, saveGlobal = true): void {
   currentTheme = themeName;
-  applyThemeVariables(themeName);
 
   THEMES.forEach((t) => document.body.classList.remove(`theme-${t}`));
   document.body.classList.add(`theme-${themeName}`);
@@ -341,15 +268,13 @@ function setTheme(themeName: ThemeName, saveGlobal = true): void {
 function initTheme(vsCodeTheme: "dark" | "light"): void {
   // Priority: globalThemeReceived > default based on VS Code theme
   if (globalThemeReceived) {
-    // Global theme already applied, just ensure it's set
-    applyThemeVariables(globalThemeReceived);
+    // Global theme already applied via CSS class
     return;
   }
 
   // No global theme yet, use default based on VS Code theme
   const defaultTheme = vsCodeTheme === "dark" ? "frame-dark" : "frame";
   currentTheme = defaultTheme;
-  applyThemeVariables(defaultTheme);
 
   THEMES.forEach((t) => document.body.classList.remove(`theme-${t}`));
   document.body.classList.add(`theme-${defaultTheme}`);
@@ -398,9 +323,10 @@ async function initEditor(initialContent: string = ""): Promise<Crepe | null> {
     const instance = new Crepe({
       root: editorEl,
       defaultValue: initialContent,
-      features: {
-        [Crepe.Feature.LinkTooltip]: false,
-        [Crepe.Feature.Toolbar]: false,
+      featureConfigs: {
+        [Crepe.Feature.Placeholder]: {
+          text: "Type something...",
+        },
       },
     });
 
@@ -428,8 +354,6 @@ async function initEditor(initialContent: string = ""): Promise<Crepe | null> {
     });
 
     await instance.create();
-
-    applyThemeVariables(currentTheme);
     hideLoading();
 
     console.log("[Crepe] Editor created successfully!");

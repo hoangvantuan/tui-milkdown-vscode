@@ -257,18 +257,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             --heading-h4-margin: 12px;
             --heading-h5-margin: 8px;
             --heading-h6-margin: 8px;
-            /* Default Milkdown theme variables (dark) - prevents flash */
-            --crepe-color-background: var(--vscode-editor-background, #1e1e1e);
-            --crepe-color-on-background: var(--vscode-editor-foreground, #d4d4d4);
-            --crepe-color-surface: #262626;
-            --crepe-color-surface-low: #303030;
-            --crepe-color-on-surface: #e0e0e0;
-            --crepe-color-on-surface-variant: #b0b0b0;
-            --crepe-color-outline: #6b6b6b;
-            --crepe-color-primary: #e0e0e0;
-            --crepe-color-secondary: #404040;
-            --crepe-color-on-secondary: #ffffff;
-            --crepe-color-selected: #4a4a4a;
             --content-max-width: 1200px;
           }
           * { box-sizing: border-box; }
@@ -278,8 +266,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             width: 100%;
             height: 100%;
             overflow: hidden;
-            background: var(--vscode-editor-background, #1e1e1e);
-            color: var(--vscode-editor-foreground, #d4d4d4);
           }
           .milkdown .ProseMirror {
             padding: 10px 40px 100px 40px;
@@ -290,6 +276,11 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .milkdown .ProseMirror blockquote {
             font-size: calc(16px * var(--editor-font-scale, 1));
             line-height: calc(24px * var(--editor-font-scale, 1));
+          }
+          /* Override VSCode default blockquote styles to match theme */
+          .milkdown .ProseMirror blockquote {
+            background: var(--crepe-color-surface);
+            border-color: var(--crepe-color-outline);
           }
           .milkdown .ProseMirror li {
             font-size: calc(16px * var(--editor-font-scale, 1));
@@ -319,9 +310,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           /* Line highlight for current cursor position */
           .milkdown .ProseMirror .line-highlight {
             position: relative;
-            z-index: 0; /* Create stacking context so ::before z-index:-1 stays above parent bg */
+            z-index: 0; /* Create stacking context so ::after z-index:-1 stays above parent bg */
           }
-          .milkdown .ProseMirror .line-highlight::before {
+          .milkdown .ProseMirror .line-highlight::after {
             content: '';
             position: absolute;
             top: 0;
@@ -333,8 +324,12 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             z-index: -1;
           }
           /* Dark themes override */
-          body.theme-frame-dark .milkdown .ProseMirror .line-highlight::before,
-          body.theme-nord-dark .milkdown .ProseMirror .line-highlight::before {
+          body.theme-frame-dark .milkdown .ProseMirror .line-highlight::after,
+          body.theme-nord-dark .milkdown .ProseMirror .line-highlight::after,
+          body.theme-crepe-dark .milkdown .ProseMirror .line-highlight::after,
+          body.theme-catppuccin-frappe .milkdown .ProseMirror .line-highlight::after,
+          body.theme-catppuccin-macchiato .milkdown .ProseMirror .line-highlight::after,
+          body.theme-catppuccin-mocha .milkdown .ProseMirror .line-highlight::after {
             background: rgba(255, 255, 255, 0.08);
           }
 
@@ -526,6 +521,12 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             <option value="frame-dark">Frame Dark</option>
             <option value="nord">Nord</option>
             <option value="nord-dark">Nord Dark</option>
+            <option value="crepe">Crepe</option>
+            <option value="crepe-dark">Crepe Dark</option>
+            <option value="catppuccin-latte">Catppuccin Latte</option>
+            <option value="catppuccin-frappe">Catppuccin Frappé</option>
+            <option value="catppuccin-macchiato">Catppuccin Macchiato</option>
+            <option value="catppuccin-mocha">Catppuccin Mocha</option>
           </select>
           <button id="btn-source" class="view-source-btn" aria-label="View source in text editor">View Source</button>
         </div>
