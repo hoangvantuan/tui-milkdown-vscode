@@ -45,9 +45,11 @@ npm run package    # Package extension as .vsix
 ```
 src/
 ├── extension.ts              # Entry point, registers MarkdownEditorProvider
-├── markdownEditorProvider.ts # CustomTextEditorProvider implementation
+├── markdownEditorProvider.ts # CustomTextEditorProvider + HTML/CSS template
 ├── utils/getNonce.ts         # CSP nonce generator
-└── webview/main.ts           # Browser-side Milkdown Crepe editor
+└── webview/
+    ├── main.ts               # Browser-side Milkdown Crepe editor
+    └── frontmatter.ts        # YAML parsing & validation utilities
 ```
 
 ## Configuration Settings
@@ -58,3 +60,25 @@ Extension provides these settings via `tuiMarkdown.*` namespace:
 ## Milkdown Crepe Integration
 
 Uses `@milkdown/crepe` package. Theme variables are manually applied via CSS custom properties in `THEME_VARIABLES` map. Editor recreates on content updates (no incremental update API).
+
+## Metadata Panel
+
+**Frontmatter Handling** (`src/webview/frontmatter.ts`):
+- Parses YAML frontmatter using `gray-matter` library
+- Validates YAML syntax with `js-yaml`, returns error with line numbers
+- Reconstructs markdown with frontmatter delimiters (`---`)
+- Handles edge cases: empty frontmatter, missing delimiters, invalid YAML
+
+**Panel UI** (integrated in `src/markdownEditorProvider.ts` HTML):
+- Collapsible `<details>` element styled with VSCode theme variables
+- Textarea for YAML editing with syntax error display (red border + error message)
+- "Add Metadata" button when no frontmatter exists
+- Panel integrates seamlessly below toolbar, above editor
+
+**Bidirectional Sync**:
+1. Document opens → Parse content → Show metadata panel (or "Add Metadata" button)
+2. User edits metadata textarea → Validates YAML → Updates document (triggers `edit` message)
+3. External document change → Reparse → Refresh metadata display
+4. Empty metadata → Remove frontmatter delimiters from document
+
+**Dependencies**: `gray-matter@^4.0.3`, `@types/js-yaml` (dev)
