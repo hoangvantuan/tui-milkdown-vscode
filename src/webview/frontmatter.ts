@@ -1,4 +1,3 @@
-import matter from "gray-matter";
 import yaml from "js-yaml";
 
 export interface ParsedContent {
@@ -7,6 +6,10 @@ export interface ParsedContent {
   isValid: boolean;
   error?: string;
 }
+
+// Regex to match frontmatter block: starts with ---, ends with ---
+const FRONTMATTER_REGEX = /^---[ \t]*\n([\s\S]*?)\n---[ \t]*(?:\n|$)/;
+const EMPTY_FRONTMATTER_REGEX = /^---[ \t]*\n---[ \t]*(?:\n|$)/;
 
 // Max content size for regex operations (1MB)
 const MAX_CONTENT_SIZE = 1024 * 1024;
@@ -30,47 +33,40 @@ export function parseContent(markdown: string): ParsedContent {
     };
   }
 
+  // Check for empty frontmatter (---\n---)
+  const emptyMatch = markdown.match(EMPTY_FRONTMATTER_REGEX);
+  if (emptyMatch) {
+    return {
+      frontmatter: "",
+      body: markdown.slice(emptyMatch[0].length),
+      isValid: true,
+    };
+  }
+
+  // Check for frontmatter with content
+  const match = markdown.match(FRONTMATTER_REGEX);
+  if (!match) {
+    return { frontmatter: null, body: markdown, isValid: true };
+  }
+
+  const rawYaml = match[1];
+  const body = markdown.slice(match[0].length);
+
+  // Validate YAML syntax
   try {
-    const parsed = matter(markdown);
-    const hasFm = Object.keys(parsed.data).length > 0;
-
-    if (!hasFm) {
-      // Check for empty frontmatter (---\n---)
-      const emptyMatch = markdown.match(/^---\s*\n---\s*\n?/);
-      if (emptyMatch) {
-        return {
-          frontmatter: "",
-          body: markdown.slice(emptyMatch[0].length),
-          isValid: true,
-        };
-      }
-      return { frontmatter: null, body: markdown, isValid: true };
-    }
-
-    // Extract raw YAML without delimiters
-    const rawYaml = matter
-      .stringify("", parsed.data)
-      .replace(/^---\n/, "")
-      .replace(/\n---\s*$/, "")
-      .trim();
-
+    yaml.load(rawYaml);
     return {
       frontmatter: rawYaml,
-      body: parsed.content,
+      body,
       isValid: true,
     };
   } catch (err) {
-    // Invalid YAML - try to extract raw frontmatter
-    const match = markdown.match(/^---\n([\s\S]*?)\n---\n?/);
-    if (match) {
-      return {
-        frontmatter: match[1],
-        body: markdown.slice(match[0].length),
-        isValid: false,
-        error: err instanceof Error ? err.message : "Invalid YAML",
-      };
-    }
-    return { frontmatter: null, body: markdown, isValid: true };
+    return {
+      frontmatter: rawYaml,
+      body,
+      isValid: false,
+      error: err instanceof Error ? err.message : "Invalid YAML",
+    };
   }
 }
 
@@ -98,7 +94,7 @@ export function hasFrontmatter(markdown: string): boolean {
   if (!markdown || typeof markdown !== "string") {
     return false;
   }
-  return matter.test(markdown);
+  return FRONTMATTER_REGEX.test(markdown) || EMPTY_FRONTMATTER_REGEX.test(markdown);
 }
 
 export interface ValidationResult {

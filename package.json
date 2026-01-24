@@ -125,6 +125,6 @@
   },
   "dependencies": {
     "@milkdown/crepe": "^7.18.0",
-    "gray-matter": "^4.0.3"
+    "js-yaml": "^4.1.1"
   }
 }
