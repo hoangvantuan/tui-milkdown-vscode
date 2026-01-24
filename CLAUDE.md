@@ -9,10 +9,11 @@ VSCode extension providing WYSIWYG Markdown editing using Milkdown Crepe editor.
 ## Commands
 
 ```bash
-npm run build     # Build extension and webview bundles
-npm run watch     # Watch mode for development
-npm run lint      # TypeScript type checking (tsc --noEmit)
-npm run package   # Package extension as .vsix
+npm run build      # Production build (minified, no sourcemaps)
+npm run build:dev  # Development build (with sourcemaps, unminified)
+npm run watch      # Watch mode for development
+npm run lint       # TypeScript type checking (tsc --noEmit)
+npm run package    # Package extension as .vsix
 ```
 
 ## Architecture
@@ -20,6 +21,11 @@ npm run package   # Package extension as .vsix
 **Dual-bundle build** using esbuild (`esbuild.config.js`):
 - Extension bundle: `src/extension.ts` → `out/extension.js` (CJS, Node platform)
 - Webview bundle: `src/webview/main.ts` → `out/webview/main.js` (IIFE, browser platform)
+
+**Build configuration**:
+- Production mode (default): minified bundles, no sourcemaps, tree-shaking enabled
+- Development mode (`--dev` flag): sourcemaps enabled, unminified, tree-shaking enabled
+- Watch mode (`--watch` flag): rebuilds on file changes, sourcemaps enabled
 
 **Extension ↔ Webview communication flow:**
 1. Extension registers `CustomTextEditorProvider` for `.md` files
