@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { MAX_FILE_SIZE } from "./constants";
 import { getNonce } from "./utils/getNonce";
 
 /**
@@ -15,7 +16,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     webviewPanel: vscode.WebviewPanel,
     _token: vscode.CancellationToken,
   ): Promise<void> {
-    const MAX_FILE_SIZE = 500 * 1024;
     const fileSize = Buffer.byteLength(document.getText(), "utf8");
 
     if (fileSize > MAX_FILE_SIZE) {

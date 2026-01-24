@@ -46,6 +46,7 @@ npm run package    # Package extension as .vsix
 src/
 ├── extension.ts              # Entry point, registers MarkdownEditorProvider
 ├── markdownEditorProvider.ts # CustomTextEditorProvider + HTML/CSS template
+├── constants.ts              # Shared constants (MAX_FILE_SIZE)
 ├── utils/getNonce.ts         # CSP nonce generator
 └── webview/
     ├── main.ts               # Browser-side Milkdown Crepe editor

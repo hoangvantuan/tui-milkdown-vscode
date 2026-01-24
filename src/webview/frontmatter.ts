@@ -1,4 +1,5 @@
 import yaml from "js-yaml";
+import { MAX_FILE_SIZE } from "../constants";
 
 export interface ParsedContent {
   frontmatter: string | null;
@@ -11,8 +12,6 @@ export interface ParsedContent {
 const FRONTMATTER_REGEX = /^---[ \t]*\n([\s\S]*?)\n---[ \t]*(?:\n|$)/;
 const EMPTY_FRONTMATTER_REGEX = /^---[ \t]*\n---[ \t]*(?:\n|$)/;
 
-// Max content size for regex operations (1MB)
-const MAX_CONTENT_SIZE = 1024 * 1024;
 
 /**
  * Parse markdown content, extracting frontmatter
@@ -24,7 +23,7 @@ export function parseContent(markdown: string): ParsedContent {
   }
 
   // Size guard to prevent regex performance issues
-  if (markdown.length > MAX_CONTENT_SIZE) {
+  if (markdown.length > MAX_FILE_SIZE) {
     return {
       frontmatter: null,
       body: markdown,
