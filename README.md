@@ -10,6 +10,8 @@ A beautiful WYSIWYG Markdown editor for VS Code powered by Milkdown Crepe.
 - **Large File Warning**: Protection for files >500KB
 - **Configurable Font Size**: Adjust editor font size (8-32px)
 - **Configurable Heading Sizes**: Customize font sizes for H1-H6 headings (12-72px)
+- **Configurable Line Height**: Adjust line spacing (1.0-3.0 multiplier)
+- **Configurable Max Width**: Set maximum editor width (px, %, ch units)
 
 ## Usage
 
@@ -29,6 +31,8 @@ A beautiful WYSIWYG Markdown editor for VS Code powered by Milkdown Crepe.
 | `tuiMarkdown.headingSizes.h4` | 20 | H4 heading font size (12-72px) |
 | `tuiMarkdown.headingSizes.h5` | 18 | H5 heading font size (12-72px) |
 | `tuiMarkdown.headingSizes.h6` | 16 | H6 heading font size (12-72px) |
+| `tuiMarkdown.lineHeight` | 1.6 | Line height multiplier (1.0-3.0) |
+| `tuiMarkdown.maxWidth` | 800px | Max editor width (e.g., '800px', '90%', '65ch') |
 
 ## Requirements
 

@@ -50,6 +50,13 @@ src/
 └── webview/main.ts           # Browser-side Milkdown Crepe editor
 ```
 
+## Configuration Settings
+
+Extension provides these settings via `tuiMarkdown.*` namespace:
+- Font size (8-32px), heading sizes H1-H6 (12-72px)
+- Line height multiplier (1.0-3.0)
+- Max editor width (supports px, %, ch units)
+
 ## Milkdown Crepe Integration
 
 Uses `@milkdown/crepe` package. Theme variables are manually applied via CSS custom properties in `THEME_VARIABLES` map. Editor recreates on content updates (no incremental update API).
