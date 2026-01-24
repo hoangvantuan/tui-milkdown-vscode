@@ -2,6 +2,15 @@
 
 All notable changes to "Milkdown Markdown WYSIWYG" extension.
 
+## \[1.3.1] - 2026-01-24
+
+### Added
+
+* Table auto-width CSS for proportional column sizing
+  * Columns size automatically based on content
+  * Table spans full editor width
+  * Cell text wraps naturally for responsive display
+
 ## \[1.3.0] - 2026-01-24
 
 ### Added
