@@ -1,5 +1,10 @@
 import { Crepe } from "@milkdown/crepe";
 import "@milkdown/crepe/theme/common/style.css";
+import {
+  parseContent,
+  reconstructContent,
+  type ParsedContent,
+} from "./frontmatter";
 
 declare function acquireVsCodeApi(): {
   postMessage(message: unknown): void;
@@ -99,6 +104,7 @@ let isUpdatingFromExtension = false;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let currentTheme: ThemeName = "frame";
 let globalThemeReceived: ThemeName | null = null; // Theme from extension globalState
+let currentParsed: ParsedContent | null = null; // Current parsed frontmatter state
 
 function debouncedPostEdit(content: string): void {
   if (debounceTimer !== null) clearTimeout(debounceTimer);
