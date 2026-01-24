@@ -121,6 +121,13 @@ const getThemeSelect = () =>
 const getSourceBtn = () => document.getElementById("btn-source");
 const getLoadingIndicator = () => document.getElementById("loading-indicator");
 
+// Metadata panel DOM elements
+const getMetadataDetails = () => document.getElementById("metadata-details");
+const getMetadataTextarea = () =>
+  document.getElementById("metadata-textarea") as HTMLTextAreaElement | null;
+const getAddMetadataBtn = () => document.getElementById("add-metadata-btn");
+const getMetadataError = () => document.getElementById("metadata-error");
+
 function hideLoading(): void {
   const loading = getLoadingIndicator();
   if (loading) {
@@ -133,6 +140,22 @@ function showLoading(): void {
   if (loading) {
     loading.classList.remove("hidden");
   }
+}
+
+// Metadata panel auto-resize
+function autoResizeTextarea(textarea: HTMLTextAreaElement): void {
+  textarea.style.height = "auto";
+  const newHeight = Math.min(Math.max(textarea.scrollHeight, 80), 300);
+  textarea.style.height = `${newHeight}px`;
+}
+
+function setupMetadataTextareaHandlers(): void {
+  const textarea = getMetadataTextarea();
+  if (!textarea) return;
+
+  textarea.addEventListener("input", () => {
+    autoResizeTextarea(textarea);
+  });
 }
 
 function escapeHtml(text: string): string {
@@ -375,6 +398,7 @@ function init() {
   console.log("[Crepe] init() called");
 
   setupToolbarHandlers();
+  setupMetadataTextareaHandlers();
 
   // Don't create editor yet - wait for content from extension
   // This prevents showing empty placeholder "Please enter..."

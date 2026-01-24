@@ -381,6 +381,83 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             to { transform: rotate(360deg); }
           }
 
+          /* Metadata Panel */
+          #metadata-panel {
+            border-bottom: 1px solid var(--vscode-panel-border);
+            background: var(--vscode-editor-background);
+          }
+          #metadata-details { margin: 0; }
+          #metadata-summary {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            cursor: pointer;
+            user-select: none;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--vscode-editor-foreground);
+            background: var(--vscode-editor-background);
+          }
+          #metadata-summary:hover {
+            background: var(--vscode-list-hoverBackground);
+          }
+          #metadata-summary:focus {
+            outline: 2px solid var(--vscode-focusBorder);
+            outline-offset: -2px;
+          }
+          .toggle-icon::before {
+            content: '▼';
+            font-size: 10px;
+            transition: transform 0.15s ease;
+          }
+          #metadata-details:not([open]) .toggle-icon::before {
+            transform: rotate(-90deg);
+          }
+          .error-indicator {
+            color: var(--vscode-errorForeground);
+            font-size: 11px;
+          }
+          .error-indicator.hidden { display: none; }
+          .metadata-content { padding: 0 12px 12px; }
+          #metadata-textarea {
+            width: 100%;
+            min-height: 80px;
+            max-height: 300px;
+            padding: 8px;
+            font-family: var(--vscode-editor-font-family, monospace);
+            font-size: 13px;
+            line-height: 1.4;
+            color: var(--vscode-input-foreground);
+            background: var(--vscode-input-background);
+            border: 1px solid var(--vscode-input-border);
+            border-radius: 4px;
+            resize: vertical;
+            overflow-y: auto;
+          }
+          #metadata-textarea:focus {
+            outline: none;
+            border-color: var(--vscode-focusBorder);
+          }
+          #add-metadata-btn {
+            display: block;
+            width: calc(100% - 24px);
+            margin: 8px 12px;
+            padding: 8px 12px;
+            font-size: 12px;
+            color: var(--vscode-button-secondaryForeground);
+            background: var(--vscode-button-secondaryBackground);
+            border: 1px dashed var(--vscode-input-border);
+            border-radius: 4px;
+            cursor: pointer;
+            text-align: center;
+          }
+          #add-metadata-btn:hover {
+            background: var(--vscode-list-hoverBackground);
+          }
+          #add-metadata-btn.hidden { display: none; }
+          #metadata-details.hidden { display: none; }
+
         </style>
       </head>
       <body style="background: var(--vscode-editor-background, #1e1e1e);">
@@ -392,6 +469,25 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             <option value="nord-dark">Nord Dark</option>
           </select>
           <button id="btn-source" class="view-source-btn" aria-label="View source in text editor">View Source</button>
+        </div>
+        <div id="metadata-panel">
+          <details id="metadata-details" class="hidden" open>
+            <summary id="metadata-summary">
+              <span class="toggle-icon"></span>
+              <span class="panel-label">Metadata</span>
+              <span id="metadata-error" class="error-indicator hidden"></span>
+            </summary>
+            <div class="metadata-content">
+              <textarea
+                id="metadata-textarea"
+                spellcheck="false"
+                placeholder="key: value"
+                aria-label="YAML frontmatter"></textarea>
+            </div>
+          </details>
+          <button id="add-metadata-btn" class="hidden" aria-label="Add metadata">
+            + Add Metadata
+          </button>
         </div>
         <div id="editor-container">
           <div id="loading-indicator">
