@@ -69,11 +69,39 @@ function buildImageMap(
 }
 
 /**
+ * Build mapping of relative image paths to absolute paths for rename detection.
+ * Filters out remote URLs (http/https/data).
+ */
+function buildOriginalImageMap(
+  content: string,
+  documentUri: vscode.Uri,
+): Map<string, string> {
+  const map = new Map<string, string>();
+  const paths = extractImagePaths(content);
+
+  for (const path of paths) {
+    if (isRemoteUrl(path)) continue;
+    const resolved = resolveImagePath(path, documentUri);
+    if (resolved) {
+      map.set(path, resolved.fsPath);
+    }
+  }
+  return map;
+}
+
+/**
  * CustomTextEditorProvider for Markdown WYSIWYG editing.
  * Registers for .md files via package.json customEditors.
  */
 export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
   public static readonly viewType = "tuiMarkdown.editor";
+
+  /**
+   * Stores original image paths per document for rename detection.
+   * Key: document.uri.toString()
+   * Value: Map<relativePath, absolutePathString>
+   */
+  private originalImagePaths: Map<string, Map<string, string>> = new Map();
 
   constructor(private readonly context: vscode.ExtensionContext) {}
 
@@ -99,6 +127,13 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         return;
       }
     }
+
+    // Store original image paths for rename detection
+    const docKey = document.uri.toString();
+    this.originalImagePaths.set(
+      docKey,
+      buildOriginalImageMap(document.getText(), document.uri),
+    );
 
     // Build localResourceRoots with document folder and workspace
     const documentFolder = vscode.Uri.joinPath(document.uri, "..");
@@ -344,6 +379,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     );
 
     webviewPanel.onDidDispose(() => {
+      this.originalImagePaths.delete(docKey);
       disposables.forEach((d) => d.dispose());
     });
   }
