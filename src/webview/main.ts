@@ -8,6 +8,7 @@ import {
   validateYaml,
 } from "./frontmatter";
 import { createLineHighlightPlugin } from "./line-highlight-plugin";
+import { createPasteLinkPlugin } from "./paste-link-plugin";
 import { setupImageEditOverlay, handleUrlEditResponse, handleImageRenameResponse, setImageMap } from "./image-edit-plugin";
 
 declare function acquireVsCodeApi(): {
@@ -631,18 +632,15 @@ async function initEditor(initialContent: string = ""): Promise<Crepe | null> {
     });
 
     // Inject ProseMirror plugins
-    if (highlightCurrentLine) {
-      try {
-        instance.editor.config((ctx) => {
-          ctx.update(prosePluginsCtx, (plugins) => [
-            ...plugins,
-            createLineHighlightPlugin(),
-          ]);
-        });
-      } catch (err) {
-        console.warn("[Crepe] Failed to inject line highlight plugin:", err);
-      }
-    }
+    instance.editor.config((ctx) => {
+      ctx.update(prosePluginsCtx, (plugins) => {
+        const pluginsToAdd = [createPasteLinkPlugin()];
+        if (highlightCurrentLine) {
+          pluginsToAdd.push(createLineHighlightPlugin());
+        }
+        return [...plugins, ...pluginsToAdd];
+      });
+    });
 
     instance.on((listener) => {
       listener.markdownUpdated((_, markdown) => {
