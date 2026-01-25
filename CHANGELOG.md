@@ -18,6 +18,23 @@ All notable changes to "Milkdown Markdown WYSIWYG" extension.
   * Supports both relative and absolute paths
   * Automatic path resolution for webview display
 
+* **Image URL Editing**
+  * Hover on image to show edit icon (pencil button)
+  * Double-click on image to edit URL/path via VSCode input box
+  * Shows original path instead of webview URI
+
+* **Auto Rename Images**
+  * Automatically rename image files when you change the path in markdown
+  * Only triggers when image folder remains the same
+  * Updates all references in workspace `.md` files
+  * Configurable via `tuiMarkdown.autoRenameImages` setting (default: true)
+
+* **Auto Delete Images**
+  * Automatically delete image files when removed from markdown
+  * Moves files to Trash (recoverable)
+  * Shows warning if image is used in other `.md` files
+  * Configurable via `tuiMarkdown.autoDeleteImages` setting (default: true)
+
 ### Changed
 
 * Extended `localResourceRoots` to include document folder and workspace for image loading

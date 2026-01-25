@@ -1,13 +1,14 @@
 import { Crepe } from "@milkdown/crepe";
 import "@milkdown/crepe/theme/common/style.css";
 import "./themes/index.css";
-import { prosePluginsCtx } from "@milkdown/kit/core";
+import { prosePluginsCtx, editorViewCtx } from "@milkdown/kit/core";
 import {
   parseContent,
   reconstructContent,
   validateYaml,
 } from "./frontmatter";
 import { createLineHighlightPlugin } from "./line-highlight-plugin";
+import { setupImageEditOverlay, handleUrlEditResponse, handleImageRenameResponse, setImageMap } from "./image-edit-plugin";
 
 declare function acquireVsCodeApi(): {
   postMessage(message: unknown): void;
@@ -86,6 +87,64 @@ function transformForSave(
 // Inline image handling - save pasted images to file
 // Matches both blob: URLs and data: URIs
 const INLINE_IMAGE_REGEX = /!\[([^\]]*)\]\(((?:blob:|data:image\/)[^)]+)\)/g;
+
+// Node types that represent images in Milkdown
+const IMAGE_NODE_TYPES = ["image-block", "image", "image-inline"];
+
+/**
+ * Update image node src using ProseMirror transaction
+ * Returns true if update was successful
+ */
+function updateImageNodeSrc(webviewUri: string): boolean {
+  if (!crepe) return false;
+
+  try {
+    const view = crepe.editor?.ctx?.get(editorViewCtx);
+    if (!view) return false;
+
+    const { state, dispatch } = view;
+
+    // Collect nodes to update
+    const nodesToUpdate: Array<{ pos: number; node: typeof state.doc.firstChild; nodeSize: number }> = [];
+    state.doc.descendants((node, pos) => {
+      if (!IMAGE_NODE_TYPES.includes(node.type.name)) return;
+      const src = node.attrs.src as string;
+      if (!src || (!src.startsWith("data:") && !src.startsWith("blob:"))) return;
+      nodesToUpdate.push({ pos, node, nodeSize: node.nodeSize });
+    });
+
+    if (nodesToUpdate.length === 0) return false;
+
+    // Sort by position descending
+    nodesToUpdate.sort((a, b) => b.pos - a.pos);
+
+    let tr = state.tr;
+    for (const { pos, node, nodeSize } of nodesToUpdate) {
+      const newNode = node!.type.create(
+        { ...node!.attrs, src: webviewUri },
+        node!.content,
+        node!.marks
+      );
+      tr = tr.replaceWith(pos, pos + nodeSize, newNode);
+    }
+
+    isUpdatingFromExtension = true;
+    dispatch(tr);
+
+    // Force synchronous DOM update
+    view.updateState(view.state);
+
+    queueMicrotask(() => {
+      isUpdatingFromExtension = false;
+    });
+
+    return true;
+  } catch (err) {
+    console.warn("[ImageSave] Failed to update node:", err);
+    return false;
+  }
+}
+
 const pendingImageSaves = new Map<string, number>(); // Track images being saved with timestamp
 const PENDING_IMAGE_TIMEOUT = 10000; // 10 seconds timeout for pending images
 
@@ -137,8 +196,8 @@ async function handleCrepeImageUpload(file: File): Promise<string> {
     const reader = new FileReader();
     reader.onloadend = () => {
       const base64 = reader.result as string;
-      const mimeType = file.type || "image/png";
-      const filename = generateImageFilename(mimeType);
+      // Use original filename from file picker
+      const filename = file.name;
       const uploadId = `upload-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
 
       // Store promise handlers
@@ -204,12 +263,25 @@ async function processInlineImages(content: string): Promise<boolean> {
         filename,
         blobUrl: imageUrl, // Keep field name for compatibility
       });
+
+      // Timeout cleanup: Remove from pending after PENDING_IMAGE_TIMEOUT
+      // This prevents editor lock if extension fails to respond
+      setTimeout(() => {
+        if (pendingImageSaves.has(imageUrl)) {
+          console.warn("[Image] Save timeout, cleaning up:", imageUrl.slice(0, 50));
+          pendingImageSaves.delete(imageUrl);
+        }
+      }, PENDING_IMAGE_TIMEOUT + 1000); // Extra 1s buffer
     }
   }
   return hasPendingImages;
 }
 
-function replaceInlineImage(imageUrl: string, savedPath: string): void {
+function replaceInlineImage(
+  imageUrl: string,
+  savedPath: string,
+  webviewUri?: string
+): void {
   pendingImageSaves.delete(imageUrl);
 
   // Replace in currentBody using string replacement (regex fails on long data URIs)
@@ -233,12 +305,22 @@ function replaceInlineImage(imageUrl: string, savedPath: string): void {
 
   currentBody = result;
 
+  // Update imageMap with new path
+  if (webviewUri) {
+    currentImageMap[savedPath] = webviewUri;
+    setImageMap(currentImageMap);
+  }
+
   // Send updated content to extension
-  // Extension will respond with update message containing imageMap
-  // imageMapChanged check in handler will force editor refresh
   const fullContent = reconstructContent(currentFrontmatter, currentBody);
-  lastSentContent = fullContent;
+  // Don't set lastSentContent - let extension update flow handle recreate
+  // This ensures imageMapChanged is true when update comes back
   vscode.postMessage({ type: "edit", content: fullContent });
+
+  // Try ProseMirror transaction for immediate visual update (fast, may not enable resize)
+  if (crepe && webviewUri) {
+    updateImageNodeSrc(webviewUri);
+  }
 }
 
 function debouncedPostEdit(content: string): void {
@@ -533,7 +615,7 @@ async function initEditor(initialContent: string = ""): Promise<Crepe | null> {
       },
     });
 
-    // Inject line highlight plugin if enabled
+    // Inject ProseMirror plugins
     if (highlightCurrentLine) {
       try {
         instance.editor.config((ctx) => {
@@ -629,6 +711,7 @@ window.addEventListener("message", async (event) => {
         const imageMapChanged =
           JSON.stringify(newImageMap) !== JSON.stringify(currentImageMap);
         currentImageMap = newImageMap;
+        setImageMap(newImageMap);
 
         // Skip content update if echo AND imageMap unchanged
         // (force update when new images were saved to refresh display)
@@ -715,8 +798,23 @@ window.addEventListener("message", async (event) => {
           uploadHandlers.resolve(message.webviewUri || message.savedPath);
         } else {
           // Legacy: blob URL replacement for pasted images
-          replaceInlineImage(message.blobUrl, message.savedPath);
+          replaceInlineImage(message.blobUrl, message.savedPath, message.webviewUri);
         }
+      }
+      break;
+    case "imageUrlEditResponse":
+      if (typeof message.editId === "string") {
+        handleUrlEditResponse(message.editId, message.newUrl ?? null);
+      }
+      break;
+    case "imageRenameResponse":
+      if (typeof message.renameId === "string") {
+        handleImageRenameResponse(
+          message.renameId,
+          message.success === true,
+          message.newPath || "",
+          message.webviewUri
+        );
       }
       break;
   }
@@ -725,8 +823,30 @@ window.addEventListener("message", async (event) => {
 function init() {
   console.log("[Crepe] init() called");
 
+  // Cleanup pending operations on webview close to prevent memory leaks
+  window.addEventListener("beforeunload", () => {
+    pendingImageSaves.clear();
+    pendingUploads.clear();
+  });
+
   setupToolbarHandlers();
   setupMetadataHandlers();
+
+  // Setup floating image edit overlay
+  const editorEl = document.getElementById("editor");
+  if (editorEl) {
+    setupImageEditOverlay(
+      editorEl,
+      () => {
+        try {
+          return crepe?.editor?.ctx?.get(editorViewCtx) ?? null;
+        } catch {
+          return null;
+        }
+      },
+      (msg) => vscode.postMessage(msg)
+    );
+  }
 
   // Don't create editor yet - wait for content from extension
   // This prevents showing empty placeholder "Please enter..."

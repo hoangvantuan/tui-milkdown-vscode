@@ -98,6 +98,11 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically rename image files when you change the image path in markdown (only when folder stays the same)"
+        },
+        "tuiMarkdown.autoDeleteImages": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically delete image files when removed from markdown (moves to trash)"
         }
       }
     },
