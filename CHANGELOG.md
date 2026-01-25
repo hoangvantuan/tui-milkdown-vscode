@@ -35,6 +35,10 @@ All notable changes to "Milkdown Markdown WYSIWYG" extension.
   * Shows warning if image is used in other `.md` files
   * Configurable via `tuiMarkdown.autoDeleteImages` setting (default: true)
 
+### Fixed
+
+* Fixed cursor position lost when deleting images (editor no longer recreates on imageMap changes from user edits)
+
 ### Changed
 
 * Extended `localResourceRoots` to include document folder and workspace for image loading

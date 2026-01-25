@@ -708,14 +708,13 @@ window.addEventListener("message", async (event) => {
     case "update":
       if (typeof message.content === "string") {
         const newImageMap = message.imageMap || {};
-        const imageMapChanged =
-          JSON.stringify(newImageMap) !== JSON.stringify(currentImageMap);
         currentImageMap = newImageMap;
         setImageMap(newImageMap);
 
-        // Skip content update if echo AND imageMap unchanged
-        // (force update when new images were saved to refresh display)
-        if (message.content === lastSentContent && !imageMapChanged) {
+        // Skip content update if this is echo from our edit
+        // Editor already has correct content, just update imageMap
+        // (imageMap changes on delete don't require recreate)
+        if (message.content === lastSentContent) {
           lastSentContent = null;
           break;
         }
