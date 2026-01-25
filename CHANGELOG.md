@@ -2,6 +2,15 @@
 
 All notable changes to "Milkdown Markdown WYSIWYG" extension.
 
+## \[1.5.1] - 2026-01-25
+
+### Added
+
+* **Heading Level Indicator**
+  * Displays H1-H6 badges next to headings for quick level identification
+  * Subtle styling with muted colors
+  * Supports all 10 themes (light and dark)
+
 ## \[1.5.0] - 2026-01-24
 
 ### Added

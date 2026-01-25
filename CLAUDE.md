@@ -62,6 +62,7 @@ src/
     ├── main.ts               # Browser-side Milkdown Crepe editor
     ├── frontmatter.ts        # YAML parsing & validation utilities
     ├── line-highlight-plugin.ts # ProseMirror plugin for cursor line highlight
+    ├── heading-level-plugin.ts # ProseMirror plugin for H1-H6 level badges
     ├── image-edit-plugin.ts  # Double-click image URL editing
     ├── paste-link-plugin.ts  # Auto-link pasted URLs when text is selected
     └── themes/               # Theme CSS files (scoped by body class)
@@ -233,6 +234,24 @@ Uses `@milkdown/crepe` package. Theme CSS variables loaded from `src/webview/the
 * Reverse lookup from imageMap to display original path instead of webview URI
 
 * Updates node via ProseMirror transaction after user confirms
+
+## Heading Level Indicator
+
+**Plugin** (`src/webview/heading-level-plugin.ts`):
+
+* ProseMirror plugin using Decoration.widget API
+
+* Displays "H1", "H2", etc. badges next to each heading
+
+* Badge positioned at left edge of heading line
+
+* Subtle styling: 11px font, 0.5 opacity, muted colors
+
+**CSS** (in `src/markdownEditorProvider.ts`):
+
+* Light themes: `rgba(0, 0, 0, 0.6)`
+
+* Dark themes: `rgba(255, 255, 255, 0.5)`
 
 ## Paste Link
 
