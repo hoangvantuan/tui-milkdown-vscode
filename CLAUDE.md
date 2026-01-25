@@ -233,3 +233,31 @@ Uses `@milkdown/crepe` package. Theme CSS variables loaded from `src/webview/the
 
 * Updates node via ProseMirror transaction after user confirms
 
+## Development Guidelines
+
+**Milkdown-First Approach:**
+
+* Always prefer Milkdown's built-in features, plugins, and APIs over custom implementations
+
+* Check existing Milkdown plugins before creating custom ProseMirror plugins
+
+* Use Milkdown's theming system and CSS variables instead of custom styling when possible
+
+**Reference Documentation:**
+
+* Milkdown docs: <https://github.com/Milkdown/website/tree/main/docs>
+
+* Milkdown API: <https://github.com/Milkdown/milkdown/tree/main/docs/api>
+
+**Performance & Bundle Optimization:**
+
+* Prefer tree-shakeable imports (e.g., `import { specific } from '@milkdown/kit'`)
+
+* Avoid importing entire packages when only specific features are needed
+
+* Lazy-load plugins and features when possible
+
+* Minimize custom CSS; leverage Milkdown's CSS variables
+
+* Profile bundle size impact before adding new dependencies
+
