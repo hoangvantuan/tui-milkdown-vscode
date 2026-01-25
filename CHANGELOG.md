@@ -24,7 +24,7 @@ All notable changes to "Milkdown Markdown WYSIWYG" extension.
   * Shows original path instead of webview URI
 
 * **Auto Rename Images**
-  * Automatically rename image files when you change the path in markdown
+  * Automatically rename image files when you change the path in Markdown
   * Only triggers when image folder remains the same
   * Updates all references in workspace `.md` files
   * Configurable via `tuiMarkdown.autoRenameImages` setting (default: true)
@@ -37,7 +37,7 @@ All notable changes to "Milkdown Markdown WYSIWYG" extension.
 
 ### Fixed
 
-* Fixed cursor position lost when deleting images (editor no longer recreates on imageMap changes from user edits)
+* Fixed cursor position loss when deleting images (editor no longer recreates on imageMap changes from user edits)
 
 ### Changed
 
