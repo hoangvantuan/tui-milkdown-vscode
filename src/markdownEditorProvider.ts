@@ -1090,8 +1090,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           /* Heading level badges (H1, H2, etc.) */
           .heading-level-badge {
             position: absolute;
-            left: 8px;
-            top: 0;
+            left: -15px;
+            top: 3px;
             font-size: 11px;
             font-weight: 500;
             opacity: 0.5;
