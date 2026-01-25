@@ -590,14 +590,17 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
                 );
                 if (updatedText !== currentText) {
                   pendingEdit = true;
-                  const edit = new vscode.WorkspaceEdit();
-                  const fullRange = new vscode.Range(
-                    document.positionAt(0),
-                    document.positionAt(currentText.length),
-                  );
-                  edit.replace(document.uri, fullRange, updatedText);
-                  await vscode.workspace.applyEdit(edit);
-                  pendingEdit = false;
+                  try {
+                    const edit = new vscode.WorkspaceEdit();
+                    const fullRange = new vscode.Range(
+                      document.positionAt(0),
+                      document.positionAt(currentText.length),
+                    );
+                    edit.replace(document.uri, fullRange, updatedText);
+                    await vscode.workspace.applyEdit(edit);
+                  } finally {
+                    pendingEdit = false;
+                  }
                 }
 
                 // Update originalImagePaths
