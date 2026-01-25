@@ -338,11 +338,23 @@ function updateEditorNode(nodePos: number, attrs: Record<string, unknown>, newSr
   if (!freshView) return;
 
   const { state, dispatch } = freshView;
-  const tr = state.tr.setNodeMarkup(nodePos, undefined, {
-    ...attrs,
-    src: newSrc,
-  });
-  dispatch(tr);
+
+  // Guard against stale positions: verify node exists and is an image type
+  const nodeAtPos = state.doc.nodeAt(nodePos);
+  if (!nodeAtPos || !IMAGE_NODE_TYPES.includes(nodeAtPos.type.name)) {
+    console.warn("[ImageEdit] Node moved or missing; skipping update");
+    return;
+  }
+
+  try {
+    const tr = state.tr.setNodeMarkup(nodePos, undefined, {
+      ...attrs,
+      src: newSrc,
+    });
+    dispatch(tr);
+  } catch (err) {
+    console.warn("[ImageEdit] Failed to update node:", err);
+  }
 }
 
 interface NodeInfo {

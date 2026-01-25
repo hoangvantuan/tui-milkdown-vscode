@@ -426,11 +426,12 @@ function updateMetadataPanel(
 let metadataDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 async function sendFullContent(): Promise<void> {
-  const fullContent = reconstructContent(currentFrontmatter, currentBody);
-  const hasPendingBlobs = await processInlineImages(fullContent);
+  // Process only body to avoid scanning frontmatter for blob URLs
+  const hasPendingBlobs = await processInlineImages(currentBody);
   if (hasPendingBlobs) {
     return; // Don't save content with blob URLs - wait for imageSaved
   }
+  const fullContent = reconstructContent(currentFrontmatter, currentBody);
   lastSentContent = fullContent;
   vscode.postMessage({ type: "edit", content: fullContent });
 }
@@ -722,20 +723,23 @@ window.addEventListener("message", async (event) => {
     case "update":
       if (typeof message.content === "string") {
         const newImageMap = message.imageMap || {};
-        const prevKeys = new Set(Object.keys(currentImageMap));
-        const newKeys = Object.keys(newImageMap);
-        // Only recreate when NEW keys are added (user fixed wrong path → right path)
-        // Don't recreate when keys are removed (user deleted image) - preserves cursor
-        const hasNewKeys = newKeys.some((k) => !prevKeys.has(k));
+
+        // Detect imageMap changes (both keys AND values)
+        // This handles: new paths added, paths removed, and URI changes for same path
+        const serializeImageMap = (map: Record<string, string>) =>
+          Object.entries(map)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([k, v]) => `${k}=${v}`)
+            .join("|");
+        const imageMapChanged =
+          serializeImageMap(currentImageMap) !== serializeImageMap(newImageMap);
 
         currentImageMap = newImageMap;
         setImageMap(newImageMap);
 
-        // Skip content update if this is echo from our edit
-        // AND no new image paths were resolved
-        // When user fixes wrong path → right path, imageMap gains new entry → recreate
-        // When user deletes image, keys decrease → don't recreate → preserve cursor
-        if (message.content === lastSentContent && !hasNewKeys) {
+        // Skip content update if this is echo from our edit AND imageMap unchanged
+        // When imageMap changes (new path, URI change), recreate to show updated images
+        if (message.content === lastSentContent && !imageMapChanged) {
           lastSentContent = null;
           break;
         }
@@ -808,6 +812,8 @@ window.addEventListener("message", async (event) => {
         // Update imageMap if webviewUri provided
         if (typeof message.webviewUri === "string") {
           currentImageMap[message.savedPath] = message.webviewUri;
+          // Sync with image-edit overlay so edits show new webview URI
+          setImageMap(currentImageMap);
         }
 
         // Check if this is a Promise-based upload (from Crepe onUpload)
