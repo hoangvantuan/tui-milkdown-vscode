@@ -145,14 +145,14 @@ function updateImageNodeSrc(oldSrc: string, newSrc: string): boolean {
     // Force synchronous DOM update
     view.updateState(view.state);
 
-    queueMicrotask(() => {
-      isUpdatingFromExtension = false;
-    });
-
     return true;
   } catch (err) {
     console.warn("[ImageSave] Failed to update node:", err);
     return false;
+  } finally {
+    queueMicrotask(() => {
+      isUpdatingFromExtension = false;
+    });
   }
 }
 
