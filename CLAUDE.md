@@ -241,13 +241,15 @@ Uses `@milkdown/crepe` package. Theme CSS variables loaded from `src/webview/the
 
 * ProseMirror plugin using Decoration.widget API
 
-* Displays "H1", "H2", etc. badges next to each heading
+* Displays "H1", "H2", etc. badges inline before heading text
 
-* Badge positioned at left edge of heading line
+* Widget inserted at `pos + 1` (inside heading node, before text content)
 
 * Subtle styling: 11px font, 0.5 opacity, muted colors
 
 **CSS** (in `src/markdownEditorProvider.ts`):
+
+* `display: inline-block` with `margin-right: 8px`
 
 * Light themes: `rgba(0, 0, 0, 0.6)`
 

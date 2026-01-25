@@ -17,8 +17,9 @@ export function createHeadingLevelPlugin(): Plugin {
         state.doc.descendants((node, pos) => {
           if (node.type.name === "heading") {
             const level = node.attrs.level as number;
+            // pos + 1 = inside heading node (after opening tag, before text content)
             const widget = Decoration.widget(
-              pos,
+              pos + 1,
               () => {
                 const badge = document.createElement("span");
                 badge.className = "heading-level-badge";
@@ -26,7 +27,7 @@ export function createHeadingLevelPlugin(): Plugin {
                 badge.setAttribute("contenteditable", "false");
                 return badge;
               },
-              { side: -1 } // Position before the heading node
+              { side: -1 } // Position before text content
             );
             decorations.push(widget);
           }
