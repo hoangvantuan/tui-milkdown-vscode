@@ -581,7 +581,13 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
                 // Update document content with new path
                 const currentText = document.getText();
-                const updatedText = currentText.split(oldPath).join(newPath);
+                // Escape regex special chars and use context-aware replacement
+                const escapedOld = oldPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                // Match in markdown image/link contexts: ![...](...) or <img src="...">
+                const updatedText = currentText.replace(
+                  new RegExp(`(\\]\\(|src=["'])${escapedOld}([)"'])`, "g"),
+                  `$1${newPath}$2`
+                );
                 if (updatedText !== currentText) {
                   pendingEdit = true;
                   const edit = new vscode.WorkspaceEdit();
