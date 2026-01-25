@@ -2,7 +2,7 @@
   "name": "tui-milkdown-vscode",
   "displayName": "Milkdown Markdown WYSIWYG",
   "description": "A beautiful WYSIWYG Markdown editor powered by Milkdown Crepe. Edit markdown files with rich text experience and theme selection.",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "publisher": "tuanhv",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -88,6 +88,21 @@
           "type": "boolean",
           "default": true,
           "description": "Highlight the line containing the cursor in the editor"
+        },
+        "tuiMarkdown.imageSaveFolder": {
+          "type": "string",
+          "default": "images",
+          "description": "Folder to save pasted images (relative to document). Use '.' for same folder as document."
+        },
+        "tuiMarkdown.autoRenameImages": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically rename image files when you change the image path in markdown (only when folder stays the same)"
+        },
+        "tuiMarkdown.autoDeleteImages": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically delete image files when removed from markdown (moves to trash)"
         }
       }
     },

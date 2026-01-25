@@ -1,6 +1,158 @@
 import * as vscode from "vscode";
 import { MAX_FILE_SIZE } from "./constants";
 import { getNonce } from "./utils/getNonce";
+import {
+  detectImageRenames,
+  executeImageRenames,
+  updateWorkspaceReferences,
+  detectImageDeletes,
+  executeImageDeletes,
+  hasPathTraversal,
+  normalizePath,
+} from "./utils/image-rename-handler";
+
+// Image URL helpers
+function isRemoteUrl(url: string): boolean {
+  return /^(https?:\/\/|data:)/i.test(url);
+}
+
+/**
+ * Clean image path by removing title/caption and angle brackets.
+ * Handles: `path "title"`, `path 'title'`, `<path>`, `<path> "title"`
+ */
+function cleanImagePath(rawPath: string): string {
+  let p = rawPath.trim();
+
+  // Handle angle brackets: <path> or <path with spaces>
+  if (p.startsWith("<")) {
+    const endBracket = p.indexOf(">");
+    if (endBracket !== -1) {
+      p = p.slice(1, endBracket);
+    }
+    return p.trim();
+  }
+
+  // Remove title: `path "title"` or `path 'title'`
+  // Space + quote indicates title separator
+  const titleSeparator = p.search(/\s+["']/);
+  if (titleSeparator !== -1) {
+    p = p.slice(0, titleSeparator);
+  }
+
+  return p.trim();
+}
+
+function extractImagePaths(content: string): string[] {
+  // Size guard to prevent regex performance issues on malicious input
+  if (!content || content.length > MAX_FILE_SIZE) {
+    return [];
+  }
+
+  const paths: string[] = [];
+
+  // Markdown: ![alt](path) or ![alt](path "title") or ![alt](<path> "title")
+  const mdRegex = /!\[[^\]]*\]\(([^)]+)\)/g;
+  let match;
+  while ((match = mdRegex.exec(content)) !== null) {
+    const cleanPath = cleanImagePath(match[1]);
+    if (cleanPath) {
+      paths.push(cleanPath);
+    }
+  }
+
+  // HTML: <img src="path">
+  const htmlRegex = /<img[^>]+src=["']([^"']+)["']/gi;
+  while ((match = htmlRegex.exec(content)) !== null) {
+    const cleanPath = cleanImagePath(match[1]);
+    if (cleanPath) {
+      paths.push(cleanPath);
+    }
+  }
+
+  return [...new Set(paths)]; // Dedupe
+}
+
+function resolveImagePath(
+  imagePath: string,
+  documentUri: vscode.Uri,
+): vscode.Uri | null {
+  if (isRemoteUrl(imagePath)) return null;
+
+  // Handle file:// URIs
+  if (imagePath.startsWith("file://")) {
+    return vscode.Uri.parse(imagePath);
+  }
+
+  // Handle Windows absolute paths (e.g., C:\ or C:/)
+  if (/^[a-zA-Z]:[\\/]/.test(imagePath)) {
+    return vscode.Uri.file(imagePath);
+  }
+
+  const documentFolder = vscode.Uri.joinPath(documentUri, "..");
+
+  if (imagePath.startsWith("/")) {
+    // Unix absolute path - resolve from workspace root
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(documentUri);
+    if (workspaceFolder) {
+      return vscode.Uri.joinPath(workspaceFolder.uri, imagePath);
+    }
+    // Fallback: treat as file system absolute path
+    return vscode.Uri.file(imagePath);
+  }
+
+  // Relative path - resolve from document folder
+  return vscode.Uri.joinPath(documentFolder, imagePath);
+}
+
+function buildImageMap(
+  content: string,
+  documentUri: vscode.Uri,
+  webview: vscode.Webview,
+): Record<string, string> {
+  const imageMap: Record<string, string> = {};
+  const paths = extractImagePaths(content);
+
+  for (const path of paths) {
+    if (isRemoteUrl(path)) continue;
+
+    const resolvedUri = resolveImagePath(path, documentUri);
+    if (resolvedUri) {
+      imageMap[path] = webview.asWebviewUri(resolvedUri).toString();
+    }
+  }
+
+  return imageMap;
+}
+
+/**
+ * Build mapping of relative image paths to absolute paths for rename detection.
+ * Filters out remote URLs (http/https/data).
+ */
+function buildOriginalImageMap(
+  content: string,
+  documentUri: vscode.Uri,
+): Map<string, string> {
+  const map = new Map<string, string>();
+  const paths = extractImagePaths(content);
+
+  console.log("[Image Rename] buildOriginalImageMap - extracted paths:", paths);
+
+  for (const imgPath of paths) {
+    if (isRemoteUrl(imgPath)) {
+      console.log("[Image Rename] Skipping remote URL:", imgPath);
+      continue;
+    }
+    const resolved = resolveImagePath(imgPath, documentUri);
+    if (resolved) {
+      // Use normalized path as key for consistent comparison
+      const normalizedPath = normalizePath(imgPath);
+      map.set(normalizedPath, resolved.fsPath);
+      console.log("[Image Rename] Added to map:", normalizedPath, "→", resolved.fsPath);
+    }
+  }
+  console.log("[Image Rename] buildOriginalImageMap - result size:", map.size);
+  return map;
+}
 
 /**
  * CustomTextEditorProvider for Markdown WYSIWYG editing.
@@ -8,6 +160,13 @@ import { getNonce } from "./utils/getNonce";
  */
 export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
   public static readonly viewType = "tuiMarkdown.editor";
+
+  /**
+   * Stores original image paths per document for rename detection.
+   * Key: document.uri.toString()
+   * Value: Map<relativePath, absolutePathString>
+   */
+  private originalImagePaths: Map<string, Map<string, string>> = new Map();
 
   constructor(private readonly context: vscode.ExtensionContext) {}
 
@@ -34,12 +193,29 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       }
     }
 
+    // Store original image paths for rename detection
+    const docKey = document.uri.toString();
+    this.originalImagePaths.set(
+      docKey,
+      buildOriginalImageMap(document.getText(), document.uri),
+    );
+
+    // Build localResourceRoots with document folder and workspace
+    const documentFolder = vscode.Uri.joinPath(document.uri, "..");
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri)?.uri;
+
+    const localResourceRoots = [
+      vscode.Uri.joinPath(this.context.extensionUri, "out"),
+      vscode.Uri.joinPath(this.context.extensionUri, "node_modules"),
+      documentFolder,
+    ];
+    if (workspaceFolder) {
+      localResourceRoots.push(workspaceFolder);
+    }
+
     webviewPanel.webview.options = {
       enableScripts: true,
-      localResourceRoots: [
-        vscode.Uri.joinPath(this.context.extensionUri, "out"),
-        vscode.Uri.joinPath(this.context.extensionUri, "node_modules"),
-      ],
+      localResourceRoots,
     };
 
     webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview);
@@ -57,9 +233,12 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
     const updateWebview = () => {
       if (pendingEdit) return;
+      const content = document.getText();
+      const imageMap = buildImageMap(content, document.uri, webviewPanel.webview);
       webviewPanel.webview.postMessage({
         type: "update",
-        content: document.getText(),
+        content,
+        imageMap,
       });
     };
 
@@ -104,6 +283,64 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     const applyEdit = async (newContent: string) => {
       if (newContent === document.getText()) return;
 
+      // === Image Rename Detection (BEFORE applying edit) ===
+      // Rename files first so webviewUri resolves correctly after edit
+      const config = vscode.workspace.getConfiguration("tuiMarkdown");
+      if (config.get<boolean>("autoRenameImages", true)) {
+        const originalMap = this.originalImagePaths.get(docKey);
+        if (originalMap && originalMap.size > 0) {
+          const newPaths = extractImagePaths(newContent).filter(
+            (p) => !isRemoteUrl(p),
+          );
+          const renames = detectImageRenames(
+            originalMap,
+            newPaths,
+            document.uri,
+          );
+
+          if (renames.length > 0) {
+            // Optimistic locking: Update map BEFORE async rename to prevent race conditions
+            // Store original values to revert on failure
+            const originalValues = new Map<string, string>();
+            for (const rename of renames) {
+              const origValue = originalMap.get(rename.oldRelative);
+              if (origValue) originalValues.set(rename.oldRelative, origValue);
+              originalMap.delete(rename.oldRelative);
+              originalMap.set(rename.newRelative, rename.newAbsolute);
+            }
+
+            const { succeeded, failed } = await executeImageRenames(renames);
+
+            // Revert failed renames in the map
+            if (failed.length > 0) {
+              for (const { rename } of failed) {
+                originalMap.delete(rename.newRelative);
+                const origValue = originalValues.get(rename.oldRelative);
+                if (origValue) {
+                  originalMap.set(rename.oldRelative, origValue);
+                }
+              }
+              console.warn("[Image Rename] Failed:", failed);
+              vscode.window.showWarningMessage(
+                `Failed to rename ${failed.length} image(s).`,
+              );
+            }
+
+            if (succeeded.length > 0) {
+              // Update workspace references (other .md files)
+              const updatedFiles = await updateWorkspaceReferences(
+                succeeded,
+                document.uri,
+              );
+
+              vscode.window.showInformationMessage(
+                `Renamed ${succeeded.length} image(s). Updated ${updatedFiles} file(s).`,
+              );
+            }
+          }
+        }
+      }
+
       pendingEdit = true;
       try {
         const edit = new vscode.WorkspaceEdit();
@@ -112,13 +349,14 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           document.positionAt(document.getText().length),
         );
         edit.replace(document.uri, fullRange, newContent);
-        const success = await vscode.workspace.applyEdit(edit);
-        if (!success) {
-          updateWebview();
-        }
+        await vscode.workspace.applyEdit(edit);
       } finally {
         queueMicrotask(() => {
           pendingEdit = false;
+          // Send updated imageMap AFTER pendingEdit is reset
+          // This ensures new image paths get resolved to webviewUris
+          // Loop prevented by lastSentContent check in webview
+          updateWebview();
         });
       }
     };
@@ -180,6 +418,233 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             }
             break;
           }
+          case "saveImage": {
+            const imgMsg = msg as {
+              data?: string;
+              filename?: string;
+              blobUrl?: string;
+            };
+            if (!imgMsg.data || !imgMsg.filename || !imgMsg.blobUrl) break;
+
+            // Security: Strong filename validation
+            const filename = imgMsg.filename;
+            // Block: path traversal, separators, null bytes, control chars, Windows reserved chars
+            const INVALID_FILENAME_CHARS = /[<>:"|?*\x00-\x1F\u202E]/;
+            // Windows reserved device names (case-insensitive)
+            const RESERVED_NAMES = /^(CON|PRN|AUX|NUL|COM\d|LPT\d)(\.|$)/i;
+
+            if (
+              !filename ||
+              filename.includes("..") ||
+              filename.includes("/") ||
+              filename.includes("\\") ||
+              INVALID_FILENAME_CHARS.test(filename) ||
+              RESERVED_NAMES.test(filename)
+            ) {
+              console.error("[Image Save] Invalid filename:", filename);
+              vscode.window.showErrorMessage("Invalid filename");
+              break;
+            }
+
+            try {
+              // Get configured folder
+              const config = vscode.workspace.getConfiguration("tuiMarkdown");
+              let saveFolder = config.get<string>("imageSaveFolder", "images")?.trim() || "images";
+
+              // Security: Validate saveFolder to prevent path traversal
+              const isAbsolute = saveFolder.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(saveFolder);
+              const hasTraversal = saveFolder.split(/[\\/]/).includes("..");
+              if (saveFolder !== "." && (isAbsolute || hasTraversal)) {
+                vscode.window.showErrorMessage(
+                  "imageSaveFolder must be a relative path (or '.') within the document folder."
+                );
+                break;
+              }
+
+              // Resolve folder path relative to document
+              const documentFolder = vscode.Uri.joinPath(document.uri, "..");
+              const imageFolder = vscode.Uri.joinPath(documentFolder, saveFolder);
+
+              // Create folder if not exists
+              try {
+                await vscode.workspace.fs.createDirectory(imageFolder);
+              } catch {
+                // Folder may already exist
+              }
+
+              // Decode base64 and save file
+              // Note: Use [^;]+ to match MIME types like image/svg+xml
+              const base64Data = imgMsg.data.replace(
+                /^data:image\/[^;]+;base64,/i,
+                "",
+              );
+              const buffer = Buffer.from(base64Data, "base64");
+              const fileUri = vscode.Uri.joinPath(imageFolder, filename);
+              await vscode.workspace.fs.writeFile(fileUri, buffer);
+
+              // Build relative path for markdown
+              const relativePath =
+                saveFolder === "." ? filename : `${saveFolder}/${filename}`;
+
+              // Create webview URI for immediate display
+              const webviewUri =
+                webviewPanel.webview.asWebviewUri(fileUri).toString();
+
+              // Send back the saved path and webviewUri
+              webviewPanel.webview.postMessage({
+                type: "imageSaved",
+                blobUrl: imgMsg.blobUrl,
+                savedPath: relativePath,
+                webviewUri,
+              });
+            } catch (err) {
+              console.error("[Image Save] Failed:", err);
+              vscode.window.showErrorMessage(
+                `Failed to save image: ${err instanceof Error ? err.message : String(err)}`,
+              );
+            }
+            break;
+          }
+          case "requestImageUrlEdit": {
+            const editMsg = msg as {
+              editId?: string;
+              currentUrl?: string;
+              isLocalImage?: boolean;
+              isBase64?: boolean;
+            };
+            if (!editMsg.editId) break;
+
+            let prompt: string;
+            if (editMsg.isBase64) {
+              prompt = "Enter image path to replace embedded base64 image";
+            } else if (editMsg.isLocalImage) {
+              prompt = "Enter new image path (auto-rename only works within same folder)";
+            } else {
+              prompt = "Enter image URL";
+            }
+
+            vscode.window
+              .showInputBox({
+                prompt,
+                value: editMsg.currentUrl || "",
+                placeHolder: "images/photo.png or https://example.com/image.png",
+              })
+              .then((newUrl) => {
+                webviewPanel.webview.postMessage({
+                  type: "imageUrlEditResponse",
+                  editId: editMsg.editId,
+                  newUrl: newUrl ?? null,
+                });
+              });
+            break;
+          }
+          case "requestImageRename": {
+            const renameMsg = msg as {
+              renameId?: string;
+              oldPath?: string;
+              newPath?: string;
+            };
+            if (!renameMsg.renameId || !renameMsg.oldPath || !renameMsg.newPath) break;
+
+            const { renameId, oldPath, newPath } = renameMsg;
+
+            // Security: Validate paths to prevent path traversal attacks
+            if (hasPathTraversal(oldPath) || hasPathTraversal(newPath)) {
+              console.error("[Image Rename] Path traversal detected:", { oldPath, newPath });
+              webviewPanel.webview.postMessage({
+                type: "imageRenameResponse",
+                renameId,
+                success: false,
+                newPath,
+              });
+              vscode.window.showErrorMessage("Invalid path: path traversal detected");
+              break;
+            }
+
+            (async () => {
+              try {
+                // Resolve paths
+                const documentFolder = vscode.Uri.joinPath(document.uri, "..");
+                const oldUri = vscode.Uri.joinPath(documentFolder, oldPath);
+                const newUri = vscode.Uri.joinPath(documentFolder, newPath);
+
+                // Create parent directory if not exists
+                const newDir = vscode.Uri.joinPath(documentFolder, newPath, "..");
+                try {
+                  await vscode.workspace.fs.createDirectory(newDir);
+                } catch {
+                  // Directory may already exist
+                }
+
+                // Execute rename
+                await vscode.workspace.fs.rename(oldUri, newUri, { overwrite: false });
+
+                // Update document content with new path
+                const currentText = document.getText();
+                // Escape regex special chars and use context-aware replacement
+                const escapedOld = oldPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                // Match in markdown image/link contexts: ![...](...) or <img src="...">
+                const updatedText = currentText.replace(
+                  new RegExp(`(\\]\\(|src=["'])${escapedOld}([)"'])`, "g"),
+                  `$1${newPath}$2`
+                );
+                if (updatedText !== currentText) {
+                  pendingEdit = true;
+                  try {
+                    const edit = new vscode.WorkspaceEdit();
+                    const fullRange = new vscode.Range(
+                      document.positionAt(0),
+                      document.positionAt(currentText.length),
+                    );
+                    edit.replace(document.uri, fullRange, updatedText);
+                    await vscode.workspace.applyEdit(edit);
+                  } finally {
+                    pendingEdit = false;
+                  }
+                }
+
+                // Update originalImagePaths
+                const originalMap = this.originalImagePaths.get(docKey);
+                if (originalMap) {
+                  originalMap.delete(oldPath);
+                  originalMap.set(newPath, newUri.fsPath);
+                }
+
+                // Build webviewUri for new path
+                const webviewUri = webviewPanel.webview.asWebviewUri(newUri).toString();
+
+                // Send success response
+                webviewPanel.webview.postMessage({
+                  type: "imageRenameResponse",
+                  renameId,
+                  success: true,
+                  newPath,
+                  webviewUri,
+                });
+
+                // Update workspace references
+                await updateWorkspaceReferences([{
+                  oldRelative: oldPath,
+                  newRelative: newPath,
+                  oldAbsolute: oldUri.fsPath,
+                  newAbsolute: newUri.fsPath,
+                }], document.uri);
+
+              } catch (err) {
+                console.error("[Image Rename] Failed:", err);
+                webviewPanel.webview.postMessage({
+                  type: "imageRenameResponse",
+                  renameId,
+                  success: false,
+                  newPath,
+                });
+                vscode.window.showWarningMessage(
+                  `Failed to rename image: ${err instanceof Error ? err.message : String(err)}`,
+                );
+              }
+            })();
+            break;
+          }
         }
       }),
       webviewPanel.onDidChangeViewState((e) => {
@@ -195,9 +660,64 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           sendConfig();
         }
       }),
+      vscode.workspace.onDidSaveTextDocument(async (savedDoc) => {
+        if (savedDoc.uri.toString() !== document.uri.toString()) return;
+
+        // Note: Image rename detection moved to applyEdit() for instant rename
+        // This handler only handles delete detection and map rebuilding
+
+        const config = vscode.workspace.getConfiguration("tuiMarkdown");
+        const originalMap = this.originalImagePaths.get(docKey);
+
+        // Get current paths (filter remote URLs)
+        const currentPaths = extractImagePaths(savedDoc.getText()).filter(
+          (p) => !isRemoteUrl(p),
+        );
+
+        // Skip detection if no original paths, but still rebuild map at the end
+        if (!originalMap || originalMap.size === 0) {
+          this.originalImagePaths.set(
+            docKey,
+            buildOriginalImageMap(savedDoc.getText(), savedDoc.uri),
+          );
+          return;
+        }
+
+        // === Image Delete Detection ===
+        if (config.get<boolean>("autoDeleteImages", true)) {
+          const deletes = detectImageDeletes(originalMap, currentPaths);
+
+          if (deletes.length > 0) {
+            // Auto-delete without confirmation (moves to Trash)
+            const { succeeded, failed } = await executeImageDeletes(deletes);
+
+            if (succeeded.length > 0) {
+              // Remove deleted paths from storage
+              for (const path of succeeded) {
+                originalMap.delete(path);
+              }
+            }
+
+            if (failed.length > 0) {
+              console.warn("[Image Delete] Failed:", failed);
+              vscode.window.showWarningMessage(
+                `Failed to delete ${failed.length} image(s).`,
+              );
+            }
+          }
+        }
+
+        // Always rebuild originalImagePaths after save to capture newly added images
+        // This ensures delete detection works for images added during editing session
+        this.originalImagePaths.set(
+          docKey,
+          buildOriginalImageMap(savedDoc.getText(), savedDoc.uri),
+        );
+      }),
     );
 
     webviewPanel.onDidDispose(() => {
+      this.originalImagePaths.delete(docKey);
       disposables.forEach((d) => d.dispose());
     });
   }
@@ -300,6 +820,12 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             line-height: calc(24px * var(--editor-font-scale, 1)) !important;
           }
           /* Heading font sizes */
+          .milkdown .ProseMirror h1,
+          .milkdown .ProseMirror h2,
+          .milkdown .ProseMirror h3,
+          .milkdown .ProseMirror h4,
+          .milkdown .ProseMirror h5,
+          .milkdown .ProseMirror h6 { position: relative; }
           .milkdown .ProseMirror h1 { font-size: var(--heading-h1-size, 32px) !important; margin-top: var(--heading-h1-margin, 24px) !important; }
           .milkdown .ProseMirror h2 { font-size: var(--heading-h2-size, 28px) !important; margin-top: var(--heading-h2-margin, 20px) !important; }
           .milkdown .ProseMirror h3 { font-size: var(--heading-h3-size, 24px) !important; margin-top: var(--heading-h3-margin, 16px) !important; }
@@ -510,6 +1036,84 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             white-space: normal;
             word-wrap: break-word;
             overflow-wrap: break-word;
+          }
+
+          /* Theme inverse colors at body level (for elements outside .milkdown) */
+          body.theme-frame { --overlay-bg: #f0f0f0; --overlay-fg: #1a1a1a; }
+          body.theme-frame-dark { --overlay-bg: #2a2a2a; --overlay-fg: #e0e0e0; }
+          body.theme-nord { --overlay-bg: #2e3135; --overlay-fg: #eff0f7; }
+          body.theme-nord-dark { --overlay-bg: #e1e2e8; --overlay-fg: #2e3135; }
+          body.theme-crepe { --overlay-bg: #362f27; --overlay-fg: #fcefe2; }
+          body.theme-crepe-dark { --overlay-bg: #ede0d4; --overlay-fg: #362f27; }
+          body.theme-catppuccin-latte { --overlay-bg: #dce0e8; --overlay-fg: #4c4f69; }
+          body.theme-catppuccin-frappe { --overlay-bg: #232634; --overlay-fg: #c6d0f5; }
+          body.theme-catppuccin-macchiato { --overlay-bg: #181926; --overlay-fg: #cad3f5; }
+          body.theme-catppuccin-mocha { --overlay-bg: #11111b; --overlay-fg: #cdd6f4; }
+
+          /* Floating image edit overlay - positioned outside Milkdown DOM */
+          .image-edit-overlay {
+            position: absolute;
+            z-index: 1000;
+            pointer-events: none;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 80ms ease-out, visibility 80ms ease-out;
+          }
+          .image-edit-overlay.visible {
+            pointer-events: auto;
+            opacity: 1;
+            visibility: visible;
+          }
+          .image-edit-overlay .image-edit-btn {
+            width: 32px;
+            height: 32px;
+            padding: 6px;
+            border: none;
+            border-radius: 50%;
+            background: var(--overlay-bg);
+            color: var(--overlay-fg);
+            opacity: 0.6;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+          .image-edit-overlay .image-edit-btn:hover {
+            opacity: 1;
+          }
+          .image-edit-overlay .image-edit-btn svg {
+            width: 16px;
+            height: 16px;
+            fill: currentColor;
+          }
+
+          /* Heading level badges (H1, H2, etc.) */
+          .heading-level-badge {
+            position: absolute;
+            left: -15px;
+            top: 3px;
+            font-size: 11px;
+            font-weight: 500;
+            opacity: 0.5;
+            user-select: none;
+            pointer-events: none;
+            font-family: var(--vscode-editor-font-family, monospace);
+          }
+          /* Light themes */
+          body.theme-frame .heading-level-badge,
+          body.theme-nord .heading-level-badge,
+          body.theme-crepe .heading-level-badge,
+          body.theme-catppuccin-latte .heading-level-badge {
+            color: rgba(0, 0, 0, 0.6);
+          }
+          /* Dark themes */
+          body.theme-frame-dark .heading-level-badge,
+          body.theme-nord-dark .heading-level-badge,
+          body.theme-crepe-dark .heading-level-badge,
+          body.theme-catppuccin-frappe .heading-level-badge,
+          body.theme-catppuccin-macchiato .heading-level-badge,
+          body.theme-catppuccin-mocha .heading-level-badge {
+            color: rgba(255, 255, 255, 0.5);
           }
 
         </style>

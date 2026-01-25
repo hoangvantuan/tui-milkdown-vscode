@@ -2,6 +2,63 @@
 
 All notable changes to "Milkdown Markdown WYSIWYG" extension.
 
+## \[1.5.1] - 2026-01-25
+
+### Added
+
+* **Heading Level Indicator**
+  * Displays H1-H6 badges next to headings for quick level identification
+  * Subtle styling with muted colors
+  * Supports all 10 themes (light and dark)
+
+## \[1.5.0] - 2026-01-24
+
+### Added
+
+* **Auto-link Paste URL**
+  * When text is selected and you paste a URL, automatically converts to markdown link `[selected text](url)`
+  * Supports http/https URLs only
+  * Replaces existing link URL if selection is already a link
+  * Intelligently skips paste events with files (images handled by image upload)
+
+* **Image Upload & Paste Support**
+  * Paste images from clipboard directly into the editor
+  * Upload images via Crepe's file picker button
+  * Images saved automatically to configurable folder
+  * Configurable via `tuiMarkdown.imageSaveFolder` setting (default: `images`)
+  * Use `.` for same folder as document
+
+* **Local Image Display**
+  * Renders local images from document folder and workspace
+  * Supports both relative and absolute paths
+  * Automatic path resolution for webview display
+
+* **Image URL Editing**
+  * Hover on image to show edit icon (pencil button)
+  * Double-click on image to edit URL/path via VSCode input box
+  * Shows original path instead of webview URI
+
+* **Auto Rename Images**
+  * Automatically rename image files when you change the path in Markdown
+  * Only triggers when image folder remains the same
+  * Updates all references in workspace `.md` files
+  * Configurable via `tuiMarkdown.autoRenameImages` setting (default: true)
+
+* **Auto Delete Images**
+  * Automatically delete image files when removed from markdown
+  * Moves files to Trash (recoverable)
+  * Shows warning if image is used in other `.md` files
+  * Configurable via `tuiMarkdown.autoDeleteImages` setting (default: true)
+
+### Fixed
+
+* Fixed cursor position loss when deleting images (editor no longer recreates on imageMap changes from user edits)
+
+### Changed
+
+* Image edit icon now shows when hovering anywhere on image block (not just the image itself)
+* Extended `localResourceRoots` to include document folder and workspace for image loading
+
 ## \[1.4.0] - 2026-01-24
 
 ### Added
@@ -96,4 +153,3 @@ All notable changes to "Milkdown Markdown WYSIWYG" extension.
 * Configurable font size (8-32px)
 
 * Support for .md and .markdown files
-

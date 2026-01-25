@@ -11,6 +11,12 @@ A beautiful WYSIWYG Markdown editor for VS Code powered by Milkdown Crepe.
 - **View Source**: Toggle between WYSIWYG and source view
 - **Cursor Line Highlight**: Visual highlight of current block/paragraph
 - **Metadata Panel**: Collapsible YAML frontmatter editor with validation
+- **Image Upload**: Paste images from clipboard or upload via file picker
+- **Image URL Editing**: Double-click on image to edit URL/path
+- **Auto-link Paste URL**: Select text and paste URL to create markdown link automatically
+- **Auto Rename Images**: Automatically rename image files when you change the path in markdown
+- **Auto Delete Images**: Automatically delete image files when removed from markdown (moves to Trash)
+- **Local Image Display**: Renders local images from document folder and workspace
 - **Large File Warning**: Protection for files >500KB
 - **Configurable Font Size**: Adjust editor font size (8-32px)
 - **Configurable Heading Sizes**: Customize font sizes for H1-H6 headings (12-72px)
@@ -28,6 +34,9 @@ A beautiful WYSIWYG Markdown editor for VS Code powered by Milkdown Crepe.
 |---------|---------|-------------|
 | `tuiMarkdown.fontSize` | 16 | Editor font size (8-32px) |
 | `tuiMarkdown.highlightCurrentLine` | true | Enable cursor line highlight |
+| `tuiMarkdown.imageSaveFolder` | `images` | Folder to save pasted images (relative to document) |
+| `tuiMarkdown.autoRenameImages` | true | Auto rename image files when path changes in markdown |
+| `tuiMarkdown.autoDeleteImages` | true | Auto delete image files when removed from markdown (moves to Trash) |
 | `tuiMarkdown.headingSizes.h1` | 32 | H1 heading font size (12-72px) |
 | `tuiMarkdown.headingSizes.h2` | 28 | H2 heading font size (12-72px) |
 | `tuiMarkdown.headingSizes.h3` | 24 | H3 heading font size (12-72px) |
