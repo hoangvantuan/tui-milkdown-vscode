@@ -9,6 +9,7 @@ import {
 } from "./frontmatter";
 import { createLineHighlightPlugin } from "./line-highlight-plugin";
 import { createPasteLinkPlugin } from "./paste-link-plugin";
+import { createHeadingLevelPlugin } from "./heading-level-plugin";
 import { setupImageEditOverlay, handleUrlEditResponse, handleImageRenameResponse, setImageMap } from "./image-edit-plugin";
 
 declare function acquireVsCodeApi(): {
@@ -634,7 +635,10 @@ async function initEditor(initialContent: string = ""): Promise<Crepe | null> {
     // Inject ProseMirror plugins
     instance.editor.config((ctx) => {
       ctx.update(prosePluginsCtx, (plugins) => {
-        const pluginsToAdd = [createPasteLinkPlugin()];
+        const pluginsToAdd = [
+          createPasteLinkPlugin(),
+          createHeadingLevelPlugin(),
+        ];
         if (highlightCurrentLine) {
           pluginsToAdd.push(createLineHighlightPlugin());
         }

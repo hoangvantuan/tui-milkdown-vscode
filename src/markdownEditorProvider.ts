@@ -1081,6 +1081,34 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             fill: currentColor;
           }
 
+          /* Heading level badges (H1, H2, etc.) */
+          .heading-level-badge {
+            position: absolute;
+            left: 8px;
+            font-size: 11px;
+            font-weight: 500;
+            opacity: 0.5;
+            user-select: none;
+            pointer-events: none;
+            font-family: var(--vscode-editor-font-family, monospace);
+          }
+          /* Light themes */
+          body.theme-frame .heading-level-badge,
+          body.theme-nord .heading-level-badge,
+          body.theme-crepe .heading-level-badge,
+          body.theme-catppuccin-latte .heading-level-badge {
+            color: rgba(0, 0, 0, 0.6);
+          }
+          /* Dark themes */
+          body.theme-frame-dark .heading-level-badge,
+          body.theme-nord-dark .heading-level-badge,
+          body.theme-crepe-dark .heading-level-badge,
+          body.theme-catppuccin-frappe .heading-level-badge,
+          body.theme-catppuccin-macchiato .heading-level-badge,
+          body.theme-catppuccin-mocha .heading-level-badge {
+            color: rgba(255, 255, 255, 0.5);
+          }
+
         </style>
       </head>
       <body style="background: var(--vscode-editor-background, #1e1e1e);">
