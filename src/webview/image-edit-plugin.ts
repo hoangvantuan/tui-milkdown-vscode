@@ -346,9 +346,12 @@ function updateEditorNode(nodePos: number, attrs: Record<string, unknown>, newSr
     return;
   }
 
+  // Use live node attrs to avoid overwriting user edits made during async rename
+  const baseAttrs = (nodeAtPos.attrs ?? attrs) as Record<string, unknown>;
+
   try {
     const tr = state.tr.setNodeMarkup(nodePos, undefined, {
-      ...attrs,
+      ...baseAttrs,
       src: newSrc,
     });
     dispatch(tr);
