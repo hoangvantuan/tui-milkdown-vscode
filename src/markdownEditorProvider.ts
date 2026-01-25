@@ -820,6 +820,12 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             line-height: calc(24px * var(--editor-font-scale, 1)) !important;
           }
           /* Heading font sizes */
+          .milkdown .ProseMirror h1,
+          .milkdown .ProseMirror h2,
+          .milkdown .ProseMirror h3,
+          .milkdown .ProseMirror h4,
+          .milkdown .ProseMirror h5,
+          .milkdown .ProseMirror h6 { position: relative; }
           .milkdown .ProseMirror h1 { font-size: var(--heading-h1-size, 32px) !important; margin-top: var(--heading-h1-margin, 24px) !important; }
           .milkdown .ProseMirror h2 { font-size: var(--heading-h2-size, 28px) !important; margin-top: var(--heading-h2-margin, 20px) !important; }
           .milkdown .ProseMirror h3 { font-size: var(--heading-h3-size, 24px) !important; margin-top: var(--heading-h3-margin, 16px) !important; }
@@ -1083,9 +1089,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
           /* Heading level badges (H1, H2, etc.) */
           .heading-level-badge {
-            display: inline-block;
-            margin-right: 8px;
-            vertical-align: baseline;
+            position: absolute;
+            left: 8px;
+            top: 0;
             font-size: 11px;
             font-weight: 500;
             opacity: 0.5;
