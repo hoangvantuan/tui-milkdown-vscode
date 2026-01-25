@@ -65,7 +65,11 @@ function transformForDisplay(
   imageMap: Record<string, string>,
 ): string {
   let result = content;
-  for (const [originalPath, webviewUri] of Object.entries(imageMap)) {
+  // Sort by path length descending to avoid overlapping replacements
+  const entries = Object.entries(imageMap).sort(
+    ([a], [b]) => b.length - a.length
+  );
+  for (const [originalPath, webviewUri] of entries) {
     const escaped = escapeRegex(originalPath);
     result = result.replace(new RegExp(escaped, "g"), webviewUri);
   }
@@ -77,7 +81,11 @@ function transformForSave(
   imageMap: Record<string, string>,
 ): string {
   let result = content;
-  for (const [originalPath, webviewUri] of Object.entries(imageMap)) {
+  // Sort by URI length descending to avoid overlapping replacements
+  const entries = Object.entries(imageMap).sort(
+    ([, a], [, b]) => b.length - a.length
+  );
+  for (const [originalPath, webviewUri] of entries) {
     const escaped = escapeRegex(webviewUri);
     result = result.replace(new RegExp(escaped, "g"), originalPath);
   }
@@ -543,6 +551,9 @@ function setTheme(themeName: ThemeName, saveGlobal = true): void {
   const select = getThemeSelect();
   if (select) select.value = themeName;
 
+  // Persist in webview state for reload resilience
+  vscode.setState({ theme: themeName });
+
   // Save theme globally via extension (only source of truth)
   if (saveGlobal) {
     globalThemeReceived = themeName; // Update local cache
@@ -831,6 +842,12 @@ window.addEventListener("message", async (event) => {
 
 function init() {
   console.log("[Crepe] init() called");
+
+  // Restore theme from webview state (before extension responds)
+  const savedState = vscode.getState();
+  if (savedState?.theme && THEMES.includes(savedState.theme as ThemeName)) {
+    setTheme(savedState.theme as ThemeName, false);
+  }
 
   // Cleanup pending operations on webview close to prevent memory leaks
   window.addEventListener("beforeunload", () => {

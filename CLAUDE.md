@@ -87,9 +87,9 @@ Extension provides these settings via `tuiMarkdown.*` namespace:
 
 * `imageSaveFolder` (string, default: `images`) - Folder to save pasted images (relative to document)
 
-* `autoRenameImages` (boolean, default: true) - Automatically rename image files when you change the image path in markdown (only when folder stays the same)
+* `autoRenameImages` (boolean, default: true) - Automatically rename image files when you change the image path in Markdown (only when folder stays the same)
 
-* `autoDeleteImages` (boolean, default: true) - Automatically delete image files when removed from markdown (moves to Trash, warns if used elsewhere)
+* `autoDeleteImages` (boolean, default: true) - Automatically delete image files when removed from Markdown (moves to Trash, warns if used elsewhere)
 
 ## Milkdown Crepe Integration
 
@@ -103,7 +103,7 @@ Uses `@milkdown/crepe` package. Theme CSS variables loaded from `src/webview/the
 
 * Returns validation errors with line numbers
 
-* Reconstructs markdown with frontmatter delimiters (`---`)
+* Reconstructs Markdown with frontmatter delimiters (`---`)
 
 * Handles edge cases: empty frontmatter, missing delimiters, invalid YAML
 
@@ -162,7 +162,7 @@ Uses `@milkdown/crepe` package. Theme CSS variables loaded from `src/webview/the
 
 **Local Image Display** (`src/markdownEditorProvider.ts`):
 
-* `extractImagePaths()`: Extracts image paths from markdown (both `![](path)` and `<img src="">`)
+* `extractImagePaths()`: Extracts image paths from Markdown (both `![](path)` and `<img src="">`)
 
 * `resolveImagePath()`: Resolves relative/absolute paths against document location
 
@@ -180,14 +180,14 @@ Uses `@milkdown/crepe` package. Theme CSS variables loaded from `src/webview/the
 
 * Extension saves to configured folder (`tuiMarkdown.imageSaveFolder`)
 
-* Returns saved path, updates markdown with relative path
+* Returns saved path, updates Markdown with relative path
 
 **Message Flow**:
 
 1. Webview detects image (paste or upload) → converts to base64
 2. Sends `saveImage` message with base64 data and filename
 3. Extension saves to disk, returns `imageSaved` with relative path
-4. Webview updates markdown content with new image path
+4. Webview updates Markdown content with new image path
 
 **Path Transformation**:
 
@@ -197,7 +197,7 @@ Uses `@milkdown/crepe` package. Theme CSS variables loaded from `src/webview/the
 
 **Auto Rename Images** (`src/markdownEditorProvider.ts`):
 
-* When user edits image path in markdown (same folder, different filename)
+* When user edits image path in Markdown (same folder, different filename)
 
 * On save: Extension detects path change and prompts user via QuickPick dialog
 
