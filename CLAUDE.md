@@ -63,6 +63,7 @@ src/
     ├── frontmatter.ts        # YAML parsing & validation utilities
     ├── line-highlight-plugin.ts # ProseMirror plugin for cursor line highlight
     ├── image-edit-plugin.ts  # Double-click image URL editing
+    ├── paste-link-plugin.ts  # Auto-link pasted URLs when text is selected
     └── themes/               # Theme CSS files (scoped by body class)
         ├── index.css              # Imports all theme CSS
         ├── frame.css              # Frame light theme
@@ -233,6 +234,20 @@ Uses `@milkdown/crepe` package. Theme CSS variables loaded from `src/webview/the
 
 * Updates node via ProseMirror transaction after user confirms
 
+## Paste Link
+
+**Auto-link Plugin** (`src/webview/paste-link-plugin.ts`):
+
+* ProseMirror plugin intercepts paste events
+
+* When text is selected and clipboard contains valid URL (http/https)
+
+* Converts selected text to markdown link: `[selected text](pasted URL)`
+
+* Skips if no selection or clipboard has files (images)
+
+* Replaces existing link URL if selection is already a link
+
 ## Development Guidelines
 
 **Milkdown-First Approach:**
@@ -260,4 +275,30 @@ Uses `@milkdown/crepe` package. Theme CSS variables loaded from `src/webview/the
 * Minimize custom CSS; leverage Milkdown's CSS variables
 
 * Profile bundle size impact before adding new dependencies
+
+## Documentation Update Guidelines
+
+After every development cycle (new feature, bug fix, refactor), update these files:
+
+| File | When to Update | What to Include |
+|------|----------------|-----------------|
+| `CHANGELOG.md` | Every change | New features, bug fixes, breaking changes, improvements |
+| `README.md` | New features only | User-facing feature descriptions (keep concise) |
+| `CLAUDE.md` | Architecture/lessons | New components, patterns, gotchas, lessons learned |
+
+**CHANGELOG.md** - Version history for users:
+* Add entry under current version (or create new version section)
+* Group by: Added, Changed, Fixed, Removed
+* Include brief description of what changed
+
+**README.md** - User documentation:
+* Only update for new user-facing features
+* Keep feature list concise (one line per feature)
+* Update configuration table if new settings added
+
+**CLAUDE.md** - Developer knowledge base:
+* Document new file/component in File Structure section
+* Add dedicated section for complex features (architecture, message flow)
+* Record lessons learned, gotchas, edge cases discovered during development
+* Keep as reference for future development and AI assistants
 

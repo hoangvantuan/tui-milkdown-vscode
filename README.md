@@ -13,6 +13,7 @@ A beautiful WYSIWYG Markdown editor for VS Code powered by Milkdown Crepe.
 - **Metadata Panel**: Collapsible YAML frontmatter editor with validation
 - **Image Upload**: Paste images from clipboard or upload via file picker
 - **Image URL Editing**: Double-click on image to edit URL/path
+- **Auto-link Paste URL**: Select text and paste URL to create markdown link automatically
 - **Auto Rename Images**: Automatically rename image files when you change the path in markdown
 - **Auto Delete Images**: Automatically delete image files when removed from markdown (moves to Trash)
 - **Local Image Display**: Renders local images from document folder and workspace

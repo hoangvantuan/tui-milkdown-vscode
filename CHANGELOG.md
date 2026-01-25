@@ -6,6 +6,12 @@ All notable changes to "Milkdown Markdown WYSIWYG" extension.
 
 ### Added
 
+* **Auto-link Paste URL**
+  * When text is selected and you paste a URL, automatically converts to markdown link `[selected text](url)`
+  * Supports http/https URLs only
+  * Replaces existing link URL if selection is already a link
+  * Intelligently skips paste events with files (images handled by image upload)
+
 * **Image Upload & Paste Support**
   * Paste images from clipboard directly into the editor
   * Upload images via Crepe's file picker button
