@@ -708,13 +708,20 @@ window.addEventListener("message", async (event) => {
     case "update":
       if (typeof message.content === "string") {
         const newImageMap = message.imageMap || {};
+        const prevKeys = new Set(Object.keys(currentImageMap));
+        const newKeys = Object.keys(newImageMap);
+        // Only recreate when NEW keys are added (user fixed wrong path → right path)
+        // Don't recreate when keys are removed (user deleted image) - preserves cursor
+        const hasNewKeys = newKeys.some((k) => !prevKeys.has(k));
+
         currentImageMap = newImageMap;
         setImageMap(newImageMap);
 
         // Skip content update if this is echo from our edit
-        // Editor already has correct content, just update imageMap
-        // (imageMap changes on delete don't require recreate)
-        if (message.content === lastSentContent) {
+        // AND no new image paths were resolved
+        // When user fixes wrong path → right path, imageMap gains new entry → recreate
+        // When user deletes image, keys decrease → don't recreate → preserve cursor
+        if (message.content === lastSentContent && !hasNewKeys) {
           lastSentContent = null;
           break;
         }
