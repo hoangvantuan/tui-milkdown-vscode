@@ -74,9 +74,10 @@ export function parseContent(markdown: string): ParsedContent {
  */
 export function reconstructContent(
   frontmatter: string | null,
-  body: string
+  body: unknown
 ): string {
-  const safeBody = body ?? "";
+  // Validate body parameter - ensure it's a string
+  const safeBody = typeof body === "string" ? body : String(body ?? "");
   if (frontmatter === null || frontmatter.trim() === "") {
     return safeBody;
   }
