@@ -96,8 +96,8 @@ function transformForSave(
 // Matches both blob: URLs and data: URIs
 const INLINE_IMAGE_REGEX = /!\[([^\]]*)\]\(((?:blob:|data:image\/)[^)]+)\)/g;
 
-// Node types that represent images in Milkdown
-const IMAGE_NODE_TYPES = ["image-block", "image", "image-inline"];
+// Node types that represent images in Milkdown (shared with image-edit-plugin)
+export const IMAGE_NODE_TYPES = ["image-block", "image", "image-inline"];
 
 /**
  * Update image node src using ProseMirror transaction

@@ -66,10 +66,6 @@ export function detectImageRenames(
     const seenOldPaths = new Set<string>(); // Dedupe by source path
     const seenNewPaths = new Set<string>(); // Dedupe by target path
 
-    console.log("[Image Rename] Detecting renames...");
-    console.log("[Image Rename] Original paths:", [...originalPaths.entries()]);
-    console.log("[Image Rename] Current paths:", currentPaths);
-
     // Build set of normalized current paths for quick lookup
     const normalizedCurrentSet = new Set(
       currentPaths.map((p) => normalizePath(p)),
@@ -84,11 +80,8 @@ export function detectImageRenames(
       }
     }
 
-    console.log("[Image Rename] Removed originals:", [...removedOriginals.entries()]);
-
     // No removed paths = no renames possible
     if (removedOriginals.size === 0) {
-      console.log("[Image Rename] No removed paths, skipping rename detection");
       return [];
     }
 
@@ -101,19 +94,16 @@ export function detectImageRenames(
         (k) => normalizePath(k) === normalizedCurrent,
       );
       if (hasOriginal) {
-        console.log("[Image Rename] Path unchanged:", currentPath);
         continue;
       }
 
       // Security: Skip paths with traversal patterns
       if (hasPathTraversal(currentPath)) {
-        console.log("[Image Rename] Skipping path with traversal:", currentPath);
         continue;
       }
 
       const currentDir = normalizePath(path.dirname(currentPath));
       const currentFilename = path.basename(currentPath);
-      console.log("[Image Rename] New path - dir:", currentDir, "filename:", currentFilename);
 
       // Only match with REMOVED original paths (not all originals)
       for (const [origRelative, origAbsolute] of removedOriginals) {
@@ -122,14 +112,11 @@ export function detectImageRenames(
 
         const origDir = normalizePath(path.dirname(origRelative));
         const origFilename = path.basename(origRelative);
-        console.log("[Image Rename] Comparing with removed - dir:", origDir, "filename:", origFilename);
 
         // Same folder, different filename = rename
         if (currentDir === origDir && currentFilename !== origFilename) {
-          console.log("[Image Rename] Folder match! Checking if source exists:", origAbsolute);
           // Verify source file exists
           if (fs.existsSync(origAbsolute)) {
-            console.log("[Image Rename] Source file exists, adding rename");
             const newAbsolute = path.resolve(docDir, currentPath);
 
             // Security: Verify target is within document directory
@@ -294,14 +281,8 @@ export function detectImageDeletes(
       currentPaths.map((p) => path.basename(p).toLowerCase()),
     );
 
-    console.log("[Image Delete] Detecting deletes...");
-    console.log("[Image Delete] Original paths:", [...originalPaths.entries()]);
-    console.log("[Image Delete] Current paths:", currentPaths);
-    console.log("[Image Delete] Normalized current paths:", [...normalizedCurrentPaths]);
-
     for (const [origRelative, origAbsolute] of originalPaths) {
       const normalizedOrig = normalizePath(origRelative);
-      console.log("[Image Delete] Checking:", origRelative, "→ normalized:", normalizedOrig);
 
       // If original path not in current paths → potentially deleted
       if (!normalizedCurrentPaths.has(normalizedOrig)) {
@@ -309,102 +290,25 @@ export function detectImageDeletes(
 
         // Check if same filename exists in different folder (move operation)
         if (currentFilenames.has(origFilename)) {
-          console.log("[Image Delete] Same filename found in different folder, skipping (move):", origRelative);
           continue;
         }
 
-        console.log("[Image Delete] Path not in current, checking file exists:", origAbsolute);
         // Verify file exists before suggesting delete
         if (fs.existsSync(origAbsolute)) {
-          console.log("[Image Delete] File exists, adding to deletes:", origRelative);
           deletes.push({
             relativePath: origRelative,
             absolutePath: origAbsolute,
             usedInFiles: [], // Will be populated by caller
           });
-        } else {
-          console.log("[Image Delete] File not found on disk:", origAbsolute);
         }
-      } else {
-        console.log("[Image Delete] Path still in current (no delete):", origRelative);
       }
     }
 
-    console.log("[Image Delete] Detected deletes:", deletes.length);
     return deletes;
   } catch (err) {
     console.error("[Image Delete] Detection failed:", err);
     return [];
   }
-}
-
-/**
- * Find all markdown files in workspace that reference the given image path.
- */
-export async function findFilesUsingImage(
-  imagePath: string,
-  excludeUri: vscode.Uri,
-): Promise<string[]> {
-  const mdFiles = await vscode.workspace.findFiles(
-    "**/*.md",
-    "**/node_modules/**",
-  );
-  const filesUsingImage: string[] = [];
-  const imageFilename = path.basename(imagePath);
-
-  for (const fileUri of mdFiles) {
-    // Skip current document
-    if (fileUri.toString() === excludeUri.toString()) continue;
-
-    try {
-      const content = await vscode.workspace.fs.readFile(fileUri);
-      const text = Buffer.from(content).toString("utf8");
-
-      // Check if file contains reference to this image (by filename)
-      if (text.includes(imageFilename)) {
-        filesUsingImage.push(
-          vscode.workspace.asRelativePath(fileUri, false),
-        );
-      }
-    } catch {
-      // Skip files that can't be read
-    }
-  }
-
-  return filesUsingImage;
-}
-
-/**
- * Show confirmation dialog for image deletes.
- * Shows warning for images used in other files.
- */
-export async function showDeleteConfirmation(
-  deletes: ImageDelete[],
-): Promise<ImageDelete[] | undefined> {
-  const items = deletes.map((d) => {
-    const hasWarning = d.usedInFiles.length > 0;
-    const icon = hasWarning ? "$(warning)" : "$(trash)";
-    const detail = hasWarning
-      ? `⚠️ Also used in: ${d.usedInFiles.join(", ")}`
-      : path.dirname(d.relativePath) || ".";
-
-    return {
-      label: `${icon} ${path.basename(d.relativePath)}`,
-      description: hasWarning ? "(used elsewhere)" : "",
-      detail,
-      delete: d,
-      picked: true,
-    };
-  });
-
-  const selected = await vscode.window.showQuickPick(items, {
-    canPickMany: true,
-    title: "Delete Image Files?",
-    placeHolder: "Select files to delete - will be moved to Trash (ESC to cancel)",
-  });
-
-  if (!selected || selected.length === 0) return undefined;
-  return selected.map((s) => s.delete);
 }
 
 /**

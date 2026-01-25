@@ -1,4 +1,5 @@
 import type { EditorView } from "@milkdown/kit/prose/view";
+import { IMAGE_NODE_TYPES } from "./main";
 
 /**
  * Floating overlay for editing image URLs.
@@ -34,6 +35,18 @@ let storedEditorEl: HTMLElement | null = null;
 // Track mouse position for detecting hover on newly added images
 let lastMouseX = 0;
 let lastMouseY = 0;
+
+// Image cache for optimized mousemove performance
+let cachedImageBlocks: Element[] = [];
+let cachedImages: HTMLImageElement[] = [];
+let imageCacheValid = false;
+
+/** Refresh image cache from DOM */
+function refreshImageCache(editorEl: HTMLElement): void {
+  cachedImageBlocks = Array.from(editorEl.querySelectorAll(".milkdown-image-block"));
+  cachedImages = Array.from(editorEl.querySelectorAll("img"));
+  imageCacheValid = true;
+}
 
 /**
  * Check if a point is inside an element's bounding rect
@@ -138,15 +151,20 @@ export function setupImageEditOverlay(
 
   // Use mousemove with bounding rect check for reliable hover detection
   // Detects hover on image blocks (.milkdown-image-block) as well as images directly
+  // Uses cached image list for performance (refreshed on DOM mutations)
   editorEl.addEventListener("mousemove", (e) => {
     lastMouseX = e.clientX;
     lastMouseY = e.clientY;
 
+    // Refresh cache if invalidated
+    if (!imageCacheValid) {
+      refreshImageCache(editorEl);
+    }
+
     let foundImg: HTMLImageElement | null = null;
 
-    // Check Milkdown image blocks first
-    const imageBlocks = Array.from(editorEl.querySelectorAll(".milkdown-image-block"));
-    for (const block of imageBlocks) {
+    // Check Milkdown image blocks first (using cache)
+    for (const block of cachedImageBlocks) {
       if (isPointInElement(e.clientX, e.clientY, block)) {
         const img = block.querySelector("img");
         if (img) {
@@ -156,10 +174,9 @@ export function setupImageEditOverlay(
       }
     }
 
-    // Fallback: check direct img elements
+    // Fallback: check direct img elements (using cache)
     if (!foundImg) {
-      const images = Array.from(editorEl.querySelectorAll("img"));
-      for (const img of images) {
+      for (const img of cachedImages) {
         if (isPointInElement(e.clientX, e.clientY, img)) {
           foundImg = img;
           break;
@@ -227,12 +244,18 @@ export function setupImageEditOverlay(
   }, true);
 
   // Watch for newly added images (e.g., after paste) and show overlay if mouse is over them
+  // Also invalidates image cache on DOM mutations
   const observer = new MutationObserver(() => {
-    // Delay to let Milkdown finish rendering
+    // Invalidate cache on any DOM change
+    imageCacheValid = false;
+
+    // Delay to let Milkdown finish rendering, then check if mouse is over new image
     setTimeout(() => {
-      // Check image blocks first
-      const imageBlocks = Array.from(editorEl.querySelectorAll(".milkdown-image-block"));
-      for (const block of imageBlocks) {
+      // Refresh cache
+      refreshImageCache(editorEl);
+
+      // Check image blocks first (using fresh cache)
+      for (const block of cachedImageBlocks) {
         if (isPointInElement(lastMouseX, lastMouseY, block)) {
           const img = block.querySelector("img");
           if (img) {
@@ -241,9 +264,8 @@ export function setupImageEditOverlay(
           }
         }
       }
-      // Fallback: direct img elements
-      const images = Array.from(editorEl.querySelectorAll("img"));
-      for (const img of images) {
+      // Fallback: direct img elements (using fresh cache)
+      for (const img of cachedImages) {
         if (isPointInElement(lastMouseX, lastMouseY, img)) {
           showOverlay(img);
           return;
@@ -322,9 +344,6 @@ function updateEditorNode(nodePos: number, attrs: Record<string, unknown>, newSr
   });
   dispatch(tr);
 }
-
-// Node types that represent images
-const IMAGE_NODE_TYPES = ["image-block", "image", "image-inline"];
 
 interface NodeInfo {
   node: { type: { name: string }; attrs: Record<string, unknown> };
