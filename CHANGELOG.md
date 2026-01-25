@@ -41,6 +41,7 @@ All notable changes to "Milkdown Markdown WYSIWYG" extension.
 
 ### Changed
 
+* Image edit icon now shows when hovering anywhere on image block (not just the image itself)
 * Extended `localResourceRoots` to include document folder and workspace for image loading
 
 ## \[1.4.0] - 2026-01-24

@@ -136,23 +136,38 @@ export function setupImageEditOverlay(
   overlayContainer = createOverlay(editorEl);
 
   // Use mousemove with bounding rect check for reliable hover detection
-  // (Milkdown wraps images in containers, so direct target check doesn't work)
+  // Detects hover on image blocks (.milkdown-image-block) as well as images directly
   editorEl.addEventListener("mousemove", (e) => {
     lastMouseX = e.clientX;
     lastMouseY = e.clientY;
 
-    // Find img element under mouse position
-    const images = Array.from(editorEl.querySelectorAll("img"));
     let foundImg: HTMLImageElement | null = null;
-    for (const img of images) {
-      if (isPointInElement(e.clientX, e.clientY, img)) {
-        foundImg = img;
-        break;
+
+    // Check Milkdown image blocks first
+    const imageBlocks = Array.from(editorEl.querySelectorAll(".milkdown-image-block"));
+    for (const block of imageBlocks) {
+      if (isPointInElement(e.clientX, e.clientY, block)) {
+        const img = block.querySelector("img");
+        if (img) {
+          foundImg = img;
+          break;
+        }
+      }
+    }
+
+    // Fallback: check direct img elements
+    if (!foundImg) {
+      const images = Array.from(editorEl.querySelectorAll("img"));
+      for (const img of images) {
+        if (isPointInElement(e.clientX, e.clientY, img)) {
+          foundImg = img;
+          break;
+        }
       }
     }
 
     if (foundImg) {
-      // Mouse is over an image - show overlay
+      // Mouse is over an image block - show overlay
       if (currentHoveredImg !== foundImg) {
         showOverlay(foundImg);
       } else if (hideTimer) {
@@ -185,21 +200,21 @@ export function setupImageEditOverlay(
     hideOverlay();
   });
 
-  // Double-click on image also triggers edit
+  // Double-click on image or its container triggers edit
   editorEl.addEventListener("dblclick", (e) => {
     const target = e.target as HTMLElement;
-    // Find <img> element: could be target itself, inside target (wrapper), or ancestor
     let img: HTMLImageElement | null = null;
+
     if (target.tagName === "IMG") {
       img = target as HTMLImageElement;
     } else {
-      // Check if <img> is inside target (e.g., image-wrapper contains img)
+      // Check if <img> is inside target (wrapper contains img)
       img = target.querySelector("img");
-      // Fallback: check if target is inside an image container
+      // Fallback: check if target is inside .milkdown-image-block
       if (!img) {
-        const wrapper = target.closest(".image-wrapper, .image-block");
-        if (wrapper) {
-          img = wrapper.querySelector("img");
+        const imageBlock = target.closest(".milkdown-image-block");
+        if (imageBlock) {
+          img = imageBlock.querySelector("img");
         }
       }
     }
@@ -214,11 +229,23 @@ export function setupImageEditOverlay(
   const observer = new MutationObserver(() => {
     // Delay to let Milkdown finish rendering
     setTimeout(() => {
+      // Check image blocks first
+      const imageBlocks = Array.from(editorEl.querySelectorAll(".milkdown-image-block"));
+      for (const block of imageBlocks) {
+        if (isPointInElement(lastMouseX, lastMouseY, block)) {
+          const img = block.querySelector("img");
+          if (img) {
+            showOverlay(img);
+            return;
+          }
+        }
+      }
+      // Fallback: direct img elements
       const images = Array.from(editorEl.querySelectorAll("img"));
       for (const img of images) {
         if (isPointInElement(lastMouseX, lastMouseY, img)) {
           showOverlay(img);
-          break;
+          return;
         }
       }
     }, 150);
