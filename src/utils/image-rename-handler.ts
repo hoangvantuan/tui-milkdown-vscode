@@ -37,10 +37,14 @@ function isPathWithinDir(resolvedPath: string, allowedDir: string): boolean {
 /**
  * Check if path contains traversal or absolute patterns.
  * Only allow relative paths for rename detection.
+ * Note: Uses segment-aware ".." check to avoid false positives like "image..png"
  */
 export function hasPathTraversal(p: string): boolean {
-  // Block: parent traversal, absolute paths (Unix and Windows)
-  return p.includes("..") || p.startsWith("/") || /^[a-zA-Z]:/.test(p);
+  // Block absolute paths (Unix and Windows)
+  if (p.startsWith("/") || /^[a-zA-Z]:/.test(p)) return true;
+  // Block ".." only as standalone path segment (not in filenames like "image..png")
+  const segments = p.split(/[\\/]/);
+  return segments.some(seg => seg === "..");
 }
 
 /**

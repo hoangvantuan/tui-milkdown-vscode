@@ -93,9 +93,11 @@ const IMAGE_NODE_TYPES = ["image-block", "image", "image-inline"];
 
 /**
  * Update image node src using ProseMirror transaction
+ * @param oldSrc - The original src to match (blob: or data: URL)
+ * @param newSrc - The new src to set (webviewUri)
  * Returns true if update was successful
  */
-function updateImageNodeSrc(webviewUri: string): boolean {
+function updateImageNodeSrc(oldSrc: string, newSrc: string): boolean {
   if (!crepe) return false;
 
   try {
@@ -104,12 +106,13 @@ function updateImageNodeSrc(webviewUri: string): boolean {
 
     const { state, dispatch } = view;
 
-    // Collect nodes to update
+    // Collect nodes to update - only match specific oldSrc
     const nodesToUpdate: Array<{ pos: number; node: typeof state.doc.firstChild; nodeSize: number }> = [];
     state.doc.descendants((node, pos) => {
       if (!IMAGE_NODE_TYPES.includes(node.type.name)) return;
       const src = node.attrs.src as string;
-      if (!src || (!src.startsWith("data:") && !src.startsWith("blob:"))) return;
+      // Only update nodes with matching oldSrc
+      if (src !== oldSrc) return;
       nodesToUpdate.push({ pos, node, nodeSize: node.nodeSize });
     });
 
@@ -121,7 +124,7 @@ function updateImageNodeSrc(webviewUri: string): boolean {
     let tr = state.tr;
     for (const { pos, node, nodeSize } of nodesToUpdate) {
       const newNode = node!.type.create(
-        { ...node!.attrs, src: webviewUri },
+        { ...node!.attrs, src: newSrc },
         node!.content,
         node!.marks
       );
@@ -319,7 +322,7 @@ function replaceInlineImage(
 
   // Try ProseMirror transaction for immediate visual update (fast, may not enable resize)
   if (crepe && webviewUri) {
-    updateImageNodeSrc(webviewUri);
+    updateImageNodeSrc(imageUrl, webviewUri);
   }
 }
 

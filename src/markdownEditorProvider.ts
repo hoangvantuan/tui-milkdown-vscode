@@ -78,10 +78,20 @@ function resolveImagePath(
 ): vscode.Uri | null {
   if (isRemoteUrl(imagePath)) return null;
 
+  // Handle file:// URIs
+  if (imagePath.startsWith("file://")) {
+    return vscode.Uri.parse(imagePath);
+  }
+
+  // Handle Windows absolute paths (e.g., C:\ or C:/)
+  if (/^[a-zA-Z]:[\\/]/.test(imagePath)) {
+    return vscode.Uri.file(imagePath);
+  }
+
   const documentFolder = vscode.Uri.joinPath(documentUri, "..");
 
   if (imagePath.startsWith("/")) {
-    // Absolute path - resolve from workspace root
+    // Unix absolute path - resolve from workspace root
     const workspaceFolder = vscode.workspace.getWorkspaceFolder(documentUri);
     if (workspaceFolder) {
       return vscode.Uri.joinPath(workspaceFolder.uri, imagePath);
@@ -439,7 +449,17 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             try {
               // Get configured folder
               const config = vscode.workspace.getConfiguration("tuiMarkdown");
-              const saveFolder = config.get<string>("imageSaveFolder", "images");
+              let saveFolder = config.get<string>("imageSaveFolder", "images")?.trim() || "images";
+
+              // Security: Validate saveFolder to prevent path traversal
+              const isAbsolute = saveFolder.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(saveFolder);
+              const hasTraversal = saveFolder.split(/[\\/]/).includes("..");
+              if (saveFolder !== "." && (isAbsolute || hasTraversal)) {
+                vscode.window.showErrorMessage(
+                  "imageSaveFolder must be a relative path (or '.') within the document folder."
+                );
+                break;
+              }
 
               // Resolve folder path relative to document
               const documentFolder = vscode.Uri.joinPath(document.uri, "..");
@@ -453,8 +473,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
               }
 
               // Decode base64 and save file
+              // Note: Use [^;]+ to match MIME types like image/svg+xml
               const base64Data = imgMsg.data.replace(
-                /^data:image\/\w+;base64,/,
+                /^data:image\/[^;]+;base64,/i,
                 "",
               );
               const buffer = Buffer.from(base64Data, "base64");

@@ -16,6 +16,7 @@ const pendingEdits = new Map<string, { callback: EditCallback; originalPath: str
 interface PendingRename {
   nodePos: number;
   nodeAttrs: Record<string, unknown>;
+  oldPath: string; // Track old path to remove from imageMap after rename
 }
 const pendingRenames = new Map<string, PendingRename>();
 
@@ -279,7 +280,7 @@ function triggerImageEdit(imgEl: HTMLImageElement): void {
       if (isLocalRename && storedPostMessage) {
         // Request rename FIRST, then update editor after file is renamed
         const renameId = `rename-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        pendingRenames.set(renameId, { nodePos, nodeAttrs: { ...node.attrs } });
+        pendingRenames.set(renameId, { nodePos, nodeAttrs: { ...node.attrs }, oldPath: originalPath });
 
         storedPostMessage({
           type: "requestImageRename",
@@ -435,6 +436,10 @@ export function handleImageRenameResponse(
   pendingRenames.delete(renameId);
 
   if (success && webviewUri) {
+    // Remove old imageMap entry to prevent path regression in transformForSave
+    if (pending.oldPath) {
+      delete currentImageMap[pending.oldPath];
+    }
     // Update imageMap BEFORE updating editor so transformForSave works correctly
     // This ensures webviewUri gets converted back to relative path when saving
     currentImageMap[newPath] = webviewUri;
@@ -442,6 +447,10 @@ export function handleImageRenameResponse(
     // Now update editor with webviewUri for display
     updateEditorNode(pending.nodePos, pending.nodeAttrs, webviewUri);
   } else if (success) {
+    // Remove old imageMap entry
+    if (pending.oldPath) {
+      delete currentImageMap[pending.oldPath];
+    }
     // No webviewUri - use newPath directly
     updateEditorNode(pending.nodePos, pending.nodeAttrs, newPath);
   }
