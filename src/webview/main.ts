@@ -53,7 +53,7 @@ let currentTheme: ThemeName = "frame";
 let globalThemeReceived: ThemeName | null = null; // Theme from extension globalState
 let currentFrontmatter: string | null = null; // Current frontmatter YAML content
 let currentBody: string = ""; // Current body content (without frontmatter)
-let lastSentContent: string | null = null; // Track last sent content to prevent echo loops
+let lastSentState: string | null = null; // Track last sent state (content+imageMap keys) to prevent echo loops
 let highlightCurrentLine = true; // Line highlight feature toggle (default enabled)
 let currentImageMap: Record<string, string> = {}; // Image path → webviewUri mapping
 
@@ -108,10 +108,22 @@ export const IMAGE_NODE_TYPES = ["image-block", "image", "image-inline"];
  * Returns true if update was successful
  */
 function updateImageNodeSrc(oldSrc: string, newSrc: string): boolean {
-  if (!crepe) return false;
+  // Guard: Check if editor exists and is not being destroyed
+  if (!crepe || !crepe.editor) return false;
 
   try {
-    const view = crepe.editor?.ctx?.get(editorViewCtx);
+    // Safe access: Try to get editorViewCtx, catch if context not ready/destroyed
+    const ctx = crepe.editor.ctx;
+    if (!ctx) return false;
+
+    let view;
+    try {
+      view = ctx.get(editorViewCtx);
+    } catch (err) {
+      // Context "editorView" not found - editor being destroyed or not yet ready
+      console.warn("[ImageSave] editorView context not available");
+      return false;
+    }
     if (!view) return false;
 
     const { state, dispatch } = view;
@@ -336,6 +348,15 @@ function replaceInlineImage(
   }
 }
 
+/**
+ * Serialize state for echo detection (content + imageMap keys only)
+ * Uses only imageMap keys (not values) because webviewUri values change per session
+ */
+function serializeStateForEcho(content: string, imageMap: Record<string, string>): string {
+  const sortedKeys = Object.keys(imageMap).sort();
+  return JSON.stringify({ content, imageMapKeys: sortedKeys });
+}
+
 function debouncedPostEdit(content: string): void {
   if (debounceTimer !== null) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(async () => {
@@ -347,7 +368,8 @@ function debouncedPostEdit(content: string): void {
       return; // Don't save content with blob URLs - wait for imageSaved
     }
 
-    lastSentContent = content;
+    // Track state BEFORE sending to detect echo (content + imageMap keys)
+    lastSentState = serializeStateForEcho(content, currentImageMap);
     vscode.postMessage({ type: "edit", content });
     debounceTimer = null;
   }, DEBOUNCE_MS);
@@ -434,7 +456,8 @@ async function sendFullContent(): Promise<void> {
     return; // Don't save content with blob URLs - wait for imageSaved
   }
   const fullContent = reconstructContent(currentFrontmatter, currentBody);
-  lastSentContent = fullContent;
+  // Track state BEFORE sending to detect echo
+  lastSentState = serializeStateForEcho(fullContent, currentImageMap);
   vscode.postMessage({ type: "edit", content: fullContent });
 }
 
@@ -675,6 +698,12 @@ async function updateEditorContent(content: string): Promise<void> {
   // Note: isUpdatingFromExtension managed by caller (case "update")
   showLoading();
   try {
+    // Cancel pending debounced edit to prevent stale edits after recreate
+    if (debounceTimer !== null) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
+    }
+
     crepe.destroy();
     crepe = null;
 
@@ -726,26 +755,28 @@ window.addEventListener("message", async (event) => {
       if (typeof message.content === "string") {
         const newImageMap = message.imageMap || {};
 
-        // Detect imageMap changes (both keys AND values)
-        // This handles: new paths added, paths removed, and URI changes for same path
-        const serializeImageMap = (map: Record<string, string>) =>
-          Object.entries(map)
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([k, v]) => `${k}=${v}`)
-            .join("|");
-        const imageMapChanged =
-          serializeImageMap(currentImageMap) !== serializeImageMap(newImageMap);
+        // Serialize incoming state (content + imageMap keys only)
+        // Uses only keys because webviewUri values change per session
+        const incomingState = serializeStateForEcho(message.content, newImageMap);
+
+        // Skip if this is exact echo of our last edit (same content + same imageMap keys)
+        // This prevents: edit → extension responds → recreate → edit loop
+        if (incomingState === lastSentState) {
+          lastSentState = null;
+          // Still update imageMap values (URIs may have changed) but don't recreate editor
+          currentImageMap = newImageMap;
+          setImageMap(newImageMap);
+          break;
+        }
+        lastSentState = null;
+
+        // Detect if imageMap keys changed (new images added/removed)
+        const currentKeys = Object.keys(currentImageMap).sort().join("|");
+        const newKeys = Object.keys(newImageMap).sort().join("|");
+        const imageMapKeysChanged = currentKeys !== newKeys;
 
         currentImageMap = newImageMap;
         setImageMap(newImageMap);
-
-        // Skip content update if this is echo from our edit AND imageMap unchanged
-        // When imageMap changes (new path, URI change), recreate to show updated images
-        if (message.content === lastSentContent && !imageMapChanged) {
-          lastSentContent = null;
-          break;
-        }
-        lastSentContent = null;
 
         try {
           isUpdatingFromExtension = true;
