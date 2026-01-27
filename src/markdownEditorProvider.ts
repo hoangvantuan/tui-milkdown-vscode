@@ -221,6 +221,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview);
 
     let pendingEdit = false;
+    let updateDebounceTimer: ReturnType<typeof setTimeout> | null = null;
     const disposables: vscode.Disposable[] = [];
 
     const getThemeKind = (): "dark" | "light" => {
@@ -233,13 +234,20 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
     const updateWebview = () => {
       if (pendingEdit) return;
-      const content = document.getText();
-      const imageMap = buildImageMap(content, document.uri, webviewPanel.webview);
-      webviewPanel.webview.postMessage({
-        type: "update",
-        content,
-        imageMap,
-      });
+
+      // Debounce rapid calls (e.g., from applyEdit + onDidChangeTextDocument)
+      if (updateDebounceTimer) clearTimeout(updateDebounceTimer);
+
+      updateDebounceTimer = setTimeout(() => {
+        const content = document.getText();
+        const imageMap = buildImageMap(content, document.uri, webviewPanel.webview);
+        webviewPanel.webview.postMessage({
+          type: "update",
+          content,
+          imageMap,
+        });
+        updateDebounceTimer = null;
+      }, 50); // 50ms debounce - balance between responsiveness and loop prevention
     };
 
     const sendTheme = () => {
@@ -718,6 +726,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
     webviewPanel.onDidDispose(() => {
       this.originalImagePaths.delete(docKey);
+      if (updateDebounceTimer) clearTimeout(updateDebounceTimer);
       disposables.forEach((d) => d.dispose());
     });
   }
