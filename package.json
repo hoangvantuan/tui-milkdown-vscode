@@ -2,7 +2,7 @@
   "name": "tui-milkdown-vscode",
   "displayName": "Milkdown Markdown WYSIWYG",
   "description": "A beautiful WYSIWYG Markdown editor powered by Milkdown Crepe. Edit markdown files with rich text experience and theme selection.",
-  "version": "1.5.3",
+  "version": "1.5.2",
   "publisher": "tuanhv",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -123,8 +123,8 @@
     ],
     "configurationDefaults": {
       "workbench.editorAssociations": {
-        "{git,gitlens,vscode-scm}:/**/*.md": "default",
-        "{git,gitlens,vscode-scm}:/**/*.markdown": "default"
+        "{git,gitlens}:/**/*.md": "default",
+        "{git,gitlens}:/**/*.markdown": "default"
       }
     }
   },
