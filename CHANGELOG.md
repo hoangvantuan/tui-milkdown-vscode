@@ -2,15 +2,6 @@
 
 All notable changes to "Milkdown Markdown WYSIWYG" extension.
 
-## \[1.5.3] - 2026-02-04
-
-### Fixed
-
-* **Diff View Compatibility**
-  * Added `vscode-scm` URI scheme to editor associations
-  * Improves reliability when viewing markdown diffs in Source Control panel
-  * Addresses intermittent issue where WYSIWYG editor opened instead of text diff
-
 ## \[1.5.2] - 2026-01-27
 
 ### Fixed
