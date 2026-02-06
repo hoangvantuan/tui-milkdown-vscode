@@ -756,7 +756,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       img-src ${webview.cspSource} https: data:;
       script-src 'nonce-${nonce}';
       style-src ${webview.cspSource} 'unsafe-inline';
-      font-src ${webview.cspSource};
+      font-src ${webview.cspSource} data:;
       connect-src 'none';
     `
       .replace(/\s+/g, " ")
@@ -1123,6 +1123,15 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           body.theme-catppuccin-macchiato .heading-level-badge,
           body.theme-catppuccin-mocha .heading-level-badge {
             color: rgba(255, 255, 255, 0.5);
+          }
+
+          /* Render inline hardbreaks (soft breaks) as visual line breaks.
+             Milkdown renders isInline:true hardbreaks as <span> with a space,
+             but users expect single newlines to display as line breaks. */
+          .milkdown .ProseMirror span[data-type="hardbreak"][data-is-inline="true"] {
+            display: block;
+            height: 0;
+            overflow: hidden;
           }
 
         </style>

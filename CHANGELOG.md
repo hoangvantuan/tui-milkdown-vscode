@@ -2,15 +2,42 @@
 
 All notable changes to "Milkdown Markdown WYSIWYG" extension.
 
+## \[1.5.5] - 2026-02-06
+
+### Fixed
+
+* **Inline Hardbreak Rendering**
+
+  * Single newlines (soft breaks) now display as visual line breaks instead of inline spaces
+
+  * Added CSS to collapse inline hardbreak `<span>` elements into block-level breaks
+
+* **Concurrent Editor Initialization**
+
+  * Added `isEditorInitializing` guard to prevent overlapping editor init/recreate calls
+
+  * Flush microtasks between destroy and create to avoid stale state
+
+  * Skip `update` messages while editor is still initializing
+
+* **CSP Font Source**
+
+  * Added `data:` to `font-src` CSP directive to support data URI fonts
+
 ## \[1.5.2] - 2026-01-27
 
 ### Fixed
 
 * **Editor Initialization Loop**
+
   * Fixed editor recreating 15+ times on document load (echo loop prevention)
+
   * Track content + imageMap keys together to detect echo from edits
+
   * Debounce `updateWebview()` calls (50ms) to prevent rapid updates
+
   * Guard `editorViewCtx` access to avoid "Context not found" errors
+
   * Cancel pending debounced edits when destroying editor
 
 ## \[1.5.1] - 2026-01-25
