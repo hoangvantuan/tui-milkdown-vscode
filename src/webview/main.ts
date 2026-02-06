@@ -47,6 +47,7 @@ const DEBOUNCE_MS = 300;
 const vscode = acquireVsCodeApi();
 
 let crepe: Crepe | null = null;
+let isEditorInitializing = false; // Guard against concurrent editor init/recreate
 let isUpdatingFromExtension = false;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let currentTheme: ThemeName = "frame";
@@ -693,9 +694,10 @@ async function initEditor(initialContent: string = ""): Promise<Crepe | null> {
 }
 
 async function updateEditorContent(content: string): Promise<void> {
-  if (!crepe) return;
+  if (!crepe || isEditorInitializing) return;
 
   // Note: isUpdatingFromExtension managed by caller (case "update")
+  isEditorInitializing = true;
   showLoading();
   try {
     // Cancel pending debounced edit to prevent stale edits after recreate
@@ -707,6 +709,9 @@ async function updateEditorContent(content: string): Promise<void> {
     crepe.destroy();
     crepe = null;
 
+    // Allow destroyed instance's microtasks to flush before creating new instance
+    await new Promise((r) => setTimeout(r, 0));
+
     const editorEl = getEditorEl();
     if (editorEl) {
       editorEl.innerHTML = "";
@@ -716,6 +721,8 @@ async function updateEditorContent(content: string): Promise<void> {
     console.error("[Crepe] Failed to update content:", err);
     crepe = null;
     hideLoading();
+  } finally {
+    isEditorInitializing = false;
   }
 }
 
@@ -793,8 +800,16 @@ window.addEventListener("message", async (event) => {
           const displayBody = transformForDisplay(parsed.body, currentImageMap);
 
           // Update Milkdown with transformed body
+          // Guard: skip if another init/recreate is already in progress
+          if (isEditorInitializing) break;
+
           if (!crepe) {
-            crepe = await initEditor(displayBody);
+            isEditorInitializing = true;
+            try {
+              crepe = await initEditor(displayBody);
+            } finally {
+              isEditorInitializing = false;
+            }
           } else {
             await updateEditorContent(displayBody);
           }
