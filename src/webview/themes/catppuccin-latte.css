@@ -6,7 +6,8 @@
   --crepe-color-surface: #ccd0da;
   --crepe-color-outline: #8c8fa1;
   --crepe-color-primary: #8839ef;
-  --crepe-color-inline-code: #8839ef;
+  --crepe-color-inline-code: #d20f39;
+  --crepe-color-highlight: #e6d28a;
 
   --crepe-font-default: "Noto Sans", Arial, Helvetica, sans-serif;
   --crepe-font-code: "Space Mono", Menlo, Monaco, "Courier New", Courier, monospace;
