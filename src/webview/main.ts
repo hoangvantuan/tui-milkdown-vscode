@@ -71,6 +71,7 @@ const THEMES: ThemeName[] = [
   "catppuccin-mocha",
 ];
 const DEBOUNCE_MS = 300;
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
 
 const vscode = acquireVsCodeApi();
 
@@ -94,23 +95,33 @@ let currentImageMap: Record<string, string> = {};
 // Node types that represent images in Tiptap
 export const IMAGE_NODE_TYPES = ["image"];
 
-// Image URL transform helpers
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-// Single-pass replacement: build one combined regex for all entries
-function singlePassReplace(
+// Context-aware image path replacement.
+// Only replaces paths within markdown image ![alt](url) and HTML <img src="url"> contexts.
+function replaceImagePaths(
   content: string,
-  entries: [string, string][],
-  reverseMap: Map<string, string>,
+  pathMap: Map<string, string>,
 ): string {
-  if (entries.length === 0) return content;
-  // Sort by key length descending to match longest first
-  const sorted = entries.sort(([a], [b]) => b.length - a.length);
-  const pattern = sorted.map(([key]) => escapeRegex(key)).join("|");
-  const regex = new RegExp(pattern, "g");
-  return content.replace(regex, (match) => reverseMap.get(match) ?? match);
+  if (pathMap.size === 0) return content;
+
+  // Replace in markdown images: ![alt](url) or ![alt](url "title")
+  let result = content.replace(
+    /!\[([^\]]*)\]\(([^)\s]+)([^)]*)\)/g,
+    (match, alt, url, rest) => {
+      const replacement = pathMap.get(url);
+      return replacement ? `![${alt}](${replacement}${rest})` : match;
+    }
+  );
+
+  // Replace in HTML img tags: <img src="url">
+  result = result.replace(
+    /<img(\s[^>]*?)src=(["'])([^"']+)\2([^>]*?)>/gi,
+    (match, before, quote, url, after) => {
+      const replacement = pathMap.get(url);
+      return replacement ? `<img${before}src=${quote}${replacement}${quote}${after}>` : match;
+    }
+  );
+
+  return result;
 }
 
 function transformForDisplay(
@@ -119,8 +130,7 @@ function transformForDisplay(
 ): string {
   const entries = Object.entries(imageMap);
   if (entries.length === 0) return content;
-  const reverseMap = new Map(entries.map(([orig, uri]) => [orig, uri]));
-  return singlePassReplace(content, entries, reverseMap);
+  return replaceImagePaths(content, new Map(entries));
 }
 
 function transformForSave(
@@ -129,10 +139,7 @@ function transformForSave(
 ): string {
   const entries = Object.entries(imageMap);
   if (entries.length === 0) return content;
-  // Reverse: webviewUri → originalPath
-  const reversed = entries.map(([orig, uri]) => [uri, orig] as [string, string]);
-  const reverseMap = new Map(reversed.map(([uri, orig]) => [uri, orig]));
-  return singlePassReplace(content, reversed, reverseMap);
+  return replaceImagePaths(content, new Map(entries.map(([orig, uri]) => [uri, orig])));
 }
 
 // Inline image handling
@@ -209,7 +216,8 @@ async function getBase64FromUrl(url: string): Promise<string | null> {
 }
 
 function generateImageFilename(mimeType: string): string {
-  const ext = mimeType.split("/")[1]?.replace(/;.*/, "") || "png";
+  const subtype = mimeType.split("/")[1]?.replace(/;.*/, "") || "png";
+  const ext = subtype.split("+")[0]; // Handle compound types like svg+xml
   const timestamp = Date.now();
   const random = Math.random().toString(36).substring(2, 8);
   return `image-${timestamp}-${random}.${ext}`;
@@ -289,6 +297,7 @@ function replaceInlineImage(
   }
 
   const fullContent = reconstructContent(currentFrontmatter, currentBody);
+  lastSentState = serializeStateForEcho(fullContent, currentImageMap);
   vscode.postMessage({ type: "edit", content: fullContent });
 
   if (editor && webviewUri) {
@@ -661,6 +670,14 @@ function initEditor(initialContent: string = ""): Editor | null {
             const file = imageItem.getAsFile();
             if (!file) return true;
 
+            if (file.size > MAX_IMAGE_SIZE) {
+              vscode.postMessage({
+                type: "showWarning",
+                message: `Image too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum is 10MB.`,
+              });
+              return true;
+            }
+
             const reader = new FileReader();
             reader.onloadend = () => {
               const base64 = reader.result as string;
@@ -695,6 +712,15 @@ function initEditor(initialContent: string = ""): Editor | null {
           if (!imageFile) return false;
 
           event.preventDefault();
+
+          if (imageFile.size > MAX_IMAGE_SIZE) {
+            vscode.postMessage({
+              type: "showWarning",
+              message: `Image too large (${(imageFile.size / 1024 / 1024).toFixed(1)}MB). Maximum is 10MB.`,
+            });
+            return true;
+          }
+
           const reader = new FileReader();
           reader.onloadend = () => {
             const base64 = reader.result as string;
@@ -707,16 +733,24 @@ function initEditor(initialContent: string = ""): Editor | null {
               blobUrl: base64,
             });
 
-            // Insert at drop position
+            // Insert at drop position, resolved to block boundary
             const coords = { left: event.clientX, top: event.clientY };
-            const pos = view.posAtCoords(coords);
-            if (pos) {
+            const dropPos = view.posAtCoords(coords);
+            if (dropPos) {
               const { state, dispatch } = view;
               const imageNode = state.schema.nodes.image;
               if (imageNode) {
                 const node = imageNode.create({ src: base64, alt: "" });
-                const tr = state.tr.insert(pos.pos, node);
-                dispatch(tr);
+                // Block-level image: insert after current top-level block
+                const $pos = state.doc.resolve(dropPos.pos);
+                const insertPos = $pos.depth > 0
+                  ? Math.min($pos.after(1), state.doc.content.size)
+                  : dropPos.pos;
+                try {
+                  dispatch(state.tr.insert(insertPos, node));
+                } catch {
+                  dispatch(state.tr.insert(state.doc.content.size, node));
+                }
               }
             }
           };

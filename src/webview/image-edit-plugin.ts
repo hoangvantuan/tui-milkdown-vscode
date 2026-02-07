@@ -1,5 +1,6 @@
 import type { EditorView } from "@tiptap/pm/view";
 import { IMAGE_NODE_TYPES } from "./main";
+import { cleanImagePath } from "../utils/clean-image-path";
 
 /**
  * Floating overlay for editing image URLs.
@@ -442,7 +443,7 @@ function requestUrlEdit(
 export function handleUrlEditResponse(editId: string, newUrl: string | null): void {
   const pending = pendingEdits.get(editId);
   if (pending && newUrl !== null && newUrl.trim() !== "") {
-    const cleanedUrl = cleanImagePathInput(newUrl);
+    const cleanedUrl = cleanImagePath(newUrl);
     pending.callback(cleanedUrl, pending.originalPath);
   }
   pendingEdits.delete(editId);
@@ -484,24 +485,3 @@ export function handleImageRenameResponse(
   // If failed, don't update editor (keep old path)
 }
 
-/**
- * Clean image path input
- */
-function cleanImagePathInput(rawInput: string): string {
-  let p = rawInput.trim();
-
-  if (p.startsWith("<")) {
-    const endBracket = p.indexOf(">");
-    if (endBracket !== -1) {
-      p = p.slice(1, endBracket);
-    }
-    return p.trim();
-  }
-
-  const titleSeparator = p.search(/\s+["']/);
-  if (titleSeparator !== -1) {
-    p = p.slice(0, titleSeparator);
-  }
-
-  return p.trim();
-}

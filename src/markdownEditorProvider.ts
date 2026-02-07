@@ -11,36 +11,11 @@ import {
   hasPathTraversal,
   normalizePath,
 } from "./utils/image-rename-handler";
+import { cleanImagePath } from "./utils/clean-image-path";
 
 // Image URL helpers
 function isRemoteUrl(url: string): boolean {
   return /^(https?:\/\/|data:)/i.test(url);
-}
-
-/**
- * Clean image path by removing title/caption and angle brackets.
- * Handles: `path "title"`, `path 'title'`, `<path>`, `<path> "title"`
- */
-function cleanImagePath(rawPath: string): string {
-  let p = rawPath.trim();
-
-  // Handle angle brackets: <path> or <path with spaces>
-  if (p.startsWith("<")) {
-    const endBracket = p.indexOf(">");
-    if (endBracket !== -1) {
-      p = p.slice(1, endBracket);
-    }
-    return p.trim();
-  }
-
-  // Remove title: `path "title"` or `path 'title'`
-  // Space + quote indicates title separator
-  const titleSeparator = p.search(/\s+["']/);
-  if (titleSeparator !== -1) {
-    p = p.slice(0, titleSeparator);
-  }
-
-  return p.trim();
 }
 
 function extractImagePaths(content: string): string[] {
@@ -136,22 +111,14 @@ function buildOriginalImageMap(
   const map = new Map<string, string>();
   const paths = extractImagePaths(content);
 
-  console.log("[Image Rename] buildOriginalImageMap - extracted paths:", paths);
-
   for (const imgPath of paths) {
-    if (isRemoteUrl(imgPath)) {
-      console.log("[Image Rename] Skipping remote URL:", imgPath);
-      continue;
-    }
+    if (isRemoteUrl(imgPath)) continue;
     const resolved = resolveImagePath(imgPath, documentUri);
     if (resolved) {
-      // Use normalized path as key for consistent comparison
       const normalizedPath = normalizePath(imgPath);
       map.set(normalizedPath, resolved.fsPath);
-      console.log("[Image Rename] Added to map:", normalizedPath, "→", resolved.fsPath);
     }
   }
-  console.log("[Image Rename] buildOriginalImageMap - result size:", map.size);
   return map;
 }
 
@@ -527,6 +494,13 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
               vscode.window.showErrorMessage(
                 `Failed to save image: ${err instanceof Error ? err.message : String(err)}`,
               );
+            }
+            break;
+          }
+          case "showWarning": {
+            const warnMsg = (msg as { message?: string }).message;
+            if (typeof warnMsg === "string") {
+              vscode.window.showWarningMessage(warnMsg);
             }
             break;
           }

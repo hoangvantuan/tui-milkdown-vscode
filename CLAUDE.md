@@ -58,6 +58,7 @@ src/
 ├── markdownEditorProvider.ts # CustomTextEditorProvider + HTML/CSS template
 ├── constants.ts              # Shared constants (MAX_FILE_SIZE)
 ├── utils/getNonce.ts         # CSP nonce generator
+├── utils/clean-image-path.ts  # Shared image path cleaning utility (removes titles, angle brackets)
 └── webview/
     ├── main.ts               # Browser-side Tiptap editor
     ├── frontmatter.ts        # YAML parsing & validation utilities
@@ -277,6 +278,28 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 
 * Updates node via ProseMirror transaction after user confirms
 
+
+**Context-Aware Path Transforms** (`src/webview/main.ts` + `src/markdownEditorProvider.ts`):
+
+* Path replacements only apply within markdown image/link syntax contexts (`![alt](url)` and `[text](url)`)
+
+* Workspace reference updates skip content inside code blocks (fenced and inline) to prevent accidental code modification
+
+* Image path utility (`clean-image-path.ts`): Removes markdown link titles and angle brackets from paths before saving
+
+**Image Size Limit**:
+
+* 10MB maximum image size limit on paste/drop operations
+
+* Oversized images trigger `showWarning` message to display user-facing dialog in extension
+
+**Message Types**:
+
+* `saveImage`: Webview → Extension (base64 image data, filename, upload type)
+
+* `imageSaved`: Extension → Webview (relative file path after save)
+
+* `showWarning`: Webview → Extension (message title and warning text for VSCode dialog)
 ## Heading Level Indicator
 
 **Plugin** (`src/webview/heading-level-plugin.ts`):

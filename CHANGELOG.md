@@ -56,9 +56,14 @@ All notable changes to "TUI Markdown Editor" extension.
 
 ### Added
 
+* 10MB image size limit on paste/drop with warning dialog
+
+* showWarning message type for webview-to-extension warnings
+
 * Custom table markdown serializer (`table-markdown-serializer.ts`) - preserves multi-line cell content with `<br>` tags via `renderMarkdown` hook
 
-* Table cell content parser (`table-cell-content-parser.ts`) - post-parse transformer converts `<br>` → paragraphs, `\n` → hardBreak, and list patterns (`- item`, `N. item`, `[x] item`) → proper list nodes
+* Table cell content parser (`table-cell-content-parser.ts`) - post-parse transformer converts `<br>` → paragraphs, `
+` → hardBreak, and list patterns (`- item`, `N. item`, `[x] item`) → proper list nodes
 
 * Path traversal security check for `imageSaveFolder` configuration
 
@@ -68,7 +73,23 @@ All notable changes to "TUI Markdown Editor" extension.
 
 * Tiptap Markdown reference documentation (`docs/tiptap-markdown-reference.md`) - API spec, extension patterns, tokenizer guides
 
+### Improved
+
+* DRY - extracted shared cleanImagePath utility
+
+* Removed debug console.log statements from production code
+
 ### Fixed
+* Echo loop after image save causing editor re-parse and cursor loss
+
+* Image path transforms now context-aware (only within image/link syntax, not plain text)
+
+* handleDrop inserts images at correct block boundary position
+
+* SVG image paste generates correct .svg extension (not .svg+xml)
+
+* Workspace reference updates now context-aware (won't replace paths in code blocks)
+
 
 * Line highlight plugin: corrected node type `list_item` -> `listItem` (Tiptap camelCase convention)
 
