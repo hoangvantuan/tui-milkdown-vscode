@@ -61,7 +61,7 @@ function extractImagePaths(content: string): string[] {
   }
 
   // HTML: <img src="path">
-  const htmlRegex = /<img[^>]+src=["']([^"']+)["']/gi;
+  const htmlRegex = /<img\s[^>]*?src=["']([^"']+)["']/gi;
   while ((match = htmlRegex.exec(content)) !== null) {
     const cleanPath = cleanImagePath(match[1]);
     if (cleanPath) {
@@ -221,6 +221,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview);
 
     let pendingEdit = false;
+    let renameInProgress = false;
     let updateDebounceTimer: ReturnType<typeof setTimeout> | null = null;
     const disposables: vscode.Disposable[] = [];
 
@@ -293,8 +294,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
       // === Image Rename Detection (BEFORE applying edit) ===
       // Rename files first so webviewUri resolves correctly after edit
+      // Skip if another rename is already in progress to prevent race conditions
       const config = vscode.workspace.getConfiguration("tuiMarkdown");
-      if (config.get<boolean>("autoRenameImages", true)) {
+      if (config.get<boolean>("autoRenameImages", true) && !renameInProgress) {
         const originalMap = this.originalImagePaths.get(docKey);
         if (originalMap && originalMap.size > 0) {
           const newPaths = extractImagePaths(newContent).filter(
@@ -307,43 +309,48 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           );
 
           if (renames.length > 0) {
-            // Optimistic locking: Update map BEFORE async rename to prevent race conditions
-            // Store original values to revert on failure
-            const originalValues = new Map<string, string>();
-            for (const rename of renames) {
-              const origValue = originalMap.get(rename.oldRelative);
-              if (origValue) originalValues.set(rename.oldRelative, origValue);
-              originalMap.delete(rename.oldRelative);
-              originalMap.set(rename.newRelative, rename.newAbsolute);
-            }
-
-            const { succeeded, failed } = await executeImageRenames(renames);
-
-            // Revert failed renames in the map
-            if (failed.length > 0) {
-              for (const { rename } of failed) {
-                originalMap.delete(rename.newRelative);
-                const origValue = originalValues.get(rename.oldRelative);
-                if (origValue) {
-                  originalMap.set(rename.oldRelative, origValue);
-                }
+            renameInProgress = true;
+            try {
+              // Optimistic locking: Update map BEFORE async rename to prevent race conditions
+              // Store original values to revert on failure
+              const originalValues = new Map<string, string>();
+              for (const rename of renames) {
+                const origValue = originalMap.get(rename.oldRelative);
+                if (origValue) originalValues.set(rename.oldRelative, origValue);
+                originalMap.delete(rename.oldRelative);
+                originalMap.set(rename.newRelative, rename.newAbsolute);
               }
-              console.warn("[Image Rename] Failed:", failed);
-              vscode.window.showWarningMessage(
-                `Failed to rename ${failed.length} image(s).`,
-              );
-            }
 
-            if (succeeded.length > 0) {
-              // Update workspace references (other .md files)
-              const updatedFiles = await updateWorkspaceReferences(
-                succeeded,
-                document.uri,
-              );
+              const { succeeded, failed } = await executeImageRenames(renames);
 
-              vscode.window.showInformationMessage(
-                `Renamed ${succeeded.length} image(s). Updated ${updatedFiles} file(s).`,
-              );
+              // Revert failed renames in the map
+              if (failed.length > 0) {
+                for (const { rename } of failed) {
+                  originalMap.delete(rename.newRelative);
+                  const origValue = originalValues.get(rename.oldRelative);
+                  if (origValue) {
+                    originalMap.set(rename.oldRelative, origValue);
+                  }
+                }
+                console.warn("[Image Rename] Failed:", failed);
+                vscode.window.showWarningMessage(
+                  `Failed to rename ${failed.length} image(s).`,
+                );
+              }
+
+              if (succeeded.length > 0) {
+                // Update workspace references (other .md files)
+                const updatedFiles = await updateWorkspaceReferences(
+                  succeeded,
+                  document.uri,
+                );
+
+                vscode.window.showInformationMessage(
+                  `Renamed ${succeeded.length} image(s). Updated ${updatedFiles} file(s).`,
+                );
+              }
+            } finally {
+              renameInProgress = false;
             }
           }
         }
@@ -472,6 +479,14 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
               // Resolve folder path relative to document
               const documentFolder = vscode.Uri.joinPath(document.uri, "..");
               const imageFolder = vscode.Uri.joinPath(documentFolder, saveFolder);
+
+              // Security: Verify resolved path is within document directory
+              if (!imageFolder.fsPath.startsWith(documentFolder.fsPath)) {
+                vscode.window.showErrorMessage(
+                  "imageSaveFolder resolves outside document folder."
+                );
+                break;
+              }
 
               // Create folder if not exists
               try {
@@ -796,58 +811,81 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             height: 100%;
             overflow: hidden;
           }
-          .milkdown .ProseMirror {
+          .tiptap {
             padding: 10px 40px 100px 40px;
-            caret-color: var(--crepe-color-caret, var(--crepe-color-primary));
+            caret-color: var(--crepe-color-primary);
           }
           /* Override body text font size only (headings unchanged) */
-          .milkdown .ProseMirror p,
-          .milkdown .ProseMirror blockquote {
+          .tiptap p,
+          .tiptap blockquote {
             font-size: calc(16px * var(--editor-font-scale, 1));
             line-height: calc(24px * var(--editor-font-scale, 1));
           }
           /* Override VSCode default blockquote styles to match theme */
-          .milkdown .ProseMirror blockquote {
+          .tiptap blockquote {
             background: var(--crepe-color-surface);
             border-color: var(--crepe-color-outline);
           }
-          .milkdown .ProseMirror li {
+          .tiptap li {
             font-size: calc(16px * var(--editor-font-scale, 1));
             gap: calc(10px * var(--editor-font-scale, 1)) !important;
           }
-          .milkdown .label-wrapper {
-            height: calc(32px * var(--editor-font-scale, 1)) !important;
-            transform: scale(var(--editor-font-scale, 1));
-            transform-origin: left center;
-            margin-right: calc(4px * var(--editor-font-scale, 1));
+          .tiptap li p {
+            margin-block: 4px !important;
           }
-          .milkdown .ProseMirror code,
-          .milkdown .ProseMirror pre,
-          .milkdown .cm-editor,
-          .milkdown .cm-content {
+          /* Task list (checkbox) styles */
+          .tiptap ul[data-type="taskList"] {
+            list-style: none;
+            padding-left: 0;
+          }
+          .tiptap ul[data-type="taskList"] li {
+            display: flex;
+            align-items: flex-start;
+            gap: calc(8px * var(--editor-font-scale, 1));
+          }
+          .tiptap ul[data-type="taskList"] li > label {
+            flex-shrink: 0;
+            margin-top: calc(4px * var(--editor-font-scale, 1));
+            user-select: none;
+          }
+          .tiptap ul[data-type="taskList"] li > label input[type="checkbox"] {
+            cursor: pointer;
+            width: calc(16px * var(--editor-font-scale, 1));
+            height: calc(16px * var(--editor-font-scale, 1));
+            accent-color: var(--crepe-color-primary, var(--vscode-focusBorder));
+          }
+          .tiptap ul[data-type="taskList"] li > div {
+            flex: 1;
+          }
+          .tiptap ul[data-type="taskList"] li[data-checked="true"] > div p {
+            text-decoration: line-through;
+            opacity: 0.6;
+          }
+          .tiptap code,
+          .tiptap pre {
             font-size: calc(16px * var(--editor-font-scale, 1)) !important;
             line-height: calc(24px * var(--editor-font-scale, 1)) !important;
           }
           /* Heading font sizes */
-          .milkdown .ProseMirror h1,
-          .milkdown .ProseMirror h2,
-          .milkdown .ProseMirror h3,
-          .milkdown .ProseMirror h4,
-          .milkdown .ProseMirror h5,
-          .milkdown .ProseMirror h6 { position: relative; }
-          .milkdown .ProseMirror h1 { font-size: var(--heading-h1-size, 32px) !important; margin-top: var(--heading-h1-margin, 24px) !important; }
-          .milkdown .ProseMirror h2 { font-size: var(--heading-h2-size, 28px) !important; margin-top: var(--heading-h2-margin, 20px) !important; }
-          .milkdown .ProseMirror h3 { font-size: var(--heading-h3-size, 24px) !important; margin-top: var(--heading-h3-margin, 16px) !important; }
-          .milkdown .ProseMirror h4 { font-size: var(--heading-h4-size, 20px) !important; margin-top: var(--heading-h4-margin, 12px) !important; }
-          .milkdown .ProseMirror h5 { font-size: var(--heading-h5-size, 18px) !important; margin-top: var(--heading-h5-margin, 8px) !important; }
-          .milkdown .ProseMirror h6 { font-size: var(--heading-h6-size, 16px) !important; margin-top: var(--heading-h6-margin, 8px) !important; }
+          .tiptap h1,
+          .tiptap h2,
+          .tiptap h3,
+          .tiptap h4,
+          .tiptap h5,
+          .tiptap h6 { position: relative; }
+          .tiptap h1 { font-size: var(--heading-h1-size, 32px) !important; margin-top: var(--heading-h1-margin, 24px) !important; }
+          .tiptap h2 { font-size: var(--heading-h2-size, 28px) !important; margin-top: var(--heading-h2-margin, 20px) !important; }
+          .tiptap h3 { font-size: var(--heading-h3-size, 24px) !important; margin-top: var(--heading-h3-margin, 16px) !important; }
+          .tiptap h4 { font-size: var(--heading-h4-size, 20px) !important; margin-top: var(--heading-h4-margin, 12px) !important; }
+          .tiptap h5 { font-size: var(--heading-h5-size, 18px) !important; margin-top: var(--heading-h5-margin, 8px) !important; }
+          .tiptap h6 { font-size: var(--heading-h6-size, 16px) !important; margin-top: var(--heading-h6-margin, 8px) !important; }
 
           /* Line highlight for current cursor position */
-          .milkdown .ProseMirror .line-highlight {
+          .tiptap .line-highlight {
             position: relative;
             z-index: 0; /* Create stacking context so ::after z-index:-1 stays above parent bg */
           }
-          .milkdown .ProseMirror .line-highlight::after {
+          .tiptap .line-highlight::after {
             content: '';
             position: absolute;
             top: 0;
@@ -858,13 +896,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             pointer-events: none;
             z-index: -1;
           }
-          /* Dark themes override */
-          body.theme-frame-dark .milkdown .ProseMirror .line-highlight::after,
-          body.theme-nord-dark .milkdown .ProseMirror .line-highlight::after,
-          body.theme-crepe-dark .milkdown .ProseMirror .line-highlight::after,
-          body.theme-catppuccin-frappe .milkdown .ProseMirror .line-highlight::after,
-          body.theme-catppuccin-macchiato .milkdown .ProseMirror .line-highlight::after,
-          body.theme-catppuccin-mocha .milkdown .ProseMirror .line-highlight::after {
+          /* Dark themes override (body.dark-theme set by applyTheme) */
+          body.dark-theme .tiptap .line-highlight::after {
             background: rgba(255, 255, 255, 0.08);
           }
 
@@ -1025,29 +1058,29 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           #metadata-details.hidden { display: none; }
 
           /* Responsive editor content for large screens */
-          .milkdown .ProseMirror {
+          .tiptap {
             max-width: var(--content-max-width, 1200px);
             margin-left: auto;
             margin-right: auto;
           }
           @media (max-width: 1200px) {
-            .milkdown .ProseMirror { max-width: 100%; }
+            .tiptap { max-width: 100%; }
           }
 
           /* Table auto-width: columns size proportionally to content */
-          .milkdown .ProseMirror table {
+          .tiptap table {
             table-layout: auto;
             width: 100%;
             border-collapse: collapse;
           }
-          .milkdown .ProseMirror th,
-          .milkdown .ProseMirror td {
+          .tiptap th,
+          .tiptap td {
             white-space: normal;
             word-wrap: break-word;
             overflow-wrap: break-word;
           }
 
-          /* Theme inverse colors at body level (for elements outside .milkdown) */
+          /* Theme inverse colors at body level (for elements outside .tiptap) */
           body.theme-frame { --overlay-bg: #f0f0f0; --overlay-fg: #1a1a1a; }
           body.theme-frame-dark { --overlay-bg: #2a2a2a; --overlay-fg: #e0e0e0; }
           body.theme-nord { --overlay-bg: #2e3135; --overlay-fg: #eff0f7; }
@@ -1059,7 +1092,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           body.theme-catppuccin-macchiato { --overlay-bg: #181926; --overlay-fg: #cad3f5; }
           body.theme-catppuccin-mocha { --overlay-bg: #11111b; --overlay-fg: #cdd6f4; }
 
-          /* Floating image edit overlay - positioned outside Milkdown DOM */
+          /* Floating image edit overlay - positioned outside editor DOM */
           .image-edit-overlay {
             position: absolute;
             z-index: 1000;
@@ -1115,23 +1148,130 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           body.theme-catppuccin-latte .heading-level-badge {
             color: rgba(0, 0, 0, 0.6);
           }
-          /* Dark themes */
-          body.theme-frame-dark .heading-level-badge,
-          body.theme-nord-dark .heading-level-badge,
-          body.theme-crepe-dark .heading-level-badge,
-          body.theme-catppuccin-frappe .heading-level-badge,
-          body.theme-catppuccin-macchiato .heading-level-badge,
-          body.theme-catppuccin-mocha .heading-level-badge {
+          /* Dark themes (body.dark-theme set by applyTheme) */
+          body.dark-theme .heading-level-badge {
             color: rgba(255, 255, 255, 0.5);
           }
 
-          /* Render inline hardbreaks (soft breaks) as visual line breaks.
-             Milkdown renders isInline:true hardbreaks as <span> with a space,
-             but users expect single newlines to display as line breaks. */
-          .milkdown .ProseMirror span[data-type="hardbreak"][data-is-inline="true"] {
-            display: block;
+          /* Base Tiptap editor styles */
+          .tiptap {
+            outline: none;
+            font-family: var(--crepe-font-default, "Noto Sans", Arial, Helvetica, sans-serif);
+            color: var(--crepe-color-on-background, inherit);
+            background: var(--crepe-color-background, transparent);
+          }
+          .tiptap img {
+            max-width: 100%;
+            height: auto;
+          }
+          .tiptap code {
+            color: var(--crepe-color-inline-code, #ba1a1a);
+            background: var(--crepe-color-surface, #f7f7f7);
+            padding: 2px 4px;
+            border-radius: 4px;
+            font-family: var(--crepe-font-code, monospace);
+          }
+          .tiptap mark {
+            background-color: var(--crepe-color-highlight, #fff3b0);
+            color: inherit;
+            padding: 1px 2px;
+            border-radius: 2px;
+          }
+          .tiptap pre {
+            background: var(--crepe-color-surface, #f7f7f7);
+            border-radius: 8px;
+            padding: 12px 16px;
+            overflow-x: auto;
+          }
+          .tiptap pre code {
+            color: inherit;
+            background: none;
+            padding: 0;
+          }
+          /* Syntax highlighting (lowlight/highlight.js) - Light themes */
+          .tiptap pre code .hljs-comment,
+          .tiptap pre code .hljs-quote { color: #6a737d; font-style: italic; }
+          .tiptap pre code .hljs-keyword,
+          .tiptap pre code .hljs-selector-tag,
+          .tiptap pre code .hljs-addition { color: #d73a49; }
+          .tiptap pre code .hljs-string,
+          .tiptap pre code .hljs-meta .hljs-string,
+          .tiptap pre code .hljs-regexp,
+          .tiptap pre code .hljs-addition { color: #032f62; }
+          .tiptap pre code .hljs-number,
+          .tiptap pre code .hljs-literal,
+          .tiptap pre code .hljs-variable,
+          .tiptap pre code .hljs-template-variable,
+          .tiptap pre code .hljs-tag .hljs-attr { color: #005cc5; }
+          .tiptap pre code .hljs-type,
+          .tiptap pre code .hljs-title,
+          .tiptap pre code .hljs-section,
+          .tiptap pre code .hljs-name,
+          .tiptap pre code .hljs-selector-id,
+          .tiptap pre code .hljs-selector-class { color: #6f42c1; }
+          .tiptap pre code .hljs-attribute { color: #005cc5; }
+          .tiptap pre code .hljs-built_in,
+          .tiptap pre code .hljs-builtin-name { color: #e36209; }
+          .tiptap pre code .hljs-deletion { color: #b31d28; background: #ffeef0; }
+          .tiptap pre code .hljs-meta { color: #735c0f; }
+          .tiptap pre code .hljs-emphasis { font-style: italic; }
+          .tiptap pre code .hljs-strong { font-weight: bold; }
+          .tiptap pre code .hljs-link { text-decoration: underline; }
+          /* Syntax highlighting - Dark themes (body.dark-theme set by applyTheme) */
+          body.dark-theme .tiptap pre code .hljs-comment,
+          body.dark-theme .tiptap pre code .hljs-quote { color: #8b949e; font-style: italic; }
+          body.dark-theme .tiptap pre code .hljs-keyword,
+          body.dark-theme .tiptap pre code .hljs-selector-tag { color: #ff7b72; }
+          body.dark-theme .tiptap pre code .hljs-string,
+          body.dark-theme .tiptap pre code .hljs-regexp { color: #a5d6ff; }
+          body.dark-theme .tiptap pre code .hljs-number,
+          body.dark-theme .tiptap pre code .hljs-literal,
+          body.dark-theme .tiptap pre code .hljs-variable,
+          body.dark-theme .tiptap pre code .hljs-template-variable,
+          body.dark-theme .tiptap pre code .hljs-tag .hljs-attr { color: #79c0ff; }
+          body.dark-theme .tiptap pre code .hljs-type,
+          body.dark-theme .tiptap pre code .hljs-title,
+          body.dark-theme .tiptap pre code .hljs-section,
+          body.dark-theme .tiptap pre code .hljs-name,
+          body.dark-theme .tiptap pre code .hljs-selector-id,
+          body.dark-theme .tiptap pre code .hljs-selector-class { color: #d2a8ff; }
+          body.dark-theme .tiptap pre code .hljs-attribute { color: #79c0ff; }
+          body.dark-theme .tiptap pre code .hljs-built_in,
+          body.dark-theme .tiptap pre code .hljs-builtin-name { color: #ffa657; }
+          body.dark-theme .tiptap pre code .hljs-deletion { color: #ffa198; background: rgba(248,81,73,0.15); }
+          body.dark-theme .tiptap pre code .hljs-addition { color: #7ee787; background: rgba(63,185,80,0.15); }
+          body.dark-theme .tiptap pre code .hljs-meta { color: #d29922; }
+          .tiptap blockquote {
+            border-left: 3px solid var(--crepe-color-outline, #a8a8a8);
+            margin-left: 0;
+            padding-left: 16px;
+          }
+          .tiptap hr {
+            border: none;
+            border-top: 1px solid var(--crepe-color-outline, #a8a8a8);
+            margin: 16px 0;
+          }
+          .tiptap a {
+            color: var(--crepe-color-primary, #37618e);
+            text-decoration: underline;
+          }
+          /* Placeholder styling */
+          .tiptap p.is-editor-empty:first-child::before {
+            content: attr(data-placeholder);
+            float: left;
+            color: var(--crepe-color-outline, #a8a8a8);
+            pointer-events: none;
             height: 0;
-            overflow: hidden;
+          }
+          /* Table styles */
+          .tiptap table th,
+          .tiptap table td {
+            border: 1px solid var(--crepe-color-outline, #a8a8a8);
+            padding: 8px 12px;
+          }
+          .tiptap table th {
+            background: var(--crepe-color-surface, #f7f7f7);
+            font-weight: 600;
           }
 
         </style>

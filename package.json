@@ -1,8 +1,8 @@
 {
   "name": "tui-milkdown-vscode",
-  "displayName": "Milkdown Markdown WYSIWYG",
-  "description": "A beautiful WYSIWYG Markdown editor powered by Milkdown Crepe. Edit markdown files with rich text experience and theme selection.",
-  "version": "1.5.5",
+  "displayName": "TUI Markdown Editor",
+  "description": "A beautiful WYSIWYG Markdown editor powered by Tiptap. Edit markdown files with rich text experience and theme selection.",
+  "version": "2.0.0",
   "publisher": "tuanhv",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -24,7 +24,7 @@
   "keywords": [
     "markdown",
     "wysiwyg",
-    "milkdown",
+    "tiptap",
     "editor",
     "rich text",
     "preview"
@@ -33,7 +33,7 @@
   "main": "./out/extension.js",
   "contributes": {
     "configuration": {
-      "title": "Milkdown Markdown",
+      "title": "TUI Markdown",
       "properties": {
         "tuiMarkdown.fontSize": {
           "type": "number",
@@ -109,7 +109,7 @@
     "customEditors": [
       {
         "viewType": "tuiMarkdown.editor",
-        "displayName": "Milkdown Markdown Editor",
+        "displayName": "TUI Markdown Editor",
         "selector": [
           {
             "filenamePattern": "*.md"
@@ -140,11 +140,21 @@
     "@types/node": "^25.0.10",
     "@types/vscode": "^1.85.0",
     "esbuild": "^0.20.0",
-    "sharp": "^0.34.5",
     "typescript": "^5.3.0"
   },
   "dependencies": {
-    "@milkdown/crepe": "^7.18.0",
-    "js-yaml": "^4.1.1"
+    "@tiptap/core": "^3.19.0",
+    "@tiptap/extension-code-block-lowlight": "^3.19.0",
+    "@tiptap/extension-highlight": "^3.19.0",
+    "@tiptap/extension-image": "^3.19.0",
+    "@tiptap/extension-link": "^3.19.0",
+    "@tiptap/extension-list": "^3.19.0",
+    "@tiptap/extension-placeholder": "^3.19.0",
+    "@tiptap/extension-table": "^3.19.0",
+    "@tiptap/markdown": "^3.19.0",
+    "@tiptap/pm": "^3.19.0",
+    "@tiptap/starter-kit": "^3.19.0",
+    "js-yaml": "^4.1.1",
+    "lowlight": "^3.3.0"
   }
 }

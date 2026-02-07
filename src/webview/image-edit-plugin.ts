@@ -1,9 +1,9 @@
-import type { EditorView } from "@milkdown/kit/prose/view";
+import type { EditorView } from "@tiptap/pm/view";
 import { IMAGE_NODE_TYPES } from "./main";
 
 /**
  * Floating overlay for editing image URLs.
- * Uses a separate overlay element to avoid interfering with Milkdown's DOM.
+ * Uses a separate overlay element to avoid interfering with editor's DOM.
  */
 
 // Pencil SVG icon
@@ -37,13 +37,11 @@ let lastMouseX = 0;
 let lastMouseY = 0;
 
 // Image cache for optimized mousemove performance
-let cachedImageBlocks: Element[] = [];
 let cachedImages: HTMLImageElement[] = [];
 let imageCacheValid = false;
 
 /** Refresh image cache from DOM */
 function refreshImageCache(editorEl: HTMLElement): void {
-  cachedImageBlocks = Array.from(editorEl.querySelectorAll(".milkdown-image-block"));
   cachedImages = Array.from(editorEl.querySelectorAll("img"));
   imageCacheValid = true;
 }
@@ -58,7 +56,7 @@ function isPointInElement(x: number, y: number, el: Element): boolean {
 
 /**
  * Create the floating overlay container
- * Appends to parent of editorEl (container) to survive Crepe recreation
+ * Appends to parent of editorEl (container) to survive editor recreation
  */
 function createOverlay(editorEl: HTMLElement): HTMLDivElement {
   const overlay = document.createElement("div");
@@ -74,7 +72,7 @@ function createOverlay(editorEl: HTMLElement): HTMLDivElement {
     }
   });
 
-  // Append to parent (container) instead of editorEl to survive Crepe recreation
+  // Append to parent (container) instead of editorEl to survive editor recreation
   const container = editorEl.parentElement;
   if (container) {
     container.appendChild(overlay);
@@ -143,14 +141,18 @@ export function setupImageEditOverlay(
   editorEl: HTMLElement,
   getView: () => EditorView | null,
   postMessage: (msg: unknown) => void
-): void {
+): () => void {
   storedGetView = getView;
   storedPostMessage = postMessage;
   storedEditorEl = editorEl;
   overlayContainer = createOverlay(editorEl);
 
+  // AbortController for centralized listener cleanup
+  const ac = new AbortController();
+  const signal = ac.signal;
+
   // Use mousemove with bounding rect check for reliable hover detection
-  // Detects hover on image blocks (.milkdown-image-block) as well as images directly
+  // Detects hover on image blocks as well as images directly
   // Uses cached image list for performance (refreshed on DOM mutations)
   editorEl.addEventListener("mousemove", (e) => {
     lastMouseX = e.clientX;
@@ -163,24 +165,10 @@ export function setupImageEditOverlay(
 
     let foundImg: HTMLImageElement | null = null;
 
-    // Check Milkdown image blocks first (using cache)
-    for (const block of cachedImageBlocks) {
-      if (isPointInElement(e.clientX, e.clientY, block)) {
-        const img = block.querySelector("img");
-        if (img) {
-          foundImg = img;
-          break;
-        }
-      }
-    }
-
-    // Fallback: check direct img elements (using cache)
-    if (!foundImg) {
-      for (const img of cachedImages) {
-        if (isPointInElement(e.clientX, e.clientY, img)) {
-          foundImg = img;
-          break;
-        }
+    for (const img of cachedImages) {
+      if (isPointInElement(e.clientX, e.clientY, img)) {
+        foundImg = img;
+        break;
       }
     }
 
@@ -197,14 +185,14 @@ export function setupImageEditOverlay(
       // Mouse left image area (and not on overlay) - schedule hide
       hideOverlay();
     }
-  });
+  }, { signal });
 
   editorEl.addEventListener("mouseleave", (e) => {
     const relatedTarget = e.relatedTarget as HTMLElement | null;
     // Don't hide if moving to overlay
     if (relatedTarget && overlayContainer?.contains(relatedTarget)) return;
     hideOverlay();
-  });
+  }, { signal });
 
   // Overlay hover: cancel hide timer, schedule hide on leave
   overlayContainer.addEventListener("mouseenter", () => {
@@ -212,11 +200,11 @@ export function setupImageEditOverlay(
       clearTimeout(hideTimer);
       hideTimer = null;
     }
-  });
+  }, { signal });
 
   overlayContainer.addEventListener("mouseleave", () => {
     hideOverlay();
-  });
+  }, { signal });
 
   // Double-click on image or its container triggers edit
   editorEl.addEventListener("dblclick", (e) => {
@@ -226,45 +214,37 @@ export function setupImageEditOverlay(
     if (target.tagName === "IMG") {
       img = target as HTMLImageElement;
     } else {
-      // Check if <img> is inside target (wrapper contains img)
       img = target.querySelector("img");
-      // Fallback: check if target is inside .milkdown-image-block
-      if (!img) {
-        const imageBlock = target.closest(".milkdown-image-block");
-        if (imageBlock) {
-          img = imageBlock.querySelector("img");
-        }
-      }
     }
     if (img) {
       e.preventDefault();
       e.stopPropagation();
       triggerImageEdit(img);
     }
-  }, true);
+  }, { capture: true, signal });
 
-  // Watch for newly added images (e.g., after paste) and show overlay if mouse is over them
-  // Also invalidates image cache on DOM mutations
-  const observer = new MutationObserver(() => {
-    // Invalidate cache on any DOM change
+  // Watch for newly added/removed images and invalidate cache
+  // Filters mutations to only image-related changes to avoid excessive querySelectorAll calls
+  let mutationDebounce: ReturnType<typeof setTimeout> | null = null;
+  const observer = new MutationObserver((mutations) => {
+    const hasImageChange = mutations.some(m =>
+      Array.from(m.addedNodes).some(n =>
+        n.nodeName === "IMG" || (n instanceof Element && n.querySelector("img"))
+      ) || Array.from(m.removedNodes).some(n =>
+        n.nodeName === "IMG" || (n instanceof Element && n.querySelector("img"))
+      )
+    );
+
+    if (!hasImageChange) return;
+
     imageCacheValid = false;
 
-    // Delay to let Milkdown finish rendering, then check if mouse is over new image
-    setTimeout(() => {
-      // Refresh cache
+    // Debounce to batch rapid DOM changes (e.g., editor re-render)
+    if (mutationDebounce) clearTimeout(mutationDebounce);
+    mutationDebounce = setTimeout(() => {
+      mutationDebounce = null;
       refreshImageCache(editorEl);
 
-      // Check image blocks first (using fresh cache)
-      for (const block of cachedImageBlocks) {
-        if (isPointInElement(lastMouseX, lastMouseY, block)) {
-          const img = block.querySelector("img");
-          if (img) {
-            showOverlay(img);
-            return;
-          }
-        }
-      }
-      // Fallback: direct img elements (using fresh cache)
       for (const img of cachedImages) {
         if (isPointInElement(lastMouseX, lastMouseY, img)) {
           showOverlay(img);
@@ -274,6 +254,19 @@ export function setupImageEditOverlay(
     }, 150);
   });
   observer.observe(editorEl, { childList: true, subtree: true });
+
+  // Return cleanup function: abort all listeners + disconnect observer
+  return () => {
+    ac.abort();
+    observer.disconnect();
+    if (mutationDebounce) clearTimeout(mutationDebounce);
+    if (hideTimer) clearTimeout(hideTimer);
+    overlayContainer?.remove();
+    overlayContainer = null;
+    currentHoveredImg = null;
+    cachedImages = [];
+    imageCacheValid = false;
+  };
 }
 
 /**

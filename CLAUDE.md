@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-VSCode extension providing WYSIWYG Markdown editing using Milkdown Crepe editor. Opens `.md` files in a custom editor with theme selection and view source functionality.
+VSCode extension providing WYSIWYG Markdown editing using Tiptap editor with @tiptap/markdown. Opens `.md` files in a custom editor with theme selection and view source functionality.
 
 ## Commands
 
@@ -38,7 +38,7 @@ npm run package    # Package extension as .vsix
 2. When document opens, provider creates webview with HTML template containing editor container
 3. Webview sends `ready` → Extension sends `theme`, `config`, `update` (content)
 4. User edits → Webview debounces (300ms) → sends `edit` message → Extension applies `WorkspaceEdit`
-5. External document changes → Extension sends `update` → Webview recreates Crepe instance
+5. External document changes → Extension sends `update` → Webview calls `editor.commands.setContent()` (no destroy/recreate)
 
 **Key implementation details:**
 
@@ -59,12 +59,13 @@ src/
 ├── constants.ts              # Shared constants (MAX_FILE_SIZE)
 ├── utils/getNonce.ts         # CSP nonce generator
 └── webview/
-    ├── main.ts               # Browser-side Milkdown Crepe editor
+    ├── main.ts               # Browser-side Tiptap editor
     ├── frontmatter.ts        # YAML parsing & validation utilities
     ├── line-highlight-plugin.ts # ProseMirror plugin for cursor line highlight
     ├── heading-level-plugin.ts # ProseMirror plugin for H1-H6 level badges
     ├── image-edit-plugin.ts  # Double-click image URL editing
-    ├── paste-link-plugin.ts  # Auto-link pasted URLs when text is selected
+    ├── table-markdown-serializer.ts # Custom GFM table serializer (multi-line cells)
+    ├── table-cell-content-parser.ts # Post-parse transformer for table cell lists/breaks
     └── themes/               # Theme CSS files (scoped by body class)
         ├── index.css              # Imports all theme CSS
         ├── frame.css              # Frame light theme
@@ -89,13 +90,28 @@ Extension provides these settings via `tuiMarkdown.*` namespace:
 
 * `imageSaveFolder` (string, default: `images`) - Folder to save pasted images (relative to document)
 
-* `autoRenameImages` (boolean, default: true) - Automatically rename image files when you change the image path in Markdown (only when folder stays the same)
+* `autoRenameImages` (boolean, default: true) - Automatically rename image files when you change the image <path> in Markdown (only when folder stays the same)
 
 * `autoDeleteImages` (boolean, default: true) - Automatically delete image files when removed from Markdown (moves to Trash, warns if used elsewhere)
 
-## Milkdown Crepe Integration
+## Tiptap Integration
 
-Uses `@milkdown/crepe` package. Theme CSS variables loaded from `src/webview/themes/` directory, scoped by body class (e.g., `.theme-frame .milkdown`). Available themes: frame, frame-dark, nord, nord-dark, crepe, crepe-dark, catppuccin-latte, catppuccin-frappe, catppuccin-macchiato, catppuccin-mocha. Editor recreates on content updates (no incremental update API).
+Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for markdown roundtrip.
+
+**Extensions:** StarterKit (includes Link with `autolink: true, linkOnPaste: true`), Image, Highlight, Table (resizable + custom `renderMarkdown` hook), CodeBlockLowlight (syntax highlighting via lowlight/highlight.js), TaskList + TaskItem, Placeholder, Markdown (GFM + configurable indentation).
+
+**Markdown API:**
+
+* Parse: `new Editor({ content, contentType: 'markdown' })` or `editor.commands.setContent(md, { contentType: 'markdown' })`
+* Serialize: `editor.getMarkdown()` returns markdown string
+* Manager: `editor.markdown.parse()`, `editor.markdown.serialize()`, `editor.markdown.instance` (MarkedJS)
+* Custom extension hooks: `renderMarkdown(node, helpers)` and `parseMarkdown(token, helpers)` on any extension
+
+**Theme system:** CSS variables loaded from `src/webview/themes/`, scoped by body class (e.g., `.theme-frame .tiptap`). Dark theme overrides use `body.dark-theme` selector (set by `applyTheme()`).
+
+**Content updates:** `editor.commands.setContent()` - no destroy/recreate needed. Cursor position preserved via save/restore around setContent.
+
+**Node naming:** Tiptap uses camelCase: `listItem`, `codeBlock`, `taskList`, `taskItem`, `tableCell`, `tableHeader`.
 
 ## Metadata Panel
 
@@ -138,17 +154,17 @@ Uses `@milkdown/crepe` package. Theme CSS variables loaded from `src/webview/the
 
 * Highlights immediate block containing cursor (paragraph, heading, list item)
 
-* Skips code blocks (they have built-in line highlighting from CodeMirror)
+* Skips code blocks (node type `codeBlock` - Tiptap camelCase convention)
 
-* Injected via `prosePluginsCtx` before Crepe instance creation
+* Registered via `editor.registerPlugin()` after Tiptap instance creation
 
 **CSS** (in `src/markdownEditorProvider.ts`):
 
-* Uses `::before` pseudo-element with `z-index: -1` stacking
+* Uses `::after` pseudo-element with `z-index: -1` stacking
 
-* Light themes (`theme-frame`, `theme-nord`, `theme-crepe`, `theme-catppuccin-latte`): `rgba(0, 0, 0, 0.08)` background
+* Light themes: `rgba(0, 0, 0, 0.08)` background (default)
 
-* Dark themes (`theme-frame-dark`, `theme-nord-dark`, `theme-crepe-dark`, `theme-catppuccin-frappe`, `theme-catppuccin-macchiato`, `theme-catppuccin-mocha`): `rgba(255, 255, 255, 0.08)`
+* Dark themes: `rgba(255, 255, 255, 0.08)` via `body.dark-theme` selector
 
 ## Table Styling
 
@@ -164,11 +180,11 @@ Uses `@milkdown/crepe` package. Theme CSS variables loaded from `src/webview/the
 
 **Local Image Display** (`src/markdownEditorProvider.ts`):
 
-* `extractImagePaths()`: Extracts image paths from Markdown (both `![](path)` and `<img src="">`)
+* `extractImagePaths()`: Extracts image <paths> from Markdown (both `![](path)` and `<img src="">`)
 
-* `resolveImagePath()`: Resolves relative/absolute paths against document location
+* `resolveImagePath()`: Resolves relative/absolute <paths> against document location
 
-* `buildImageMap()`: Creates mapping from original paths to webview URIs
+* `buildImageMap()`: Creates mapping from original <paths> to webview URIs
 
 * `localResourceRoots` includes document folder and workspace for image access
 
@@ -176,34 +192,34 @@ Uses `@milkdown/crepe` package. Theme CSS variables loaded from `src/webview/the
 
 * Paste from clipboard: Intercepts paste events with image data
 
-* Crepe file picker: Uses `onUpload` callback for image uploads
+* Tiptap handlePaste/handleDrop: Intercepts paste/drop events for image uploads
 
 * Converts images to base64, sends to extension for saving
 
 * Extension saves to configured folder (`tuiMarkdown.imageSaveFolder`)
 
-* Returns saved path, updates Markdown with relative path
+* Returns saved <path>, updates Markdown with relative <path>
 
 **Message Flow**:
 
 1. Webview detects image (paste or upload) → converts to base64
 2. Sends `saveImage` message with base64 data and filename
-3. Extension saves to disk, returns `imageSaved` with relative path
-4. Webview updates Markdown content with new image path
+3. Extension saves to disk, returns `imageSaved` with relative <path>
+4. Webview updates Markdown content with new image <path>
 
 **Path Transformation**:
 
-* On load: Local paths → webview URIs (for display)
+* On load: Local <paths> → webview URIs (for display)
 
-* On save: Webview URIs → original paths (preserve markdown)
+* On save: Webview URIs → original <paths> (preserve markdown)
 
 **Auto Rename Images** (`src/markdownEditorProvider.ts`):
 
-* When user edits image path in Markdown (same folder, different filename)
+* When user edits image <path> in Markdown (same folder, different filename)
 
-* On save: Extension detects path change and prompts user via QuickPick dialog
+* On save: Extension detects <path> change and prompts user via QuickPick dialog
 
-* If confirmed: Renames image file on disk, updates all `.md` files in workspace with new path
+* If confirmed: Renames image file on disk, updates all `.md` files in workspace with new <path>
 
 * Controlled by `tuiMarkdown.autoRenameImages` setting (boolean, default: true)
 
@@ -211,7 +227,7 @@ Uses `@milkdown/crepe` package. Theme CSS variables loaded from `src/webview/the
 
 **Auto Delete Images** (`src/markdownEditorProvider.ts` + `src/utils/image-rename-handler.ts`):
 
-* When user removes image from markdown (path no longer exists in document)
+* When user removes image from markdown (<path> no longer exists in document)
 
 * On save: Extension detects removed images and prompts user via QuickPick dialog
 
@@ -223,15 +239,15 @@ Uses `@milkdown/crepe` package. Theme CSS variables loaded from `src/webview/the
 
 **Image URL Editing** (`src/webview/image-edit-plugin.ts`):
 
-* Double-click on image opens VSCode input box to edit URL/path
+* Double-click on image opens VSCode input box to edit URL/<path>
 
-* DOM event listener (capture phase) intercepts before Milkdown components
+* DOM event listener (capture phase) intercepts before Tiptap components
 
 * Finds ProseMirror node via `posAtDOM()` and position search
 
 * Uses async message flow: webview → extension (showInputBox) → webview
 
-* Reverse lookup from imageMap to display original path instead of webview URI
+* Reverse lookup from imageMap to display original <path> instead of webview URI
 
 * Updates node via ProseMirror transaction after user confirms
 
@@ -251,49 +267,63 @@ Uses `@milkdown/crepe` package. Theme CSS variables loaded from `src/webview/the
 
 * `display: inline-block` with `margin-right: 8px`
 
-* Light themes: `rgba(0, 0, 0, 0.6)`
+* Light themes: `rgba(0, 0, 0, 0.6)` (default)
 
-* Dark themes: `rgba(255, 255, 255, 0.5)`
+* Dark themes: `rgba(255, 255, 255, 0.5)` via `body.dark-theme` selector
 
-## Paste Link
+## Table Serializer
 
-**Auto-link Plugin** (`src/webview/paste-link-plugin.ts`):
+**Custom Serializer** (`src/webview/table-markdown-serializer.ts`):
 
-* ProseMirror plugin intercepts paste events
+* Extends `@tiptap/extension-table` via `Table.extend({ renderMarkdown(node, helpers) })` hook (pattern from `@tiptap/markdown` extension spec)
 
-* When text is selected and clipboard contains valid URL (http/https)
+* `helpers` is `MarkdownRendererHelpers` providing `renderChildren()`, `indent()`, `wrapInBlock()`
 
-* Converts selected text to markdown link: `[selected text](pasted URL)`
+* Preserves multi-line cell content using `<br>` tags in GFM table format
 
-* Skips if no selection or clipboard has files (images)
+* Handles bullet lists, ordered lists, task lists within table cells
 
-* Replaces existing link URL if selection is already a link
+* Column widths auto-padded for aligned markdown output
+
+**Table Cell Content Parser** (`src/webview/table-cell-content-parser.ts`):
+
+* Post-parse transformer called after `setContent`/`initEditor`
+
+* Converts `<br>` (hardBreak from GFM) → paragraph boundaries
+
+* Converts `\n` (literal) → hardBreak nodes within paragraph (soft break)
+
+* Detects list patterns (`- item`, `N. item`, `[x] item`) → proper list nodes
+
+* Groups consecutive same-type segments into single list block
 
 ## Development Guidelines
 
-**Milkdown-First Approach:**
+**Tiptap-First Approach:**
 
-* Always prefer Milkdown's built-in features, plugins, and APIs over custom implementations
+* Always prefer Tiptap's built-in extensions and APIs over custom implementations
 
-* Check existing Milkdown plugins before creating custom ProseMirror plugins
+* Check existing Tiptap extensions before creating custom ProseMirror plugins
 
-* Use Milkdown's theming system and CSS variables instead of custom styling when possible
+* Use theme CSS variables (`--crepe-color-*`) for consistent styling
 
 **Reference Documentation:**
 
-* Milkdown docs: <https://github.com/Milkdown/website/tree/main/docs>
+* Tiptap docs: <https://tiptap.dev/docs>
 
-* Milkdown API: <https://github.com/Milkdown/milkdown/tree/main/docs/api>
+* @tiptap/markdown: <https://tiptap.dev/docs/editor/markdown>
+
+* Local reference: `docs/tiptap-markdown-reference.md` (API spec, extension patterns, tokenizer guides)
 
 **Performance & Bundle Optimization:**
 
-* Prefer tree-shakeable imports (e.g., `import { specific } from '@milkdown/kit'`)
+* Prefer named imports (e.g., `import { Image } from '@tiptap/extension-image'`)
 
 * Avoid importing entire packages when only specific features are needed
 
 * Lazy-load plugins and features when possible
 
-* Minimize custom CSS; leverage Milkdown's CSS variables
+* Minimize custom CSS; leverage theme CSS variables
 
 * Profile bundle size impact before adding new dependencies
 
@@ -301,25 +331,35 @@ Uses `@milkdown/crepe` package. Theme CSS variables loaded from `src/webview/the
 
 After every development cycle (new feature, bug fix, refactor), update these files:
 
-| File | When to Update | What to Include |
-|------|----------------|-----------------|
-| `CHANGELOG.md` | Every change | New features, bug fixes, breaking changes, improvements |
-| `README.md` | New features only | User-facing feature descriptions (keep concise) |
-| `CLAUDE.md` | Architecture/lessons | New components, patterns, gotchas, lessons learned |
+| File           | When to Update       | What to Include                                         |
+| -------------- | -------------------- | ------------------------------------------------------- |
+| `CHANGELOG.md` | Every change         | New features, bug fixes, breaking changes, improvements |
+| `README.md`    | New features only    | User-facing feature descriptions (keep concise)         |
+| `CLAUDE.md`    | Architecture/lessons | New components, patterns, gotchas, lessons learned      |
 
 **CHANGELOG.md** - Version history for users:
+
 * Add entry under current version (or create new version section)
+
 * Group by: Added, Changed, Fixed, Removed
+
 * Include brief description of what changed
 
 **README.md** - User documentation:
+
 * Only update for new user-facing features
+
 * Keep feature list concise (one line per feature)
+
 * Update configuration table if new settings added
 
 **CLAUDE.md** - Developer knowledge base:
+
 * Document new file/component in File Structure section
+
 * Add dedicated section for complex features (architecture, message flow)
+
 * Record lessons learned, gotchas, edge cases discovered during development
+
 * Keep as reference for future development and AI assistants
 

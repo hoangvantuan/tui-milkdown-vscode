@@ -1,16 +1,43 @@
-import { Crepe } from "@milkdown/crepe";
-import "@milkdown/crepe/theme/common/style.css";
+import { Editor } from "@tiptap/core";
+import StarterKit from "@tiptap/starter-kit";
+import { Image } from "@tiptap/extension-image";
+import { Highlight } from "@tiptap/extension-highlight";
+import { Table, TableRow, TableCell, TableHeader } from "@tiptap/extension-table";
+import { CodeBlockLowlight } from "@tiptap/extension-code-block-lowlight";
+import { TaskList, TaskItem } from "@tiptap/extension-list";
+import { Placeholder } from "@tiptap/extension-placeholder";
+import { Markdown } from "@tiptap/markdown";
+import { createLowlight } from "lowlight";
+import javascript from "highlight.js/lib/languages/javascript";
+import typescript from "highlight.js/lib/languages/typescript";
+import python from "highlight.js/lib/languages/python";
+import xml from "highlight.js/lib/languages/xml";
+import css from "highlight.js/lib/languages/css";
+import json from "highlight.js/lib/languages/json";
+import bash from "highlight.js/lib/languages/bash";
+import yaml from "highlight.js/lib/languages/yaml";
+import markdown from "highlight.js/lib/languages/markdown";
+import sql from "highlight.js/lib/languages/sql";
+import java from "highlight.js/lib/languages/java";
+import cpp from "highlight.js/lib/languages/cpp";
+import go from "highlight.js/lib/languages/go";
+import rust from "highlight.js/lib/languages/rust";
+import php from "highlight.js/lib/languages/php";
+import ruby from "highlight.js/lib/languages/ruby";
+import diff from "highlight.js/lib/languages/diff";
+import shell from "highlight.js/lib/languages/shell";
+import plaintext from "highlight.js/lib/languages/plaintext";
 import "./themes/index.css";
-import { prosePluginsCtx, editorViewCtx } from "@milkdown/kit/core";
 import {
   parseContent,
   reconstructContent,
   validateYaml,
 } from "./frontmatter";
-import { createLineHighlightPlugin } from "./line-highlight-plugin";
-import { createPasteLinkPlugin } from "./paste-link-plugin";
-import { createHeadingLevelPlugin } from "./heading-level-plugin";
+import { LineHighlight } from "./line-highlight-plugin";
+import { HeadingLevel } from "./heading-level-plugin";
 import { setupImageEditOverlay, handleUrlEditResponse, handleImageRenameResponse, setImageMap } from "./image-edit-plugin";
+import { renderTableToMarkdown } from "./table-markdown-serializer";
+import { transformTableCellsAfterParse } from "./table-cell-content-parser";
 
 declare function acquireVsCodeApi(): {
   postMessage(message: unknown): void;
@@ -46,102 +73,89 @@ const DEBOUNCE_MS = 300;
 
 const vscode = acquireVsCodeApi();
 
-let crepe: Crepe | null = null;
-let isEditorInitializing = false; // Guard against concurrent editor init/recreate
+const lowlight = createLowlight();
+lowlight.register({
+  javascript, typescript, python, xml, css, json,
+  bash, yaml, markdown, sql, java, cpp, go, rust,
+  php, ruby, diff, shell, plaintext,
+});
+
+let editor: Editor | null = null;
 let isUpdatingFromExtension = false;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-let currentTheme: ThemeName = "frame";
-let globalThemeReceived: ThemeName | null = null; // Theme from extension globalState
-let currentFrontmatter: string | null = null; // Current frontmatter YAML content
-let currentBody: string = ""; // Current body content (without frontmatter)
-let lastSentState: string | null = null; // Track last sent state (content+imageMap keys) to prevent echo loops
-let highlightCurrentLine = true; // Line highlight feature toggle (default enabled)
-let currentImageMap: Record<string, string> = {}; // Image path → webviewUri mapping
+let globalThemeReceived: ThemeName | null = null;
+let currentFrontmatter: string | null = null;
+let currentBody: string = "";
+let lastSentState: string | null = null;
+let highlightCurrentLine = true;
+let currentImageMap: Record<string, string> = {};
+
+// Node types that represent images in Tiptap
+export const IMAGE_NODE_TYPES = ["image"];
 
 // Image URL transform helpers
 function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+// Single-pass replacement: build one combined regex for all entries
+function singlePassReplace(
+  content: string,
+  entries: [string, string][],
+  reverseMap: Map<string, string>,
+): string {
+  if (entries.length === 0) return content;
+  // Sort by key length descending to match longest first
+  const sorted = entries.sort(([a], [b]) => b.length - a.length);
+  const pattern = sorted.map(([key]) => escapeRegex(key)).join("|");
+  const regex = new RegExp(pattern, "g");
+  return content.replace(regex, (match) => reverseMap.get(match) ?? match);
+}
+
 function transformForDisplay(
   content: string,
   imageMap: Record<string, string>,
 ): string {
-  let result = content;
-  // Sort by path length descending to avoid overlapping replacements
-  const entries = Object.entries(imageMap).sort(
-    ([a], [b]) => b.length - a.length
-  );
-  for (const [originalPath, webviewUri] of entries) {
-    const escaped = escapeRegex(originalPath);
-    result = result.replace(new RegExp(escaped, "g"), webviewUri);
-  }
-  return result;
+  const entries = Object.entries(imageMap);
+  if (entries.length === 0) return content;
+  const reverseMap = new Map(entries.map(([orig, uri]) => [orig, uri]));
+  return singlePassReplace(content, entries, reverseMap);
 }
 
 function transformForSave(
   content: string,
   imageMap: Record<string, string>,
 ): string {
-  let result = content;
-  // Sort by URI length descending to avoid overlapping replacements
-  const entries = Object.entries(imageMap).sort(
-    ([, a], [, b]) => b.length - a.length
-  );
-  for (const [originalPath, webviewUri] of entries) {
-    const escaped = escapeRegex(webviewUri);
-    result = result.replace(new RegExp(escaped, "g"), originalPath);
-  }
-  return result;
+  const entries = Object.entries(imageMap);
+  if (entries.length === 0) return content;
+  // Reverse: webviewUri → originalPath
+  const reversed = entries.map(([orig, uri]) => [uri, orig] as [string, string]);
+  const reverseMap = new Map(reversed.map(([uri, orig]) => [uri, orig]));
+  return singlePassReplace(content, reversed, reverseMap);
 }
 
-// Inline image handling - save pasted images to file
-// Matches both blob: URLs and data: URIs
+// Inline image handling
 const INLINE_IMAGE_REGEX = /!\[([^\]]*)\]\(((?:blob:|data:image\/)[^)]+)\)/g;
 
-// Node types that represent images in Milkdown (shared with image-edit-plugin)
-export const IMAGE_NODE_TYPES = ["image-block", "image", "image-inline"];
-
-/**
- * Update image node src using ProseMirror transaction
- * @param oldSrc - The original src to match (blob: or data: URL)
- * @param newSrc - The new src to set (webviewUri)
- * Returns true if update was successful
- */
 function updateImageNodeSrc(oldSrc: string, newSrc: string): boolean {
-  // Guard: Check if editor exists and is not being destroyed
-  if (!crepe || !crepe.editor) return false;
+  if (!editor) return false;
 
   try {
-    // Safe access: Try to get editorViewCtx, catch if context not ready/destroyed
-    const ctx = crepe.editor.ctx;
-    if (!ctx) return false;
-
-    let view;
-    try {
-      view = ctx.get(editorViewCtx);
-    } catch (err) {
-      // Context "editorView" not found - editor being destroyed or not yet ready
-      console.warn("[ImageSave] editorView context not available");
-      return false;
-    }
+    const view = editor.view;
     if (!view) return false;
 
     const { state, dispatch } = view;
 
-    // Collect nodes to update - only match specific oldSrc
     const nodesToUpdate: Array<{ pos: number; node: typeof state.doc.firstChild; nodeSize: number }> = [];
     state.doc.descendants((node, pos) => {
       if (!IMAGE_NODE_TYPES.includes(node.type.name)) return;
       const src = node.attrs.src as string;
-      // Only update nodes with matching oldSrc
       if (src !== oldSrc) return;
       nodesToUpdate.push({ pos, node, nodeSize: node.nodeSize });
     });
 
     if (nodesToUpdate.length === 0) return false;
 
-    // Sort by position descending
     nodesToUpdate.sort((a, b) => b.pos - a.pos);
 
     let tr = state.tr;
@@ -157,9 +171,6 @@ function updateImageNodeSrc(oldSrc: string, newSrc: string): boolean {
     isUpdatingFromExtension = true;
     dispatch(tr);
 
-    // Force synchronous DOM update
-    view.updateState(view.state);
-
     return true;
   } catch (err) {
     console.warn("[ImageSave] Failed to update node:", err);
@@ -171,23 +182,13 @@ function updateImageNodeSrc(oldSrc: string, newSrc: string): boolean {
   }
 }
 
-const pendingImageSaves = new Map<string, number>(); // Track images being saved with timestamp
-const PENDING_IMAGE_TIMEOUT = 10000; // 10 seconds timeout for pending images
-
-// Promise-based upload tracking for Crepe onUpload handler
-interface UploadPromiseHandlers {
-  resolve: (path: string) => void;
-  reject: (err: Error) => void;
-}
-const pendingUploads = new Map<string, UploadPromiseHandlers>();
-const UPLOAD_TIMEOUT = 30000; // 30 seconds timeout for uploads
+const pendingImageSaves = new Map<string, number>();
+const PENDING_IMAGE_TIMEOUT = 10000;
 
 async function getBase64FromUrl(url: string): Promise<string | null> {
-  // If already base64 data URI, return as-is
   if (url.startsWith("data:")) {
     return url;
   }
-  // Fetch blob URL and convert to base64
   try {
     const response = await fetch(url);
     const blob = await response.blob();
@@ -213,48 +214,6 @@ function generateImageFilename(mimeType: string): string {
   return `image-${timestamp}-${random}.${ext}`;
 }
 
-/**
- * Handle image upload from Crepe file picker
- * Returns Promise that resolves with saved file path
- */
-async function handleCrepeImageUpload(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64 = reader.result as string;
-      // Use original filename from file picker
-      const filename = file.name;
-      const uploadId = `upload-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
-
-      // Store promise handlers
-      pendingUploads.set(uploadId, { resolve, reject });
-
-      // Send to extension
-      vscode.postMessage({
-        type: "saveImage",
-        data: base64,
-        filename,
-        uploadId,
-        blobUrl: uploadId, // Use uploadId as blobUrl for compatibility
-      });
-
-      // Timeout
-      setTimeout(() => {
-        if (pendingUploads.has(uploadId)) {
-          pendingUploads.delete(uploadId);
-          reject(new Error("Image upload timed out"));
-        }
-      }, UPLOAD_TIMEOUT);
-    };
-    reader.onerror = () => reject(new Error("Failed to read file"));
-    reader.readAsDataURL(file);
-  });
-}
-
-/**
- * Process inline images (blob URLs and data URIs) - send to extension for saving
- * Returns true if there are images being processed (don't save content yet)
- */
 async function processInlineImages(content: string): Promise<boolean> {
   const matches = [...content.matchAll(INLINE_IMAGE_REGEX)];
   if (matches.length === 0) return false;
@@ -263,18 +222,15 @@ async function processInlineImages(content: string): Promise<boolean> {
   for (const match of matches) {
     const [, , imageUrl] = match;
 
-    // Skip if already being processed (with timeout cleanup)
     const pendingTimestamp = pendingImageSaves.get(imageUrl);
     if (pendingTimestamp) {
       if (Date.now() - pendingTimestamp < PENDING_IMAGE_TIMEOUT) {
         hasPendingImages = true;
         continue;
       }
-      // Timeout expired, allow retry
       pendingImageSaves.delete(imageUrl);
     }
 
-    // Get base64 data (convert blob if needed)
     const base64 = await getBase64FromUrl(imageUrl);
     if (base64) {
       pendingImageSaves.set(imageUrl, Date.now());
@@ -287,17 +243,15 @@ async function processInlineImages(content: string): Promise<boolean> {
         type: "saveImage",
         data: base64,
         filename,
-        blobUrl: imageUrl, // Keep field name for compatibility
+        blobUrl: imageUrl,
       });
 
-      // Timeout cleanup: Remove from pending after PENDING_IMAGE_TIMEOUT
-      // This prevents editor lock if extension fails to respond
       setTimeout(() => {
         if (pendingImageSaves.has(imageUrl)) {
           console.warn("[Image] Save timeout, cleaning up:", imageUrl.slice(0, 50));
           pendingImageSaves.delete(imageUrl);
         }
-      }, PENDING_IMAGE_TIMEOUT + 1000); // Extra 1s buffer
+      }, PENDING_IMAGE_TIMEOUT + 1000);
     }
   }
   return hasPendingImages;
@@ -310,8 +264,6 @@ function replaceInlineImage(
 ): void {
   pendingImageSaves.delete(imageUrl);
 
-  // Replace in currentBody using string replacement (regex fails on long data URIs)
-  // Find pattern: ![...](imageUrl) and replace with ![...](savedPath)
   const searchStart = "](";
   const searchEnd = ")";
   let result = currentBody;
@@ -321,7 +273,6 @@ function replaceInlineImage(
     const urlStart = result.indexOf(searchStart + imageUrl + searchEnd, searchPos);
     if (urlStart === -1) break;
 
-    // Found the URL, replace it
     const replaceStart = urlStart + searchStart.length;
     const replaceEnd = replaceStart + imageUrl.length;
     result =
@@ -331,45 +282,51 @@ function replaceInlineImage(
 
   currentBody = result;
 
-  // Update imageMap with new path
   if (webviewUri) {
     currentImageMap[savedPath] = webviewUri;
     setImageMap(currentImageMap);
   }
 
-  // Send updated content to extension
   const fullContent = reconstructContent(currentFrontmatter, currentBody);
-  // Don't set lastSentContent - let extension update flow handle recreate
-  // This ensures imageMapChanged is true when update comes back
   vscode.postMessage({ type: "edit", content: fullContent });
 
-  // Try ProseMirror transaction for immediate visual update (fast, may not enable resize)
-  if (crepe && webviewUri) {
+  if (editor && webviewUri) {
     updateImageNodeSrc(imageUrl, webviewUri);
   }
 }
 
-/**
- * Serialize state for echo detection (content + imageMap keys only)
- * Uses only imageMap keys (not values) because webviewUri values change per session
- */
 function serializeStateForEcho(content: string, imageMap: Record<string, string>): string {
   const sortedKeys = Object.keys(imageMap).sort();
   return JSON.stringify({ content, imageMapKeys: sortedKeys });
 }
 
+const MAX_BLOB_RETRIES = 5;
+let blobRetryCount = 0;
+
 function debouncedPostEdit(content: string): void {
   if (debounceTimer !== null) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(async () => {
-    // Process blob URLs - send to extension for saving
-    // If blobs are pending, don't save yet - wait for imageSaved callback
     const hasPendingBlobs = await processInlineImages(content);
     if (hasPendingBlobs) {
-      debounceTimer = null;
-      return; // Don't save content with blob URLs - wait for imageSaved
+      if (blobRetryCount < MAX_BLOB_RETRIES) {
+        // Exponential backoff: 300, 600, 1200, 2400, 4800ms
+        const backoff = DEBOUNCE_MS * Math.pow(2, blobRetryCount);
+        blobRetryCount++;
+        debounceTimer = setTimeout(() => {
+          debounceTimer = null;
+          debouncedPostEdit(content);
+        }, backoff);
+      } else {
+        // Max retries reached - send edit anyway to avoid stuck state
+        blobRetryCount = 0;
+        lastSentState = serializeStateForEcho(content, currentImageMap);
+        vscode.postMessage({ type: "edit", content });
+        debounceTimer = null;
+      }
+      return;
     }
 
-    // Track state BEFORE sending to detect echo (content + imageMap keys)
+    blobRetryCount = 0;
     lastSentState = serializeStateForEcho(content, currentImageMap);
     vscode.postMessage({ type: "edit", content });
     debounceTimer = null;
@@ -397,13 +354,6 @@ function hideLoading(): void {
   }
 }
 
-function showLoading(): void {
-  const loading = getLoadingIndicator();
-  if (loading) {
-    loading.classList.remove("hidden");
-  }
-}
-
 // Metadata panel functions
 function autoResizeTextarea(textarea: HTMLTextAreaElement): void {
   textarea.style.height = "auto";
@@ -424,19 +374,16 @@ function updateMetadataPanel(
   if (!details || !textarea || !addBtn || !errorEl) return;
 
   if (frontmatter === null) {
-    // No frontmatter - show Add button
     details.classList.add("hidden");
     addBtn.classList.remove("hidden");
     textarea.classList.remove("error");
     errorEl.classList.add("hidden");
   } else {
-    // Has frontmatter - show panel
     details.classList.remove("hidden");
     addBtn.classList.add("hidden");
     textarea.value = frontmatter;
     autoResizeTextarea(textarea);
 
-    // Show/hide error with styling sync
     if (!isValid && error) {
       errorEl.textContent = `(${error})`;
       errorEl.classList.remove("hidden");
@@ -451,13 +398,11 @@ function updateMetadataPanel(
 let metadataDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 async function sendFullContent(): Promise<void> {
-  // Process only body to avoid scanning frontmatter for blob URLs
   const hasPendingBlobs = await processInlineImages(currentBody);
   if (hasPendingBlobs) {
-    return; // Don't save content with blob URLs - wait for imageSaved
+    return;
   }
   const fullContent = reconstructContent(currentFrontmatter, currentBody);
-  // Track state BEFORE sending to detect echo
   lastSentState = serializeStateForEcho(fullContent, currentImageMap);
   vscode.postMessage({ type: "edit", content: fullContent });
 }
@@ -468,7 +413,6 @@ function debouncedMetadataEdit(): void {
     const textarea = getMetadataTextarea();
     if (!textarea) return;
 
-    // If textarea is empty, remove frontmatter entirely
     currentFrontmatter = textarea.value.trim() === "" ? null : textarea.value;
     sendFullContent();
   }, DEBOUNCE_MS);
@@ -506,13 +450,11 @@ function setupMetadataHandlers(): void {
       debouncedMetadataEdit();
     });
 
-    // Validate on blur
     textarea.addEventListener("blur", () => {
       validateAndShowError();
     });
 
     textarea.addEventListener("keydown", (e) => {
-      // Tab inserts 2 spaces (YAML standard)
       if (e.key === "Tab") {
         e.preventDefault();
         const start = textarea.selectionStart;
@@ -525,12 +467,10 @@ function setupMetadataHandlers(): void {
           textarea.value.substring(end);
         textarea.selectionStart = textarea.selectionEnd = start + indent.length;
 
-        // Trigger input for auto-resize and debounced save
         textarea.dispatchEvent(new Event("input", { bubbles: true }));
         return;
       }
 
-      // Ctrl/Cmd+S triggers validation
       if ((e.ctrlKey || e.metaKey) && e.key === "s") {
         e.preventDefault();
         validateAndShowError();
@@ -556,64 +496,70 @@ function escapeHtml(text: string): string {
 }
 
 function showError(message: string): void {
+  const errorHtml = `
+    <div style="padding: 20px; color: var(--vscode-errorForeground, red);">
+      <h3>Error</h3>
+      <p>${escapeHtml(message)}</p>
+      <p>Try reopening the file or reloading the window.</p>
+    </div>
+  `;
   const editorEl = getEditorEl();
   if (editorEl) {
-    editorEl.innerHTML = `
-      <div style="padding: 20px; color: var(--vscode-errorForeground);">
-        <h3>Error</h3>
-        <p>${escapeHtml(message)}</p>
-        <p>Try reopening the file or reloading the window.</p>
-      </div>
-    `;
+    editorEl.innerHTML = errorHtml;
+  } else {
+    // Fallback when #editor element is missing
+    console.error("[Tiptap]", message);
+    document.body.innerHTML = errorHtml;
   }
 }
 
 // Theme management
-function setTheme(themeName: ThemeName, saveGlobal = true): void {
-  currentTheme = themeName;
+const DARK_THEMES: ReadonlySet<ThemeName> = new Set([
+  "frame-dark", "nord-dark", "crepe-dark",
+  "catppuccin-frappe", "catppuccin-macchiato", "catppuccin-mocha",
+]);
 
+function setTheme(themeName: ThemeName, saveGlobal = true): void {
   THEMES.forEach((t) => document.body.classList.remove(`theme-${t}`));
   document.body.classList.add(`theme-${themeName}`);
+
+  // Sync dark/light class with selected editor theme for hljs colors
+  applyTheme(DARK_THEMES.has(themeName) ? "dark" : "light");
 
   const select = getThemeSelect();
   if (select) select.value = themeName;
 
-  // Persist in webview state for reload resilience
   vscode.setState({ theme: themeName });
 
-  // Save theme globally via extension (only source of truth)
   if (saveGlobal) {
-    globalThemeReceived = themeName; // Update local cache
+    globalThemeReceived = themeName;
     vscode.postMessage({ type: "themeChange", theme: themeName });
   }
 }
 
 function initTheme(vsCodeTheme: "dark" | "light"): void {
-  // Priority: globalThemeReceived > default based on VS Code theme
   if (globalThemeReceived) {
-    // Global theme already applied via CSS class
+    // Ensure dark/light body class matches the saved theme
+    applyTheme(DARK_THEMES.has(globalThemeReceived) ? "dark" : "light");
     return;
   }
 
-  // No global theme yet, use default based on VS Code theme
   const defaultTheme = vsCodeTheme === "dark" ? "frame-dark" : "frame";
-  currentTheme = defaultTheme;
 
   THEMES.forEach((t) => document.body.classList.remove(`theme-${t}`));
   document.body.classList.add(`theme-${defaultTheme}`);
+  applyTheme(vsCodeTheme);
 
   const select = getThemeSelect();
   if (select) select.value = defaultTheme;
 }
 
 function viewSource(): void {
-  // Request extension to close this editor and open with default text editor
   vscode.postMessage({ type: "viewSource" });
 }
 
 function applyFontSize(size: number): void {
   if (!Number.isFinite(size) || size < 8 || size > 32) return;
-  // Scale factor relative to base 16px
   const scaleFactor = size / 16;
   document.documentElement.style.setProperty(
     "--editor-font-scale",
@@ -633,59 +579,155 @@ function applyHeadingSizes(sizes: Record<string, number>): void {
 }
 
 // Editor initialization
-async function initEditor(initialContent: string = ""): Promise<Crepe | null> {
-  console.log("[Crepe] Starting initialization...");
+function initEditor(initialContent: string = ""): Editor | null {
+  console.log("[Tiptap] Starting initialization...");
   const editorEl = getEditorEl();
   if (!editorEl) {
-    console.error("[Crepe] Editor element not found");
+    console.error("[Tiptap] Editor element not found");
     showError("Editor element not found");
     return null;
   }
 
   try {
-    const instance = new Crepe({
-      root: editorEl,
-      defaultValue: initialContent,
-      featureConfigs: {
-        [Crepe.Feature.Placeholder]: {
-          text: "Type something...",
+    // Build conditional extensions
+    const conditionalExtensions = [
+      HeadingLevel,
+      ...(highlightCurrentLine ? [LineHighlight] : []),
+    ];
+
+    const instance = new Editor({
+      element: editorEl,
+      extensions: [
+        StarterKit.configure({
+          codeBlock: false, // Replaced by CodeBlockLowlight
+          link: {
+            openOnClick: false,
+            autolink: true,
+            linkOnPaste: true,
+          },
+        }),
+        Image.configure({
+          inline: false,
+          allowBase64: true,
+        }),
+        Highlight,
+        Table.extend({
+          renderMarkdown(node: any, h: any) {
+            return renderTableToMarkdown(node, h);
+          },
+        }).configure({
+          resizable: true,
+        }),
+        TableRow,
+        TableCell,
+        TableHeader,
+        CodeBlockLowlight.configure({
+          lowlight,
+        }),
+        TaskList,
+        TaskItem.configure({
+          nested: true,
+        }),
+        Placeholder.configure({
+          placeholder: "Type something...",
+        }),
+        Markdown.configure({
+          indentation: { style: 'space', size: 2 },
+          markedOptions: {
+            gfm: true,
+            breaks: false,
+          },
+        }),
+        ...conditionalExtensions,
+      ],
+      content: initialContent,
+      contentType: 'markdown',
+      editorProps: {
+        handlePaste(view, event) {
+          const items = Array.from(event.clipboardData?.items || []);
+          const imageItem = items.find(i => i.type.startsWith("image/"));
+          if (imageItem) {
+            event.preventDefault();
+            const file = imageItem.getAsFile();
+            if (!file) return true;
+
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              const base64 = reader.result as string;
+              const filename = generateImageFilename(file.type);
+
+              vscode.postMessage({
+                type: "saveImage",
+                data: base64,
+                filename,
+                blobUrl: base64,
+              });
+
+              // Insert placeholder image with base64 src (will be replaced by imageSaved)
+              const { state, dispatch } = view;
+              const imageNode = state.schema.nodes.image;
+              if (imageNode) {
+                const node = imageNode.create({ src: base64, alt: "" });
+                const tr = state.tr.replaceSelectionWith(node);
+                dispatch(tr);
+              }
+            };
+            reader.readAsDataURL(file);
+            return true;
+          }
+          return false;
         },
-        [Crepe.Feature.ImageBlock]: {
-          onUpload: handleCrepeImageUpload,
+        handleDrop(view, event) {
+          const files = event.dataTransfer?.files;
+          if (!files || files.length === 0) return false;
+
+          const imageFile = Array.from(files).find(f => f.type.startsWith("image/"));
+          if (!imageFile) return false;
+
+          event.preventDefault();
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const base64 = reader.result as string;
+            const filename = imageFile.name || generateImageFilename(imageFile.type);
+
+            vscode.postMessage({
+              type: "saveImage",
+              data: base64,
+              filename,
+              blobUrl: base64,
+            });
+
+            // Insert at drop position
+            const coords = { left: event.clientX, top: event.clientY };
+            const pos = view.posAtCoords(coords);
+            if (pos) {
+              const { state, dispatch } = view;
+              const imageNode = state.schema.nodes.image;
+              if (imageNode) {
+                const node = imageNode.create({ src: base64, alt: "" });
+                const tr = state.tr.insert(pos.pos, node);
+                dispatch(tr);
+              }
+            }
+          };
+          reader.readAsDataURL(imageFile);
+          return true;
         },
+      },
+      onUpdate: ({ editor: ed }) => {
+        if (isUpdatingFromExtension) return;
+        // Get markdown from @tiptap/markdown
+        const markdown = ed.getMarkdown();
+        currentBody = transformForSave(markdown, currentImageMap);
+        debouncedPostEdit(reconstructContent(currentFrontmatter, currentBody));
       },
     });
 
-    // Inject ProseMirror plugins
-    instance.editor.config((ctx) => {
-      ctx.update(prosePluginsCtx, (plugins) => {
-        const pluginsToAdd = [
-          createPasteLinkPlugin(),
-          createHeadingLevelPlugin(),
-        ];
-        if (highlightCurrentLine) {
-          pluginsToAdd.push(createLineHighlightPlugin());
-        }
-        return [...plugins, ...pluginsToAdd];
-      });
-    });
-
-    instance.on((listener) => {
-      listener.markdownUpdated((_, markdown) => {
-        if (isUpdatingFromExtension) return;
-        // Reverse transform: webviewUris back to original paths
-        currentBody = transformForSave(markdown, currentImageMap);
-        debouncedPostEdit(reconstructContent(currentFrontmatter, currentBody));
-      });
-    });
-
-    await instance.create();
     hideLoading();
-
-    console.log("[Crepe] Editor created successfully!");
+    console.log("[Tiptap] Editor created successfully!");
     return instance;
   } catch (error) {
-    console.error("[Crepe] Failed to create editor:", error);
+    console.error("[Tiptap] Failed to create editor:", error);
     showError(
       `Failed to initialize editor: ${error instanceof Error ? error.message : String(error)}`,
     );
@@ -693,41 +735,38 @@ async function initEditor(initialContent: string = ""): Promise<Crepe | null> {
   }
 }
 
-async function updateEditorContent(content: string): Promise<void> {
-  if (!crepe || isEditorInitializing) return;
+function updateEditorContent(content: string): void {
+  if (!editor) return;
 
-  // Note: isUpdatingFromExtension managed by caller (case "update")
-  isEditorInitializing = true;
-  showLoading();
+  // Cancel pending debounced edit
+  if (debounceTimer !== null) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+  }
+
   try {
-    // Cancel pending debounced edit to prevent stale edits after recreate
-    if (debounceTimer !== null) {
-      clearTimeout(debounceTimer);
-      debounceTimer = null;
-    }
+    // Save cursor position
+    const { from, to } = editor.state.selection;
 
-    crepe.destroy();
-    crepe = null;
+    // Use setContent with emitUpdate: false to prevent echo loops
+    editor.commands.setContent(content, { emitUpdate: false, contentType: 'markdown' });
 
-    // Allow destroyed instance's microtasks to flush before creating new instance
-    await new Promise((r) => setTimeout(r, 0));
-
-    const editorEl = getEditorEl();
-    if (editorEl) {
-      editorEl.innerHTML = "";
-      crepe = await initEditor(content);
+    // Restore cursor position (clamp to new document size)
+    const newDocSize = editor.state.doc.content.size;
+    const safeFrom = Math.min(from, newDocSize);
+    const safeTo = Math.min(to, newDocSize);
+    try {
+      editor.commands.setTextSelection({ from: safeFrom, to: safeTo });
+    } catch {
+      // If position restoration fails, move cursor to start
+      editor.commands.focus('start');
     }
   } catch (err) {
-    console.error("[Crepe] Failed to update content:", err);
-    crepe = null;
-    hideLoading();
-  } finally {
-    isEditorInitializing = false;
+    console.error("[Tiptap] Failed to update content:", err);
   }
 }
 
 function applyTheme(theme: "dark" | "light"): void {
-  // Only apply VS Code theme class - DO NOT save to global
   document.body.classList.remove("dark-theme", "light-theme");
   document.body.classList.add(`${theme}-theme`);
 }
@@ -744,7 +783,6 @@ function setupToolbarHandlers(): void {
 
   getSourceBtn()?.addEventListener("click", viewSource);
 
-  // Keyboard shortcut: Ctrl/Cmd + Shift + M to view source
   document.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "m") {
       e.preventDefault();
@@ -762,25 +800,15 @@ window.addEventListener("message", async (event) => {
       if (typeof message.content === "string") {
         const newImageMap = message.imageMap || {};
 
-        // Serialize incoming state (content + imageMap keys only)
-        // Uses only keys because webviewUri values change per session
         const incomingState = serializeStateForEcho(message.content, newImageMap);
 
-        // Skip if this is exact echo of our last edit (same content + same imageMap keys)
-        // This prevents: edit → extension responds → recreate → edit loop
         if (incomingState === lastSentState) {
           lastSentState = null;
-          // Still update imageMap values (URIs may have changed) but don't recreate editor
           currentImageMap = newImageMap;
           setImageMap(newImageMap);
           break;
         }
         lastSentState = null;
-
-        // Detect if imageMap keys changed (new images added/removed)
-        const currentKeys = Object.keys(currentImageMap).sort().join("|");
-        const newKeys = Object.keys(newImageMap).sort().join("|");
-        const imageMapKeysChanged = currentKeys !== newKeys;
 
         currentImageMap = newImageMap;
         setImageMap(newImageMap);
@@ -788,33 +816,26 @@ window.addEventListener("message", async (event) => {
         try {
           isUpdatingFromExtension = true;
 
-          // Parse incoming content
           const parsed = parseContent(message.content);
           currentFrontmatter = parsed.frontmatter;
-          currentBody = parsed.body; // Keep original for saving
+          currentBody = parsed.body;
 
-          // Update metadata panel
           updateMetadataPanel(parsed.frontmatter, parsed.isValid, parsed.error);
 
-          // Transform body for display (apply imageMap)
           const displayBody = transformForDisplay(parsed.body, currentImageMap);
 
-          // Update Milkdown with transformed body
-          // Guard: skip if another init/recreate is already in progress
-          if (isEditorInitializing) break;
-
-          if (!crepe) {
-            isEditorInitializing = true;
-            try {
-              crepe = await initEditor(displayBody);
-            } finally {
-              isEditorInitializing = false;
-            }
+          if (!editor) {
+            editor = initEditor(displayBody);
           } else {
-            await updateEditorContent(displayBody);
+            updateEditorContent(displayBody);
+          }
+
+          // Transform table cells: convert text patterns (-, N., [x]) to proper list nodes
+          if (editor) {
+            transformTableCellsAfterParse(editor);
           }
         } catch (err) {
-          console.error("[Crepe] Update failed:", err);
+          console.error("[Tiptap] Update failed:", err);
           showError(
             `Failed to update content: ${err instanceof Error ? err.message : String(err)}`,
           );
@@ -840,7 +861,6 @@ window.addEventListener("message", async (event) => {
       }
       if (typeof message.highlightCurrentLine === "boolean") {
         highlightCurrentLine = message.highlightCurrentLine;
-        // Effect applied on next editor init (recreate)
       }
       break;
     case "savedTheme":
@@ -849,7 +869,7 @@ window.addEventListener("message", async (event) => {
         THEMES.includes(message.theme as ThemeName)
       ) {
         globalThemeReceived = message.theme as ThemeName;
-        setTheme(globalThemeReceived, false); // Apply but don't save back
+        setTheme(globalThemeReceived, false);
       }
       break;
     case "imageSaved":
@@ -857,23 +877,13 @@ window.addEventListener("message", async (event) => {
         typeof message.blobUrl === "string" &&
         typeof message.savedPath === "string"
       ) {
-        // Update imageMap if webviewUri provided
         if (typeof message.webviewUri === "string") {
           currentImageMap[message.savedPath] = message.webviewUri;
-          // Sync with image-edit overlay so edits show new webview URI
           setImageMap(currentImageMap);
         }
 
-        // Check if this is a Promise-based upload (from Crepe onUpload)
-        const uploadHandlers = pendingUploads.get(message.blobUrl);
-        if (uploadHandlers) {
-          pendingUploads.delete(message.blobUrl);
-          // Return webviewUri for immediate display, fallback to savedPath
-          uploadHandlers.resolve(message.webviewUri || message.savedPath);
-        } else {
-          // Legacy: blob URL replacement for pasted images
-          replaceInlineImage(message.blobUrl, message.savedPath, message.webviewUri);
-        }
+        // Replace blob/base64 in editor with saved path
+        replaceInlineImage(message.blobUrl, message.savedPath, message.webviewUri);
       }
       break;
     case "imageUrlEditResponse":
@@ -895,46 +905,34 @@ window.addEventListener("message", async (event) => {
 });
 
 function init() {
-  console.log("[Crepe] init() called");
+  console.log("[Tiptap] init() called");
 
-  // Restore theme from webview state (before extension responds)
   const savedState = vscode.getState();
   if (savedState?.theme && THEMES.includes(savedState.theme as ThemeName)) {
     setTheme(savedState.theme as ThemeName, false);
   }
 
-  // Cleanup pending operations on webview close to prevent memory leaks
   window.addEventListener("beforeunload", () => {
     pendingImageSaves.clear();
-    pendingUploads.clear();
   });
 
   setupToolbarHandlers();
   setupMetadataHandlers();
 
-  // Setup floating image edit overlay
   const editorEl = document.getElementById("editor");
   if (editorEl) {
     setupImageEditOverlay(
       editorEl,
-      () => {
-        try {
-          return crepe?.editor?.ctx?.get(editorViewCtx) ?? null;
-        } catch {
-          return null;
-        }
-      },
+      () => editor?.view ?? null,
       (msg) => vscode.postMessage(msg)
     );
   }
 
-  // Don't create editor yet - wait for content from extension
-  // This prevents showing empty placeholder "Please enter..."
-  console.log("[Crepe] init() complete, sending ready signal");
+  console.log("[Tiptap] init() complete, sending ready signal");
   vscode.postMessage({ type: "ready" });
 }
 
-console.log("[Crepe] Script loaded, readyState:", document.readyState);
+console.log("[Tiptap] Script loaded, readyState:", document.readyState);
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", init);
 } else {
