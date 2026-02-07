@@ -450,7 +450,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
               // Security: Verify resolved path is within document directory
               const rel = path.relative(documentFolder.fsPath, imageFolder.fsPath);
-              if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) {
+              if (rel.startsWith('..') || path.isAbsolute(rel)) {
                 vscode.window.showErrorMessage(
                   "imageSaveFolder resolves outside document folder."
                 );

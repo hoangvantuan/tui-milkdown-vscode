@@ -12,6 +12,23 @@ All notable changes to "TUI Markdown Editor" extension.
 
 * **Toolbar Active States**: Buttons highlight to reflect current formatting at cursor position
 
+* 10MB image size limit on paste/drop with warning dialog
+
+* showWarning message type for webview-to-extension warnings
+
+* Custom table markdown serializer (`table-markdown-serializer.ts`) - preserves multi-line cell content with `<br>` tags via `renderMarkdown` hook
+
+* Table cell content parser (`table-cell-content-parser.ts`) - post-parse transformer converts `<br>` → paragraphs, `
+` → hardBreak, and list patterns (`- item`, `N. item`, `[x] item`) → proper list nodes
+
+* Path traversal security check for `imageSaveFolder` configuration
+
+* Race condition guard (`renameInProgress`) for image rename operations
+
+* Image edit overlay MutationObserver now filters for image-related changes only, with debounce
+
+* Tiptap Markdown reference documentation (`docs/tiptap-markdown-reference.md`) - API spec, extension patterns, tokenizer guides
+
 ### Changed
 
 * **Empty line serialization**: Empty paragraphs now serialize as `<br>` instead of `&nbsp;` in markdown output for better consistency and readability
@@ -53,25 +70,6 @@ All notable changes to "TUI Markdown Editor" extension.
   * Base Tiptap styles (outline, fonts, colors, placeholder, blockquote, hr, links, tables) added inline
 
   * Task list checkbox styling with font-scale support
-
-### Added
-
-* 10MB image size limit on paste/drop with warning dialog
-
-* showWarning message type for webview-to-extension warnings
-
-* Custom table markdown serializer (`table-markdown-serializer.ts`) - preserves multi-line cell content with `<br>` tags via `renderMarkdown` hook
-
-* Table cell content parser (`table-cell-content-parser.ts`) - post-parse transformer converts `<br>` → paragraphs, `
-` → hardBreak, and list patterns (`- item`, `N. item`, `[x] item`) → proper list nodes
-
-* Path traversal security check for `imageSaveFolder` configuration
-
-* Race condition guard (`renameInProgress`) for image rename operations
-
-* Image edit overlay MutationObserver now filters for image-related changes only, with debounce
-
-* Tiptap Markdown reference documentation (`docs/tiptap-markdown-reference.md`) - API spec, extension patterns, tokenizer guides
 
 ### Improved
 

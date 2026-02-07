@@ -668,7 +668,7 @@ function initEditor(initialContent: string = ""): Editor | null {
           if (imageItem) {
             event.preventDefault();
             const file = imageItem.getAsFile();
-            if (!file) return true;
+            if (!file) return false;
 
             if (file.size > MAX_IMAGE_SIZE) {
               vscode.postMessage({
