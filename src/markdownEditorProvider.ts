@@ -481,7 +481,10 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
               const imageFolder = vscode.Uri.joinPath(documentFolder, saveFolder);
 
               // Security: Verify resolved path is within document directory
-              if (!imageFolder.fsPath.startsWith(documentFolder.fsPath)) {
+              const docFolderPrefix = documentFolder.fsPath.endsWith('/') || documentFolder.fsPath.endsWith('\\')
+                ? documentFolder.fsPath
+                : documentFolder.fsPath + '/';
+              if (!imageFolder.fsPath.startsWith(docFolderPrefix)) {
                 vscode.window.showErrorMessage(
                   "imageSaveFolder resolves outside document folder."
                 );

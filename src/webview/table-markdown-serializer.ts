@@ -12,7 +12,7 @@ function renderInline(node: JSONContent, h: MarkdownRendererHelpers): string {
 
 /**
  * Render a paragraph that may contain hardBreak nodes.
- * hardBreak (Shift+Enter = soft break) serializes as \ (backslash, GFM line break).
+ * hardBreak (Shift+Enter = soft break) serializes as \n (newline, soft break convention for roundtrip).
  * Paragraph separation (Enter = hard break) is handled by the caller with <br>.
  */
 function renderCellParagraph(para: JSONContent, h: MarkdownRendererHelpers): string {
@@ -23,7 +23,7 @@ function renderCellParagraph(para: JSONContent, h: MarkdownRendererHelpers): str
     return renderInline(para, h);
   }
 
-  // Split inline content by hardBreak, join with \ (GFM line break)
+  // Split inline content by hardBreak, join with \n (soft break for roundtrip)
   const segments: JSONContent[][] = [[]];
   for (const child of para.content) {
     if (child.type === 'hardBreak') {
@@ -36,7 +36,7 @@ function renderCellParagraph(para: JSONContent, h: MarkdownRendererHelpers): str
   return segments
     .map(seg => seg.length === 0 ? '' : cleanInline(h.renderChildren({ type: 'paragraph', content: seg } as JSONContent)))
     .filter(s => s)
-    .join('\\');
+    .join('\\n');
 }
 
 /** Render a list item's paragraph content as inline text */
@@ -56,7 +56,7 @@ function renderListItemText(item: JSONContent, h: MarkdownRendererHelpers): stri
 function renderCellContent(cellNode: JSONContent, h: MarkdownRendererHelpers): string {
   if (!cellNode.content?.length) return '';
 
-  // Single paragraph - render (may contain \ for soft breaks)
+  // Single paragraph - render (may contain \n for soft breaks)
   if (cellNode.content.length === 1 && cellNode.content[0].type === 'paragraph') {
     return renderCellParagraph(cellNode.content[0], h);
   }
