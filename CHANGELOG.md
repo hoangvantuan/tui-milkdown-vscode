@@ -6,6 +6,8 @@ All notable changes to "TUI Markdown Editor" extension.
 
 ### Changed
 
+* **Empty line serialization**: Empty paragraphs now serialize as `<br>` instead of `&nbsp;` in markdown output for better consistency and readability
+
 * **Editor Engine Migration: Milkdown Crepe -> Tiptap**
 
   * Replaced Milkdown Crepe with Tiptap (`@tiptap/core` + `@tiptap/markdown`) for markdown roundtrip

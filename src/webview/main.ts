@@ -5,6 +5,7 @@ import { Highlight } from "@tiptap/extension-highlight";
 import { Table, TableRow, TableCell, TableHeader } from "@tiptap/extension-table";
 import { CodeBlockLowlight } from "@tiptap/extension-code-block-lowlight";
 import { TaskList, TaskItem } from "@tiptap/extension-list";
+import { Paragraph } from "@tiptap/extension-paragraph";
 import { Placeholder } from "@tiptap/extension-placeholder";
 import { Markdown } from "@tiptap/markdown";
 import { createLowlight } from "lowlight";
@@ -600,10 +601,19 @@ function initEditor(initialContent: string = ""): Editor | null {
       extensions: [
         StarterKit.configure({
           codeBlock: false, // Replaced by CodeBlockLowlight
+          paragraph: false, // Replaced by custom Paragraph below
           link: {
             openOnClick: false,
             autolink: true,
             linkOnPaste: true,
+          },
+        }),
+        Paragraph.extend({
+          renderMarkdown(node: any, h: any) {
+            if (!node) return '';
+            const content = Array.isArray(node.content) ? node.content : [];
+            if (content.length === 0) return '<br>';
+            return h.renderChildren(content);
           },
         }),
         Image.configure({
@@ -735,6 +745,31 @@ function initEditor(initialContent: string = ""): Editor | null {
   }
 }
 
+// Convert paragraphs containing only a hardBreak (from <br> parsing) to empty paragraphs.
+// This ensures roundtrip: empty paragraph → <br> → parse → paragraph(hardBreak) → empty paragraph.
+function convertBrOnlyParagraphsToEmpty(ed: Editor): void {
+  const { doc, schema } = ed.state;
+  const positions: { pos: number; nodeSize: number }[] = [];
+
+  doc.descendants((node, pos) => {
+    if (node.type.name === 'paragraph' &&
+        node.childCount === 1 &&
+        node.firstChild?.type.name === 'hardBreak') {
+      positions.push({ pos, nodeSize: node.nodeSize });
+    }
+  });
+
+  if (positions.length === 0) return;
+
+  // Process in reverse to maintain position validity
+  positions.sort((a, b) => b.pos - a.pos);
+  let tr = ed.state.tr;
+  for (const { pos, nodeSize } of positions) {
+    tr = tr.replaceWith(pos, pos + nodeSize, schema.nodes.paragraph.create());
+  }
+  ed.view.dispatch(tr);
+}
+
 function updateEditorContent(content: string): void {
   if (!editor) return;
 
@@ -830,9 +865,11 @@ window.addEventListener("message", async (event) => {
             updateEditorContent(displayBody);
           }
 
-          // Transform table cells: convert text patterns (-, N., [x]) to proper list nodes
           if (editor) {
+            // Transform table cells: convert text patterns (-, N., [x]) to proper list nodes
             transformTableCellsAfterParse(editor);
+            // Convert <br>-only paragraphs (from parsing) to empty paragraphs
+            convertBrOnlyParagraphsToEmpty(editor);
           }
         } catch (err) {
           console.error("[Tiptap] Update failed:", err);

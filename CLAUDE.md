@@ -111,6 +111,8 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 
 **Content updates:** `editor.commands.setContent()` - no destroy/recreate needed. Cursor position preserved via save/restore around setContent.
 
+**Empty paragraph serialization:** Empty paragraphs serialize as `<br>` (not `&nbsp;`). Custom `Paragraph.extend()` overrides `renderMarkdown`. Post-parse step `convertBrOnlyParagraphsToEmpty()` converts paragraph-with-only-hardBreak back to empty paragraphs for stable roundtrip.
+
 **Node naming:** Tiptap uses camelCase: `listItem`, `codeBlock`, `taskList`, `taskItem`, `tableCell`, `tableHeader`.
 
 ## Metadata Panel
