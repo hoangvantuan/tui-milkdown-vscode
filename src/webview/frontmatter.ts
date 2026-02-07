@@ -87,16 +87,6 @@ export function reconstructContent(
   return `---\n${yamlContent}\n---\n\n${bodyTrimmed}`;
 }
 
-/**
- * Quick check if content has frontmatter
- */
-export function hasFrontmatter(markdown: string): boolean {
-  if (!markdown || typeof markdown !== "string") {
-    return false;
-  }
-  return FRONTMATTER_REGEX.test(markdown) || EMPTY_FRONTMATTER_REGEX.test(markdown);
-}
-
 export interface ValidationResult {
   isValid: boolean;
   error?: string;

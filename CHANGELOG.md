@@ -1,6 +1,109 @@
 # Changelog
 
-All notable changes to "Milkdown Markdown WYSIWYG" extension.
+All notable changes to "TUI Markdown Editor" extension.
+
+## \[2.0.0] - 2026-02-07
+
+### Added
+
+* **Formatting Toolbar**: Full markdown toolbar with grouped buttons for text formatting (Bold, Italic, Strikethrough, Inline Code, Highlight), heading select (Paragraph/H1-H6), lists (Bullet, Ordered, Task), block elements (Blockquote, Code Block, Horizontal Rule), table insert, and link insert
+
+* **Table Context Actions**: Add column before/after, add row below, delete column/row/table - buttons appear only when cursor is inside a table
+
+* **Toolbar Active States**: Buttons highlight to reflect current formatting at cursor position
+
+* 10MB image size limit on paste/drop with warning dialog
+
+* showWarning message type for webview-to-extension warnings
+
+* Custom table markdown serializer (`table-markdown-serializer.ts`) - preserves multi-line cell content with `<br>` tags via `renderMarkdown` hook
+
+* Table cell content parser (`table-cell-content-parser.ts`) - post-parse transformer converts `<br>` → paragraphs, `
+` → hardBreak, and list patterns (`- item`, `N. item`, `[x] item`) → proper list nodes
+
+* Path traversal security check for `imageSaveFolder` configuration
+
+* Race condition guard (`renameInProgress`) for image rename operations
+
+* Image edit overlay MutationObserver now filters for image-related changes only, with debounce
+
+* Tiptap Markdown reference documentation (`docs/tiptap-markdown-reference.md`) - API spec, extension patterns, tokenizer guides
+
+### Changed
+
+* **Empty line serialization**: Empty paragraphs now serialize as `<br>` instead of `&nbsp;` in markdown output for better consistency and readability
+
+* **Editor Engine Migration: Milkdown Crepe -> Tiptap**
+
+  * Replaced Milkdown Crepe with Tiptap (`@tiptap/core` + `@tiptap/markdown`) for markdown roundtrip
+
+  * Content updates use `editor.commands.setContent()` - no destroy/recreate, eliminates UI flash
+
+  * Cursor position preserved across external document changes
+
+  * Syntax highlighting for code blocks via lowlight (highlight.js), replacing CodeMirror
+
+  * Image paste/drop via Tiptap's `editorProps.handlePaste`/`handleDrop`
+
+  * Auto-link paste URL now handled by `@tiptap/extension-link` (`autolink: true, linkOnPaste: true`)
+
+  * Task list (checkbox) support via `@tiptap/extension-list` (TaskList + TaskItem)
+
+  * Table resizing support via `@tiptap/extension-table` with custom markdown serializer for multi-line cells
+
+  * Placeholder text via `@tiptap/extension-placeholder`
+
+  * Highlight (mark) support via `@tiptap/extension-highlight`
+
+* **Extension Rename**
+
+  * Renamed from "Milkdown Markdown WYSIWYG" to "TUI Markdown Editor"
+
+  * Updated all CSS selectors from `.milkdown` to `.tiptap`
+
+  * All 10 theme CSS files simplified - removed unused CSS variables
+
+* **CSS Architecture**
+
+  * Dark theme overrides consolidated using `body.dark-theme` selector (set by `applyTheme()`)
+
+  * Base Tiptap styles (outline, fonts, colors, placeholder, blockquote, hr, links, tables) added inline
+
+  * Task list checkbox styling with font-scale support
+
+* DRY - extracted shared cleanImagePath utility
+
+* Removed debug console.log statements from production code
+
+### Fixed
+* Echo loop after image save causing editor re-parse and cursor loss
+
+* Image path transforms now context-aware (only within image/link syntax, not plain text)
+
+* handleDrop inserts images at correct block boundary position
+
+* SVG image paste generates correct .svg extension (not .svg+xml)
+
+* Workspace reference updates now context-aware (won't replace paths in code blocks)
+
+
+* Line highlight plugin: corrected node type `list_item` -> `listItem` (Tiptap camelCase convention)
+
+* Image regex: improved HTML `<img>` matching (`<img\s[^>]*?src=` prevents false positives)
+
+### Removed
+
+* Removed `@milkdown/crepe` and `sharp` dependencies
+
+* Removed `paste-link-plugin.ts` (replaced by built-in Link extension)
+
+* Removed Milkdown-specific hardbreak rendering CSS hack
+
+* Removed CodeMirror-related CSS (`.cm-editor`, `.cm-content`)
+
+* Removed unused CSS variables from theme files (\~15 per theme)
+
+* Removed unused code: `hasFrontmatter()`, `showLoading()`, `currentTheme` variable
 
 ## \[1.5.5] - 2026-02-06
 
@@ -70,7 +173,7 @@ All notable changes to "Milkdown Markdown WYSIWYG" extension.
 
   * Paste images from clipboard directly into the editor
 
-  * Upload images via Crepe's file picker button
+  * Drop images or pick via drag-and-drop
 
   * Images saved automatically to configurable folder
 
@@ -176,7 +279,7 @@ All notable changes to "Milkdown Markdown WYSIWYG" extension.
 
 * "Add Metadata" button when document has no frontmatter
 
-* Bidirectional sync between metadata panel and Milkdown editor
+* Bidirectional sync between metadata panel and editor
 
 * Tab key support in metadata textarea (inserts 2 spaces for YAML indentation)
 

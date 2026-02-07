@@ -1,28 +1,14 @@
 /* Catppuccin Macchiato Theme - Medium contrast dark variant */
 /* https://catppuccin.com/palette */
-.theme-catppuccin-macchiato .milkdown {
+.theme-catppuccin-macchiato .tiptap {
   --crepe-color-background: #24273a;
   --crepe-color-on-background: #cad3f5;
   --crepe-color-surface: #363a4f;
-  --crepe-color-surface-low: #494d64;
-  --crepe-color-on-surface: #cad3f5;
-  --crepe-color-on-surface-variant: #a5adcb;
   --crepe-color-outline: #8087a2;
   --crepe-color-primary: #c6a0f6;
-  --crepe-color-secondary: #b7bdf8;
-  --crepe-color-on-secondary: #24273a;
-  --crepe-color-inverse: #181926;
-  --crepe-color-on-inverse: #cad3f5;
-  --crepe-color-inline-code: #c6a0f6;
-  --crepe-color-error: #ed8796;
-  --crepe-color-hover: #363a4f;
-  --crepe-color-selected: #494d64;
-  --crepe-color-inline-area: #363a4f;
+  --crepe-color-inline-code: #ed8796;
+  --crepe-color-highlight: #3e3630;
 
-  --crepe-font-title: "Noto Serif", Cambria, "Times New Roman", Times, serif;
   --crepe-font-default: "Noto Sans", Arial, Helvetica, sans-serif;
   --crepe-font-code: "Space Mono", Menlo, Monaco, "Courier New", Courier, monospace;
-
-  --crepe-shadow-1: 0px 1px 2px 0px rgba(202, 211, 245, 0.2), 0px 1px 3px 1px rgba(202, 211, 245, 0.1);
-  --crepe-shadow-2: 0px 1px 2px 0px rgba(202, 211, 245, 0.2), 0px 2px 6px 2px rgba(202, 211, 245, 0.1);
 }
