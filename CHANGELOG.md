@@ -71,8 +71,6 @@ All notable changes to "TUI Markdown Editor" extension.
 
   * Task list checkbox styling with font-scale support
 
-### Improved
-
 * DRY - extracted shared cleanImagePath utility
 
 * Removed debug console.log statements from production code

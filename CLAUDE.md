@@ -300,6 +300,7 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 * `imageSaved`: Extension → Webview (relative file path after save)
 
 * `showWarning`: Webview → Extension (message title and warning text for VSCode dialog)
+
 ## Heading Level Indicator
 
 **Plugin** (`src/webview/heading-level-plugin.ts`):
