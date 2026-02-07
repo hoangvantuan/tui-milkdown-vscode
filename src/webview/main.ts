@@ -1,4 +1,4 @@
-import { Editor } from "@tiptap/core";
+import { Editor, Extension } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { Image } from "@tiptap/extension-image";
 import { Highlight } from "@tiptap/extension-highlight";
@@ -39,6 +39,16 @@ import { HeadingLevel } from "./heading-level-plugin";
 import { setupImageEditOverlay, handleUrlEditResponse, handleImageRenameResponse, setImageMap } from "./image-edit-plugin";
 import { renderTableToMarkdown } from "./table-markdown-serializer";
 import { transformTableCellsAfterParse } from "./table-cell-content-parser";
+
+// Fix: @tiptap/markdown v3.19.0 drops `escape` tokens from marked parser,
+// causing escaped characters like \_ to be silently lost during roundtrip.
+const EscapeToken = Extension.create({
+  name: "escapeToken",
+  markdownTokenName: "escape",
+  parseMarkdown(token: any, helpers: any) {
+    return helpers.createTextNode(token.text || "");
+  },
+});
 
 declare function acquireVsCodeApi(): {
   postMessage(message: unknown): void;
@@ -657,6 +667,7 @@ function initEditor(initialContent: string = ""): Editor | null {
             breaks: false,
           },
         }),
+        EscapeToken,
         ...conditionalExtensions,
       ],
       content: initialContent,
