@@ -4,6 +4,14 @@ All notable changes to "TUI Markdown Editor" extension.
 
 ## \[2.0.0] - 2026-02-07
 
+### Added
+
+* **Formatting Toolbar**: Full markdown toolbar with grouped buttons for text formatting (Bold, Italic, Strikethrough, Inline Code, Highlight), heading select (Paragraph/H1-H6), lists (Bullet, Ordered, Task), block elements (Blockquote, Code Block, Horizontal Rule), table insert, and link insert
+
+* **Table Context Actions**: Add column before/after, add row below, delete column/row/table - buttons appear only when cursor is inside a table
+
+* **Toolbar Active States**: Buttons highlight to reflect current formatting at cursor position
+
 ### Changed
 
 * **Empty line serialization**: Empty paragraphs now serialize as `<br>` instead of `&nbsp;` in markdown output for better consistency and readability

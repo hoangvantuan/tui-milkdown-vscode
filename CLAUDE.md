@@ -148,6 +148,30 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 
 **Dependencies**: `js-yaml@^4.1.1`, `@types/js-yaml` (dev)
 
+## Toolbar
+
+**Layout** (in `src/markdownEditorProvider.ts` HTML + CSS):
+
+* Sticky toolbar at top with formatting buttons, heading select, theme select, and View Source
+
+* Buttons grouped by category with separators: Text formatting | Heading | Lists | Blocks | Table & Link | Theme & Source
+
+* Table context buttons (add/delete column/row, delete table) appear only when cursor is inside a table
+
+* Active state highlighting: buttons show `is-active` class based on current selection
+
+**Commands** (in `src/webview/main.ts`):
+
+* `TOOLBAR_COMMANDS` record maps `data-command` attributes to Tiptap chain commands
+
+* `updateToolbarActiveState()` called on `onSelectionUpdate` and `onTransaction` to sync button states
+
+* Heading select dropdown switches between Paragraph and H1-H6
+
+* Table context visibility: walks `$from.node(d)` ancestors to detect if cursor is inside a table
+
+**Link editing**: Uses async message flow (webview → extension `showInputBox` → webview) since VSCode webview sandbox blocks `prompt()`
+
 ## Line Highlight
 
 **Plugin** (`src/webview/line-highlight-plugin.ts`):

@@ -731,6 +731,12 @@ function initEditor(initialContent: string = ""): Editor | null {
         currentBody = transformForSave(markdown, currentImageMap);
         debouncedPostEdit(reconstructContent(currentFrontmatter, currentBody));
       },
+      onSelectionUpdate: ({ editor: ed }) => {
+        updateToolbarActiveState(ed);
+      },
+      onTransaction: ({ editor: ed }) => {
+        updateToolbarActiveState(ed);
+      },
     });
 
     hideLoading();
@@ -801,9 +807,104 @@ function updateEditorContent(content: string): void {
   }
 }
 
+// Pending link edit requests (webview → extension → webview async flow)
+const pendingLinkEdits = new Map<string, Editor>();
+
+function handleLinkEditResponse(editId: string, newUrl: string | null): void {
+  const ed = pendingLinkEdits.get(editId);
+  pendingLinkEdits.delete(editId);
+  if (!ed || newUrl === null) return;
+  if (newUrl === '') {
+    ed.chain().focus().extendMarkRange('link').unsetLink().run();
+  } else {
+    ed.chain().focus().extendMarkRange('link').setLink({ href: newUrl }).run();
+  }
+}
+
 function applyTheme(theme: "dark" | "light"): void {
   document.body.classList.remove("dark-theme", "light-theme");
   document.body.classList.add(`${theme}-theme`);
+}
+
+// Toolbar command mapping
+const TOOLBAR_COMMANDS: Record<string, (ed: Editor) => void> = {
+  bold: (ed) => ed.chain().focus().toggleBold().run(),
+  italic: (ed) => ed.chain().focus().toggleItalic().run(),
+  strike: (ed) => ed.chain().focus().toggleStrike().run(),
+  code: (ed) => ed.chain().focus().toggleCode().run(),
+  highlight: (ed) => ed.chain().focus().toggleHighlight().run(),
+  bulletList: (ed) => ed.chain().focus().toggleBulletList().run(),
+  orderedList: (ed) => ed.chain().focus().toggleOrderedList().run(),
+  taskList: (ed) => ed.chain().focus().toggleTaskList().run(),
+  blockquote: (ed) => ed.chain().focus().toggleBlockquote().run(),
+  codeBlock: (ed) => ed.chain().focus().toggleCodeBlock().run(),
+  horizontalRule: (ed) => ed.chain().focus().setHorizontalRule().run(),
+  insertTable: (ed) => ed.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+  addColumnBefore: (ed) => ed.chain().focus().addColumnBefore().run(),
+  addColumnAfter: (ed) => ed.chain().focus().addColumnAfter().run(),
+  addRowAfter: (ed) => ed.chain().focus().addRowAfter().run(),
+  deleteColumn: (ed) => ed.chain().focus().deleteColumn().run(),
+  deleteRow: (ed) => ed.chain().focus().deleteRow().run(),
+  deleteTable: (ed) => ed.chain().focus().deleteTable().run(),
+  link: (ed) => {
+    const previousUrl = ed.getAttributes('link').href as string || '';
+    const editId = `link-${Date.now()}`;
+    pendingLinkEdits.set(editId, ed);
+    vscode.postMessage({
+      type: 'requestLinkEdit',
+      editId,
+      currentUrl: previousUrl,
+    });
+  },
+};
+
+// Update toolbar button active states based on editor selection
+function updateToolbarActiveState(ed: Editor): void {
+  const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('.toolbar-btn[data-command]'));
+  for (const btn of buttons) {
+    const cmd = btn.dataset.command;
+    if (!cmd) continue;
+    const isActive =
+      cmd === 'bold' ? ed.isActive('bold') :
+      cmd === 'italic' ? ed.isActive('italic') :
+      cmd === 'strike' ? ed.isActive('strike') :
+      cmd === 'code' ? ed.isActive('code') :
+      cmd === 'highlight' ? ed.isActive('highlight') :
+      cmd === 'bulletList' ? ed.isActive('bulletList') :
+      cmd === 'orderedList' ? ed.isActive('orderedList') :
+      cmd === 'taskList' ? ed.isActive('taskList') :
+      cmd === 'blockquote' ? ed.isActive('blockquote') :
+      cmd === 'codeBlock' ? ed.isActive('codeBlock') :
+      false;
+    btn.classList.toggle('is-active', isActive);
+  }
+
+  // Update heading select
+  const headingSelect = document.getElementById('heading-select') as HTMLSelectElement | null;
+  if (headingSelect) {
+    let value = 'paragraph';
+    for (let level = 1; level <= 6; level++) {
+      if (ed.isActive('heading', { level })) {
+        value = String(level);
+        break;
+      }
+    }
+    headingSelect.value = value;
+  }
+
+  // Show/hide table context buttons based on whether cursor is inside a table
+  const tableContext = document.getElementById('table-context');
+  if (tableContext) {
+    const { $from } = ed.state.selection;
+    let inTable = false;
+    for (let d = $from.depth; d > 0; d--) {
+      if ($from.node(d).type.name === 'table') {
+        inTable = true;
+        break;
+      }
+    }
+    tableContext.classList.toggle('hidden', !inTable);
+  }
 }
 
 // Toolbar event handlers
@@ -817,6 +918,29 @@ function setupToolbarHandlers(): void {
   });
 
   getSourceBtn()?.addEventListener("click", viewSource);
+
+  // Formatting buttons
+  document.addEventListener("click", (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('.toolbar-btn[data-command]');
+    if (!btn || !editor) return;
+    const cmd = btn.dataset.command;
+    if (cmd && TOOLBAR_COMMANDS[cmd]) {
+      TOOLBAR_COMMANDS[cmd](editor);
+    }
+  });
+
+  // Heading select
+  const headingSelect = document.getElementById('heading-select') as HTMLSelectElement | null;
+  headingSelect?.addEventListener('change', () => {
+    if (!editor) return;
+    const val = headingSelect.value;
+    if (val === 'paragraph') {
+      editor.chain().focus().setParagraph().run();
+    } else {
+      const level = parseInt(val, 10) as 1 | 2 | 3 | 4 | 5 | 6;
+      editor.chain().focus().toggleHeading({ level }).run();
+    }
+  });
 
   document.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "m") {
@@ -936,6 +1060,11 @@ window.addEventListener("message", async (event) => {
           message.newPath || "",
           message.webviewUri
         );
+      }
+      break;
+    case "linkEditResponse":
+      if (typeof message.editId === "string") {
+        handleLinkEditResponse(message.editId, message.newUrl ?? null);
       }
       break;
   }

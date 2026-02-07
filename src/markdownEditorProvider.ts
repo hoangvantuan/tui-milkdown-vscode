@@ -563,6 +563,24 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
               });
             break;
           }
+          case "requestLinkEdit": {
+            const linkMsg = msg as { editId?: string; currentUrl?: string };
+            if (!linkMsg.editId) break;
+            vscode.window
+              .showInputBox({
+                prompt: "Enter URL",
+                value: linkMsg.currentUrl || "",
+                placeHolder: "https://example.com",
+              })
+              .then((newUrl) => {
+                webviewPanel.webview.postMessage({
+                  type: "linkEditResponse",
+                  editId: linkMsg.editId,
+                  newUrl: newUrl ?? null,
+                });
+              });
+            break;
+          }
           case "requestImageRename": {
             const renameMsg = msg as {
               renameId?: string;
@@ -906,25 +924,79 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           #toolbar {
             display: flex;
             align-items: center;
-            gap: 12px;
-            padding: 6px 12px;
+            gap: 4px;
+            padding: 4px 8px;
             background: var(--vscode-editor-background);
             border-bottom: 1px solid var(--vscode-panel-border);
             position: sticky;
             top: 0;
             z-index: 100;
+            flex-wrap: wrap;
           }
-          #theme-select {
-            padding: 4px 8px;
+          .toolbar-group {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+          }
+          .toolbar-separator {
+            width: 1px;
+            height: 20px;
+            background: var(--vscode-panel-border);
+            margin: 0 4px;
+          }
+          .toolbar-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--vscode-editor-foreground);
+            font-size: 13px;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: background 0.1s ease;
+            opacity: 0.8;
+          }
+          .toolbar-btn:hover {
+            background: var(--vscode-list-hoverBackground);
+            opacity: 1;
+          }
+          .toolbar-btn.is-active {
+            background: var(--vscode-list-activeSelectionBackground);
+            color: var(--vscode-list-activeSelectionForeground);
+            opacity: 1;
+          }
+          .toolbar-btn svg {
+            width: 16px;
+            height: 16px;
+            fill: currentColor;
+          }
+          #heading-select {
+            padding: 2px 4px;
             background: var(--vscode-dropdown-background);
             color: var(--vscode-dropdown-foreground);
             border: 1px solid var(--vscode-dropdown-border);
             border-radius: 4px;
             font-size: 12px;
             cursor: pointer;
+            height: 28px;
+          }
+          .toolbar-spacer { flex: 1; }
+          #theme-select {
+            padding: 2px 4px;
+            background: var(--vscode-dropdown-background);
+            color: var(--vscode-dropdown-foreground);
+            border: 1px solid var(--vscode-dropdown-border);
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            height: 28px;
           }
           .view-source-btn {
-            padding: 4px 12px;
+            padding: 4px 10px;
             background: var(--vscode-button-secondaryBackground);
             border: none;
             color: var(--vscode-button-secondaryForeground);
@@ -932,6 +1004,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             cursor: pointer;
             border-radius: 4px;
             transition: background 0.15s ease;
+            height: 28px;
           }
           .view-source-btn:hover {
             background: var(--vscode-list-hoverBackground);
@@ -1058,6 +1131,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           }
           #add-metadata-btn.hidden { display: none; }
           #metadata-details.hidden { display: none; }
+          #table-context.hidden { display: none; }
 
           /* Responsive editor content for large screens */
           .tiptap {
@@ -1280,19 +1354,123 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       </head>
       <body style="background: var(--vscode-editor-background, #1e1e1e);">
         <div id="toolbar">
-          <select id="theme-select" aria-label="Editor theme">
-            <option value="frame">Frame</option>
-            <option value="frame-dark">Frame Dark</option>
-            <option value="nord">Nord</option>
-            <option value="nord-dark">Nord Dark</option>
-            <option value="crepe">Crepe</option>
-            <option value="crepe-dark">Crepe Dark</option>
-            <option value="catppuccin-latte">Catppuccin Latte</option>
-            <option value="catppuccin-frappe">Catppuccin Frappé</option>
-            <option value="catppuccin-macchiato">Catppuccin Macchiato</option>
-            <option value="catppuccin-mocha">Catppuccin Mocha</option>
-          </select>
-          <button id="btn-source" class="view-source-btn" aria-label="View source in text editor">View Source</button>
+          <!-- Text formatting -->
+          <div class="toolbar-group">
+            <button class="toolbar-btn" data-command="bold" title="Bold (Ctrl+B)" aria-label="Bold">
+              <svg viewBox="0 0 24 24"><path d="M13.5 15.5H10V12.5H13.5A1.5 1.5 0 0 1 15 14A1.5 1.5 0 0 1 13.5 15.5M10 6.5H13A1.5 1.5 0 0 1 14.5 8A1.5 1.5 0 0 1 13 9.5H10M15.6 10.79C16.57 10.11 17.25 9 17.25 8A4 4 0 0 0 13 4H7V18H14.04A3.96 3.96 0 0 0 17.5 14C17.5 12.31 16.73 11.41 15.6 10.79Z"/></svg>
+            </button>
+            <button class="toolbar-btn" data-command="italic" title="Italic (Ctrl+I)" aria-label="Italic">
+              <svg viewBox="0 0 24 24"><path d="M10 4V7H12.21L8.79 15H6V18H14V15H11.79L15.21 7H18V4H10Z"/></svg>
+            </button>
+            <button class="toolbar-btn" data-command="strike" title="Strikethrough" aria-label="Strikethrough">
+              <svg viewBox="0 0 24 24"><path d="M3 14H21V12H3M5 4V7H10V10H14V7H19V4M10 19H14V16H10V19Z"/></svg>
+            </button>
+            <button class="toolbar-btn" data-command="code" title="Inline Code (Ctrl+E)" aria-label="Inline Code">
+              <svg viewBox="0 0 24 24"><path d="M14.6 16.6L19.2 12L14.6 7.4L16 6L22 12L16 18L14.6 16.6M9.4 16.6L4.8 12L9.4 7.4L8 6L2 12L8 18L9.4 16.6Z"/></svg>
+            </button>
+            <button class="toolbar-btn" data-command="highlight" title="Highlight" aria-label="Highlight">
+              <svg viewBox="0 0 24 24"><path d="M15.24 2.86l5.9 5.78-8.22 8.56-1.4-.06-4.5 4.7-.84-5.3 8.22-8.56.84-5.12m-1-2.86L12.5 7.56 3.56 16.84 5 24l7.28-7.56L21.22 8l2.78-8h-9.76z"/></svg>
+            </button>
+          </div>
+
+          <div class="toolbar-separator"></div>
+
+          <!-- Heading -->
+          <div class="toolbar-group">
+            <select id="heading-select" aria-label="Heading level">
+              <option value="paragraph">Paragraph</option>
+              <option value="1">H1</option>
+              <option value="2">H2</option>
+              <option value="3">H3</option>
+              <option value="4">H4</option>
+              <option value="5">H5</option>
+              <option value="6">H6</option>
+            </select>
+          </div>
+
+          <div class="toolbar-separator"></div>
+
+          <!-- Lists -->
+          <div class="toolbar-group">
+            <button class="toolbar-btn" data-command="bulletList" title="Bullet List" aria-label="Bullet List">
+              <svg viewBox="0 0 24 24"><path d="M7 5H21V7H7V5M7 13V11H21V13H7M4 4.5A1.5 1.5 0 0 1 5.5 6A1.5 1.5 0 0 1 4 7.5A1.5 1.5 0 0 1 2.5 6A1.5 1.5 0 0 1 4 4.5M4 10.5A1.5 1.5 0 0 1 5.5 12A1.5 1.5 0 0 1 4 13.5A1.5 1.5 0 0 1 2.5 12A1.5 1.5 0 0 1 4 10.5M7 19V17H21V19H7M4 16.5A1.5 1.5 0 0 1 5.5 18A1.5 1.5 0 0 1 4 19.5A1.5 1.5 0 0 1 2.5 18A1.5 1.5 0 0 1 4 16.5Z"/></svg>
+            </button>
+            <button class="toolbar-btn" data-command="orderedList" title="Ordered List" aria-label="Ordered List">
+              <svg viewBox="0 0 24 24"><path d="M7 13V11H21V13H7M7 19V17H21V19H7M7 7V5H21V7H7M3 8V5H2V4H4V8H3M2 17V16H5V20H2V19H4V18.5H3V17.5H4V17H2M4.25 10C4.44 9.81 4.55 9.55 4.5 9.27C4.45 9 4.22 8.79 3.95 8.76C3.67 8.72 3.42 8.88 3.31 9.13L2.31 8.87C2.56 8.21 3.22 7.76 3.96 7.8C4.71 7.84 5.34 8.38 5.45 9.12C5.56 9.86 5.13 10.55 4.45 10.78L2 11.5V12.5H5V11.5L4.25 10Z"/></svg>
+            </button>
+            <button class="toolbar-btn" data-command="taskList" title="Task List" aria-label="Task List">
+              <svg viewBox="0 0 24 24"><path d="M19 3H5C3.9 3 3 3.9 3 5V19C3 20.1 3.9 21 5 21H19C20.1 21 21 20.1 21 19V5C21 3.9 20.1 3 19 3M19 19H5V5H19V19M17.99 9L16.58 7.58L9.99 14.17L7.41 11.6L5.99 13.01L9.99 17L17.99 9Z"/></svg>
+            </button>
+          </div>
+
+          <div class="toolbar-separator"></div>
+
+          <!-- Block elements -->
+          <div class="toolbar-group">
+            <button class="toolbar-btn" data-command="blockquote" title="Blockquote" aria-label="Blockquote">
+              <svg viewBox="0 0 24 24"><path d="M14 17H17L19 13V7H13V13H16L14 17M6 17H9L11 13V7H5V13H8L6 17Z"/></svg>
+            </button>
+            <button class="toolbar-btn" data-command="codeBlock" title="Code Block" aria-label="Code Block">
+              <svg viewBox="0 0 24 24"><path d="M19 3H5C3.89 3 3 3.89 3 5V19C3 20.11 3.89 21 5 21H19C20.11 21 21 20.11 21 19V5C21 3.89 20.11 3 19 3M19 19H5V5H19V19M11.5 16.5L6.5 12L11.5 7.5L12.91 8.91L9.33 12L12.91 15.09L11.5 16.5M17.5 12L12.5 16.5L11.09 15.09L14.67 12L11.09 8.91L12.5 7.5L17.5 12Z"/></svg>
+            </button>
+            <button class="toolbar-btn" data-command="horizontalRule" title="Horizontal Rule" aria-label="Horizontal Rule">
+              <svg viewBox="0 0 24 24"><path d="M19 13H5V11H19V13Z"/></svg>
+            </button>
+          </div>
+
+          <div class="toolbar-separator"></div>
+
+          <!-- Table & Image -->
+          <div class="toolbar-group">
+            <button class="toolbar-btn" data-command="insertTable" title="Insert Table" aria-label="Insert Table">
+              <svg viewBox="0 0 24 24"><path d="M5 4H19A2 2 0 0 1 21 6V18A2 2 0 0 1 19 20H5A2 2 0 0 1 3 18V6A2 2 0 0 1 5 4M5 8V12H11V8H5M13 8V12H19V8H13M5 14V18H11V14H5M13 14V18H19V14H13Z"/></svg>
+            </button>
+            <button class="toolbar-btn" data-command="link" title="Insert Link (Ctrl+K)" aria-label="Insert Link">
+              <svg viewBox="0 0 24 24"><path d="M3.9 12C3.9 10.29 5.29 8.9 7 8.9H11V7H7A5 5 0 0 0 2 12A5 5 0 0 0 7 17H11V15.1H7C5.29 15.1 3.9 13.71 3.9 12M8 13H16V11H8V13M17 7H13V8.9H17C18.71 8.9 20.1 10.29 20.1 12C20.1 13.71 18.71 15.1 17 15.1H13V17H17A5 5 0 0 0 22 12A5 5 0 0 0 17 7Z"/></svg>
+            </button>
+          </div>
+
+          <!-- Table context actions (visible only when cursor is inside a table) -->
+          <div id="table-context" class="toolbar-group hidden">
+            <div class="toolbar-separator"></div>
+            <button class="toolbar-btn" data-command="addColumnBefore" title="Add Column Before" aria-label="Add Column Before">
+              <svg viewBox="0 0 24 24"><path d="M13 2H21V22H13V20H19V4H13V2M11 8H9V11H6V13H9V16H11V13H14V11H11V8Z"/></svg>
+            </button>
+            <button class="toolbar-btn" data-command="addColumnAfter" title="Add Column After" aria-label="Add Column After">
+              <svg viewBox="0 0 24 24"><path d="M11 2H3V22H11V20H5V4H11V2M15 8H13V11H10V13H13V16H15V13H18V11H15V8Z"/></svg>
+            </button>
+            <button class="toolbar-btn" data-command="addRowAfter" title="Add Row Below" aria-label="Add Row Below">
+              <svg viewBox="0 0 24 24"><path d="M22 3H2V13H22V3M20 11H4V5H20V11M13 15H11V18H8V20H11V23H13V20H16V18H13V15Z"/></svg>
+            </button>
+            <button class="toolbar-btn" data-command="deleteColumn" title="Delete Column" aria-label="Delete Column">
+              <svg viewBox="0 0 24 24"><path d="M4 2H10V4H4V20H10V22H4A2 2 0 0 1 2 20V4A2 2 0 0 1 4 2M20 2H14V4H20V20H14V22H20A2 2 0 0 0 22 20V4A2 2 0 0 0 20 2M14.59 8L12 10.59L9.41 8L8 9.41L10.59 12L8 14.59L9.41 16L12 13.41L14.59 16L16 14.59L13.41 12L16 9.41L14.59 8Z"/></svg>
+            </button>
+            <button class="toolbar-btn" data-command="deleteRow" title="Delete Row" aria-label="Delete Row">
+              <svg viewBox="0 0 24 24"><path d="M2 4H22V10H20V6H4V10H2V4M2 20H22V14H20V18H4V14H2V20M14.59 8L12 10.59L9.41 8L8 9.41L10.59 12L8 14.59L9.41 16L12 13.41L14.59 16L16 14.59L13.41 12L16 9.41L14.59 8Z"/></svg>
+            </button>
+            <button class="toolbar-btn" data-command="deleteTable" title="Delete Table" aria-label="Delete Table">
+              <svg viewBox="0 0 24 24"><path d="M15.46 15.12L16.88 16.54L19 14.41L21.12 16.54L22.54 15.12L20.41 13L22.54 10.88L21.12 9.46L19 11.59L16.88 9.46L15.46 10.88L17.59 13L15.46 15.12M4 3H18A2 2 0 0 1 20 5V8.17C19.5 8.06 19 8 18.5 8H14V5H10V8H4V12H10V14H4V18H13.08C13.2 18.72 13.45 19.39 13.82 20H4A2 2 0 0 1 2 18V5A2 2 0 0 1 4 3Z"/></svg>
+            </button>
+          </div>
+
+          <div class="toolbar-spacer"></div>
+
+          <!-- Theme & View Source (right side) -->
+          <div class="toolbar-group">
+            <select id="theme-select" aria-label="Editor theme">
+              <option value="frame">Frame</option>
+              <option value="frame-dark">Frame Dark</option>
+              <option value="nord">Nord</option>
+              <option value="nord-dark">Nord Dark</option>
+              <option value="crepe">Crepe</option>
+              <option value="crepe-dark">Crepe Dark</option>
+              <option value="catppuccin-latte">Catppuccin Latte</option>
+              <option value="catppuccin-frappe">Catppuccin Frappé</option>
+              <option value="catppuccin-macchiato">Catppuccin Macchiato</option>
+              <option value="catppuccin-mocha">Catppuccin Mocha</option>
+            </select>
+            <button id="btn-source" class="view-source-btn" aria-label="View source in text editor">Source</button>
+          </div>
         </div>
         <div id="metadata-panel">
           <details id="metadata-details" class="hidden">
