@@ -1,3 +1,4 @@
+import * as path from "path";
 import * as vscode from "vscode";
 import { MAX_FILE_SIZE } from "./constants";
 import { getNonce } from "./utils/getNonce";
@@ -481,10 +482,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
               const imageFolder = vscode.Uri.joinPath(documentFolder, saveFolder);
 
               // Security: Verify resolved path is within document directory
-              const docFolderPrefix = documentFolder.fsPath.endsWith('/') || documentFolder.fsPath.endsWith('\\')
-                ? documentFolder.fsPath
-                : documentFolder.fsPath + '/';
-              if (!imageFolder.fsPath.startsWith(docFolderPrefix)) {
+              const rel = path.relative(documentFolder.fsPath, imageFolder.fsPath);
+              if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) {
                 vscode.window.showErrorMessage(
                   "imageSaveFolder resolves outside document folder."
                 );
