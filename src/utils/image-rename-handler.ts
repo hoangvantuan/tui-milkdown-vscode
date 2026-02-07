@@ -227,10 +227,17 @@ export async function updateWorkspaceReferences(
         const newRef = rename.newRelative;
 
         if (text.includes(oldRef)) {
-          // Escape regex special chars for safe replacement
+          // Context-aware replacement: only in image/link references
           const escapedOld = oldRef.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-          text = text.replace(new RegExp(escapedOld, "g"), newRef);
-          modified = true;
+          const contextRegex = new RegExp(
+            `(\\]\\(|src=["'])${escapedOld}([)"'])`,
+            "g"
+          );
+          const newText = text.replace(contextRegex, `$1${newRef}$2`);
+          if (newText !== text) {
+            text = newText;
+            modified = true;
+          }
         }
       }
 

@@ -1,21 +1,25 @@
-# Milkdown Markdown WYSIWYG
+# TUI Markdown Editor
 
-A beautiful WYSIWYG Markdown editor for VS Code powered by Milkdown Crepe.
+A beautiful WYSIWYG Markdown editor for VS Code powered by Tiptap.
 
 ![Preview](media/preview.png)
 
 ## Features
 
-- **Rich Text Editing**: Edit markdown with a WYSIWYG interface
-- **Theme Selection**: 10 editor themes including Catppuccin palette
-- **View Source**: Toggle between WYSIWYG and source view
+- **Rich Text Editing**: WYSIWYG markdown editing powered by Tiptap + `@tiptap/markdown` (MarkedJS parser, GFM support)
+- **Syntax Highlighting**: Code blocks with language-aware highlighting via lowlight (19 languages)
+- **Task Lists**: Checkbox support with nested task items
+- **Table Editing**: Resizable tables with multi-line cell content (lists, breaks) preserved in markdown
+- **Theme Selection**: 10 editor themes including Catppuccin palette (4 variants)
+- **View Source**: Toggle between WYSIWYG and source view (Ctrl/Cmd+Shift+M)
 - **Cursor Line Highlight**: Visual highlight of current block/paragraph
+- **Heading Level Badges**: H1-H6 indicators next to headings
 - **Metadata Panel**: Collapsible YAML frontmatter editor with validation
-- **Image Upload**: Paste images from clipboard or upload via file picker
+- **Image Upload**: Paste images from clipboard or drag-and-drop into editor
 - **Image URL Editing**: Double-click on image to edit URL/path
-- **Auto-link Paste URL**: Select text and paste URL to create markdown link automatically
-- **Auto Rename Images**: Automatically rename image files when you change the path in markdown
-- **Auto Delete Images**: Automatically delete image files when removed from markdown (moves to Trash)
+- **Auto-link Paste**: Paste URL on selected text to create markdown link
+- **Auto Rename Images**: Rename image files when you change the path in markdown
+- **Auto Delete Images**: Delete image files when removed from markdown (moves to Trash)
 - **Local Image Display**: Renders local images from document folder and workspace
 - **Large File Warning**: Protection for files >500KB
 - **Configurable Font Size**: Adjust editor font size (8-32px)

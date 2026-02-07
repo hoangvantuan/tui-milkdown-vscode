@@ -1,3 +1,4 @@
+import * as path from "path";
 import * as vscode from "vscode";
 import { MAX_FILE_SIZE } from "./constants";
 import { getNonce } from "./utils/getNonce";
@@ -10,36 +11,11 @@ import {
   hasPathTraversal,
   normalizePath,
 } from "./utils/image-rename-handler";
+import { cleanImagePath } from "./utils/clean-image-path";
 
 // Image URL helpers
 function isRemoteUrl(url: string): boolean {
   return /^(https?:\/\/|data:)/i.test(url);
-}
-
-/**
- * Clean image path by removing title/caption and angle brackets.
- * Handles: `path "title"`, `path 'title'`, `<path>`, `<path> "title"`
- */
-function cleanImagePath(rawPath: string): string {
-  let p = rawPath.trim();
-
-  // Handle angle brackets: <path> or <path with spaces>
-  if (p.startsWith("<")) {
-    const endBracket = p.indexOf(">");
-    if (endBracket !== -1) {
-      p = p.slice(1, endBracket);
-    }
-    return p.trim();
-  }
-
-  // Remove title: `path "title"` or `path 'title'`
-  // Space + quote indicates title separator
-  const titleSeparator = p.search(/\s+["']/);
-  if (titleSeparator !== -1) {
-    p = p.slice(0, titleSeparator);
-  }
-
-  return p.trim();
 }
 
 function extractImagePaths(content: string): string[] {
@@ -61,7 +37,7 @@ function extractImagePaths(content: string): string[] {
   }
 
   // HTML: <img src="path">
-  const htmlRegex = /<img[^>]+src=["']([^"']+)["']/gi;
+  const htmlRegex = /<img\s[^>]*?src=["']([^"']+)["']/gi;
   while ((match = htmlRegex.exec(content)) !== null) {
     const cleanPath = cleanImagePath(match[1]);
     if (cleanPath) {
@@ -135,22 +111,14 @@ function buildOriginalImageMap(
   const map = new Map<string, string>();
   const paths = extractImagePaths(content);
 
-  console.log("[Image Rename] buildOriginalImageMap - extracted paths:", paths);
-
   for (const imgPath of paths) {
-    if (isRemoteUrl(imgPath)) {
-      console.log("[Image Rename] Skipping remote URL:", imgPath);
-      continue;
-    }
+    if (isRemoteUrl(imgPath)) continue;
     const resolved = resolveImagePath(imgPath, documentUri);
     if (resolved) {
-      // Use normalized path as key for consistent comparison
       const normalizedPath = normalizePath(imgPath);
       map.set(normalizedPath, resolved.fsPath);
-      console.log("[Image Rename] Added to map:", normalizedPath, "→", resolved.fsPath);
     }
   }
-  console.log("[Image Rename] buildOriginalImageMap - result size:", map.size);
   return map;
 }
 
@@ -221,6 +189,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview);
 
     let pendingEdit = false;
+    let renameInProgress = false;
     let updateDebounceTimer: ReturnType<typeof setTimeout> | null = null;
     const disposables: vscode.Disposable[] = [];
 
@@ -293,8 +262,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
       // === Image Rename Detection (BEFORE applying edit) ===
       // Rename files first so webviewUri resolves correctly after edit
+      // Skip if another rename is already in progress to prevent race conditions
       const config = vscode.workspace.getConfiguration("tuiMarkdown");
-      if (config.get<boolean>("autoRenameImages", true)) {
+      if (config.get<boolean>("autoRenameImages", true) && !renameInProgress) {
         const originalMap = this.originalImagePaths.get(docKey);
         if (originalMap && originalMap.size > 0) {
           const newPaths = extractImagePaths(newContent).filter(
@@ -307,43 +277,48 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           );
 
           if (renames.length > 0) {
-            // Optimistic locking: Update map BEFORE async rename to prevent race conditions
-            // Store original values to revert on failure
-            const originalValues = new Map<string, string>();
-            for (const rename of renames) {
-              const origValue = originalMap.get(rename.oldRelative);
-              if (origValue) originalValues.set(rename.oldRelative, origValue);
-              originalMap.delete(rename.oldRelative);
-              originalMap.set(rename.newRelative, rename.newAbsolute);
-            }
-
-            const { succeeded, failed } = await executeImageRenames(renames);
-
-            // Revert failed renames in the map
-            if (failed.length > 0) {
-              for (const { rename } of failed) {
-                originalMap.delete(rename.newRelative);
-                const origValue = originalValues.get(rename.oldRelative);
-                if (origValue) {
-                  originalMap.set(rename.oldRelative, origValue);
-                }
+            renameInProgress = true;
+            try {
+              // Optimistic locking: Update map BEFORE async rename to prevent race conditions
+              // Store original values to revert on failure
+              const originalValues = new Map<string, string>();
+              for (const rename of renames) {
+                const origValue = originalMap.get(rename.oldRelative);
+                if (origValue) originalValues.set(rename.oldRelative, origValue);
+                originalMap.delete(rename.oldRelative);
+                originalMap.set(rename.newRelative, rename.newAbsolute);
               }
-              console.warn("[Image Rename] Failed:", failed);
-              vscode.window.showWarningMessage(
-                `Failed to rename ${failed.length} image(s).`,
-              );
-            }
 
-            if (succeeded.length > 0) {
-              // Update workspace references (other .md files)
-              const updatedFiles = await updateWorkspaceReferences(
-                succeeded,
-                document.uri,
-              );
+              const { succeeded, failed } = await executeImageRenames(renames);
 
-              vscode.window.showInformationMessage(
-                `Renamed ${succeeded.length} image(s). Updated ${updatedFiles} file(s).`,
-              );
+              // Revert failed renames in the map
+              if (failed.length > 0) {
+                for (const { rename } of failed) {
+                  originalMap.delete(rename.newRelative);
+                  const origValue = originalValues.get(rename.oldRelative);
+                  if (origValue) {
+                    originalMap.set(rename.oldRelative, origValue);
+                  }
+                }
+                console.warn("[Image Rename] Failed:", failed);
+                vscode.window.showWarningMessage(
+                  `Failed to rename ${failed.length} image(s).`,
+                );
+              }
+
+              if (succeeded.length > 0) {
+                // Update workspace references (other .md files)
+                const updatedFiles = await updateWorkspaceReferences(
+                  succeeded,
+                  document.uri,
+                );
+
+                vscode.window.showInformationMessage(
+                  `Renamed ${succeeded.length} image(s). Updated ${updatedFiles} file(s).`,
+                );
+              }
+            } finally {
+              renameInProgress = false;
             }
           }
         }
@@ -473,6 +448,15 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
               const documentFolder = vscode.Uri.joinPath(document.uri, "..");
               const imageFolder = vscode.Uri.joinPath(documentFolder, saveFolder);
 
+              // Security: Verify resolved path is within document directory
+              const rel = path.relative(documentFolder.fsPath, imageFolder.fsPath);
+              if (rel.startsWith('..') || path.isAbsolute(rel)) {
+                vscode.window.showErrorMessage(
+                  "imageSaveFolder resolves outside document folder."
+                );
+                break;
+              }
+
               // Create folder if not exists
               try {
                 await vscode.workspace.fs.createDirectory(imageFolder);
@@ -513,6 +497,13 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             }
             break;
           }
+          case "showWarning": {
+            const warnMsg = (msg as { message?: string }).message;
+            if (typeof warnMsg === "string") {
+              vscode.window.showWarningMessage(warnMsg);
+            }
+            break;
+          }
           case "requestImageUrlEdit": {
             const editMsg = msg as {
               editId?: string;
@@ -541,6 +532,24 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
                 webviewPanel.webview.postMessage({
                   type: "imageUrlEditResponse",
                   editId: editMsg.editId,
+                  newUrl: newUrl ?? null,
+                });
+              });
+            break;
+          }
+          case "requestLinkEdit": {
+            const linkMsg = msg as { editId?: string; currentUrl?: string };
+            if (!linkMsg.editId) break;
+            vscode.window
+              .showInputBox({
+                prompt: "Enter URL",
+                value: linkMsg.currentUrl || "",
+                placeHolder: "https://example.com",
+              })
+              .then((newUrl) => {
+                webviewPanel.webview.postMessage({
+                  type: "linkEditResponse",
+                  editId: linkMsg.editId,
                   newUrl: newUrl ?? null,
                 });
               });
@@ -607,7 +616,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
                     edit.replace(document.uri, fullRange, updatedText);
                     await vscode.workspace.applyEdit(edit);
                   } finally {
-                    pendingEdit = false;
+                    queueMicrotask(() => { pendingEdit = false; });
                   }
                 }
 
@@ -757,7 +766,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       script-src 'nonce-${nonce}';
       style-src ${webview.cspSource} 'unsafe-inline';
       font-src ${webview.cspSource} data:;
-      connect-src 'none';
+      connect-src blob:;
     `
       .replace(/\s+/g, " ")
       .trim();
@@ -796,58 +805,81 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             height: 100%;
             overflow: hidden;
           }
-          .milkdown .ProseMirror {
+          .tiptap {
             padding: 10px 40px 100px 40px;
-            caret-color: var(--crepe-color-caret, var(--crepe-color-primary));
+            caret-color: var(--crepe-color-primary);
           }
           /* Override body text font size only (headings unchanged) */
-          .milkdown .ProseMirror p,
-          .milkdown .ProseMirror blockquote {
+          .tiptap p,
+          .tiptap blockquote {
             font-size: calc(16px * var(--editor-font-scale, 1));
             line-height: calc(24px * var(--editor-font-scale, 1));
           }
           /* Override VSCode default blockquote styles to match theme */
-          .milkdown .ProseMirror blockquote {
+          .tiptap blockquote {
             background: var(--crepe-color-surface);
             border-color: var(--crepe-color-outline);
           }
-          .milkdown .ProseMirror li {
+          .tiptap li {
             font-size: calc(16px * var(--editor-font-scale, 1));
             gap: calc(10px * var(--editor-font-scale, 1)) !important;
           }
-          .milkdown .label-wrapper {
-            height: calc(32px * var(--editor-font-scale, 1)) !important;
-            transform: scale(var(--editor-font-scale, 1));
-            transform-origin: left center;
-            margin-right: calc(4px * var(--editor-font-scale, 1));
+          .tiptap li p {
+            margin-block: 4px !important;
           }
-          .milkdown .ProseMirror code,
-          .milkdown .ProseMirror pre,
-          .milkdown .cm-editor,
-          .milkdown .cm-content {
+          /* Task list (checkbox) styles */
+          .tiptap ul[data-type="taskList"] {
+            list-style: none;
+            padding-left: 0;
+          }
+          .tiptap ul[data-type="taskList"] li {
+            display: flex;
+            align-items: flex-start;
+            gap: calc(8px * var(--editor-font-scale, 1));
+          }
+          .tiptap ul[data-type="taskList"] li > label {
+            flex-shrink: 0;
+            margin-top: calc(4px * var(--editor-font-scale, 1));
+            user-select: none;
+          }
+          .tiptap ul[data-type="taskList"] li > label input[type="checkbox"] {
+            cursor: pointer;
+            width: calc(16px * var(--editor-font-scale, 1));
+            height: calc(16px * var(--editor-font-scale, 1));
+            accent-color: var(--crepe-color-primary, var(--vscode-focusBorder));
+          }
+          .tiptap ul[data-type="taskList"] li > div {
+            flex: 1;
+          }
+          .tiptap ul[data-type="taskList"] li[data-checked="true"] > div p {
+            text-decoration: line-through;
+            opacity: 0.6;
+          }
+          .tiptap code,
+          .tiptap pre {
             font-size: calc(16px * var(--editor-font-scale, 1)) !important;
             line-height: calc(24px * var(--editor-font-scale, 1)) !important;
           }
           /* Heading font sizes */
-          .milkdown .ProseMirror h1,
-          .milkdown .ProseMirror h2,
-          .milkdown .ProseMirror h3,
-          .milkdown .ProseMirror h4,
-          .milkdown .ProseMirror h5,
-          .milkdown .ProseMirror h6 { position: relative; }
-          .milkdown .ProseMirror h1 { font-size: var(--heading-h1-size, 32px) !important; margin-top: var(--heading-h1-margin, 24px) !important; }
-          .milkdown .ProseMirror h2 { font-size: var(--heading-h2-size, 28px) !important; margin-top: var(--heading-h2-margin, 20px) !important; }
-          .milkdown .ProseMirror h3 { font-size: var(--heading-h3-size, 24px) !important; margin-top: var(--heading-h3-margin, 16px) !important; }
-          .milkdown .ProseMirror h4 { font-size: var(--heading-h4-size, 20px) !important; margin-top: var(--heading-h4-margin, 12px) !important; }
-          .milkdown .ProseMirror h5 { font-size: var(--heading-h5-size, 18px) !important; margin-top: var(--heading-h5-margin, 8px) !important; }
-          .milkdown .ProseMirror h6 { font-size: var(--heading-h6-size, 16px) !important; margin-top: var(--heading-h6-margin, 8px) !important; }
+          .tiptap h1,
+          .tiptap h2,
+          .tiptap h3,
+          .tiptap h4,
+          .tiptap h5,
+          .tiptap h6 { position: relative; }
+          .tiptap h1 { font-size: var(--heading-h1-size, 32px) !important; margin-top: var(--heading-h1-margin, 24px) !important; }
+          .tiptap h2 { font-size: var(--heading-h2-size, 28px) !important; margin-top: var(--heading-h2-margin, 20px) !important; }
+          .tiptap h3 { font-size: var(--heading-h3-size, 24px) !important; margin-top: var(--heading-h3-margin, 16px) !important; }
+          .tiptap h4 { font-size: var(--heading-h4-size, 20px) !important; margin-top: var(--heading-h4-margin, 12px) !important; }
+          .tiptap h5 { font-size: var(--heading-h5-size, 18px) !important; margin-top: var(--heading-h5-margin, 8px) !important; }
+          .tiptap h6 { font-size: var(--heading-h6-size, 16px) !important; margin-top: var(--heading-h6-margin, 8px) !important; }
 
           /* Line highlight for current cursor position */
-          .milkdown .ProseMirror .line-highlight {
+          .tiptap .line-highlight {
             position: relative;
             z-index: 0; /* Create stacking context so ::after z-index:-1 stays above parent bg */
           }
-          .milkdown .ProseMirror .line-highlight::after {
+          .tiptap .line-highlight::after {
             content: '';
             position: absolute;
             top: 0;
@@ -858,38 +890,87 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             pointer-events: none;
             z-index: -1;
           }
-          /* Dark themes override */
-          body.theme-frame-dark .milkdown .ProseMirror .line-highlight::after,
-          body.theme-nord-dark .milkdown .ProseMirror .line-highlight::after,
-          body.theme-crepe-dark .milkdown .ProseMirror .line-highlight::after,
-          body.theme-catppuccin-frappe .milkdown .ProseMirror .line-highlight::after,
-          body.theme-catppuccin-macchiato .milkdown .ProseMirror .line-highlight::after,
-          body.theme-catppuccin-mocha .milkdown .ProseMirror .line-highlight::after {
+          /* Dark themes override (body.dark-theme set by applyTheme) */
+          body.dark-theme .tiptap .line-highlight::after {
             background: rgba(255, 255, 255, 0.08);
           }
 
           #toolbar {
             display: flex;
             align-items: center;
-            gap: 12px;
-            padding: 6px 12px;
+            gap: 4px;
+            padding: 4px 8px;
             background: var(--vscode-editor-background);
             border-bottom: 1px solid var(--vscode-panel-border);
             position: sticky;
             top: 0;
             z-index: 100;
+            flex-wrap: wrap;
           }
-          #theme-select {
-            padding: 4px 8px;
+          .toolbar-group {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+          }
+          .toolbar-separator {
+            width: 1px;
+            height: 20px;
+            background: var(--vscode-panel-border);
+            margin: 0 4px;
+          }
+          .toolbar-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--vscode-editor-foreground);
+            font-size: 13px;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: background 0.1s ease;
+            opacity: 0.8;
+          }
+          .toolbar-btn:hover {
+            background: var(--vscode-list-hoverBackground);
+            opacity: 1;
+          }
+          .toolbar-btn.is-active {
+            background: var(--vscode-list-activeSelectionBackground);
+            color: var(--vscode-list-activeSelectionForeground);
+            opacity: 1;
+          }
+          .toolbar-btn svg {
+            width: 16px;
+            height: 16px;
+            fill: currentColor;
+          }
+          #heading-select {
+            padding: 2px 4px;
             background: var(--vscode-dropdown-background);
             color: var(--vscode-dropdown-foreground);
             border: 1px solid var(--vscode-dropdown-border);
             border-radius: 4px;
             font-size: 12px;
             cursor: pointer;
+            height: 28px;
+          }
+          .toolbar-spacer { flex: 1; }
+          #theme-select {
+            padding: 2px 4px;
+            background: var(--vscode-dropdown-background);
+            color: var(--vscode-dropdown-foreground);
+            border: 1px solid var(--vscode-dropdown-border);
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            height: 28px;
           }
           .view-source-btn {
-            padding: 4px 12px;
+            padding: 4px 10px;
             background: var(--vscode-button-secondaryBackground);
             border: none;
             color: var(--vscode-button-secondaryForeground);
@@ -897,6 +978,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             cursor: pointer;
             border-radius: 4px;
             transition: background 0.15s ease;
+            height: 28px;
           }
           .view-source-btn:hover {
             background: var(--vscode-list-hoverBackground);
@@ -1023,31 +1105,32 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           }
           #add-metadata-btn.hidden { display: none; }
           #metadata-details.hidden { display: none; }
+          #table-context.hidden { display: none; }
 
           /* Responsive editor content for large screens */
-          .milkdown .ProseMirror {
+          .tiptap {
             max-width: var(--content-max-width, 1200px);
             margin-left: auto;
             margin-right: auto;
           }
           @media (max-width: 1200px) {
-            .milkdown .ProseMirror { max-width: 100%; }
+            .tiptap { max-width: 100%; }
           }
 
           /* Table auto-width: columns size proportionally to content */
-          .milkdown .ProseMirror table {
+          .tiptap table {
             table-layout: auto;
             width: 100%;
             border-collapse: collapse;
           }
-          .milkdown .ProseMirror th,
-          .milkdown .ProseMirror td {
+          .tiptap th,
+          .tiptap td {
             white-space: normal;
             word-wrap: break-word;
             overflow-wrap: break-word;
           }
 
-          /* Theme inverse colors at body level (for elements outside .milkdown) */
+          /* Theme inverse colors at body level (for elements outside .tiptap) */
           body.theme-frame { --overlay-bg: #f0f0f0; --overlay-fg: #1a1a1a; }
           body.theme-frame-dark { --overlay-bg: #2a2a2a; --overlay-fg: #e0e0e0; }
           body.theme-nord { --overlay-bg: #2e3135; --overlay-fg: #eff0f7; }
@@ -1059,7 +1142,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           body.theme-catppuccin-macchiato { --overlay-bg: #181926; --overlay-fg: #cad3f5; }
           body.theme-catppuccin-mocha { --overlay-bg: #11111b; --overlay-fg: #cdd6f4; }
 
-          /* Floating image edit overlay - positioned outside Milkdown DOM */
+          /* Floating image edit overlay - positioned outside editor DOM */
           .image-edit-overlay {
             position: absolute;
             z-index: 1000;
@@ -1115,42 +1198,253 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           body.theme-catppuccin-latte .heading-level-badge {
             color: rgba(0, 0, 0, 0.6);
           }
-          /* Dark themes */
-          body.theme-frame-dark .heading-level-badge,
-          body.theme-nord-dark .heading-level-badge,
-          body.theme-crepe-dark .heading-level-badge,
-          body.theme-catppuccin-frappe .heading-level-badge,
-          body.theme-catppuccin-macchiato .heading-level-badge,
-          body.theme-catppuccin-mocha .heading-level-badge {
+          /* Dark themes (body.dark-theme set by applyTheme) */
+          body.dark-theme .heading-level-badge {
             color: rgba(255, 255, 255, 0.5);
           }
 
-          /* Render inline hardbreaks (soft breaks) as visual line breaks.
-             Milkdown renders isInline:true hardbreaks as <span> with a space,
-             but users expect single newlines to display as line breaks. */
-          .milkdown .ProseMirror span[data-type="hardbreak"][data-is-inline="true"] {
-            display: block;
+          /* Base Tiptap editor styles */
+          .tiptap {
+            outline: none;
+            font-family: var(--crepe-font-default, "Noto Sans", Arial, Helvetica, sans-serif);
+            color: var(--crepe-color-on-background, inherit);
+            background: var(--crepe-color-background, transparent);
+          }
+          .tiptap img {
+            max-width: 100%;
+            height: auto;
+          }
+          .tiptap code {
+            color: var(--crepe-color-inline-code, #ba1a1a);
+            background: var(--crepe-color-surface, #f7f7f7);
+            padding: 2px 4px;
+            border-radius: 4px;
+            font-family: var(--crepe-font-code, monospace);
+          }
+          .tiptap mark {
+            background-color: var(--crepe-color-highlight, #fff3b0);
+            color: inherit;
+            padding: 1px 2px;
+            border-radius: 2px;
+          }
+          .tiptap pre {
+            background: var(--crepe-color-surface, #f7f7f7);
+            border-radius: 8px;
+            padding: 12px 16px;
+            overflow-x: auto;
+          }
+          .tiptap pre code {
+            color: inherit;
+            background: none;
+            padding: 0;
+          }
+          /* Syntax highlighting (lowlight/highlight.js) - Light themes */
+          .tiptap pre code .hljs-comment,
+          .tiptap pre code .hljs-quote { color: #6a737d; font-style: italic; }
+          .tiptap pre code .hljs-keyword,
+          .tiptap pre code .hljs-selector-tag,
+          .tiptap pre code .hljs-addition { color: #d73a49; }
+          .tiptap pre code .hljs-string,
+          .tiptap pre code .hljs-meta .hljs-string,
+          .tiptap pre code .hljs-regexp,
+          .tiptap pre code .hljs-addition { color: #032f62; }
+          .tiptap pre code .hljs-number,
+          .tiptap pre code .hljs-literal,
+          .tiptap pre code .hljs-variable,
+          .tiptap pre code .hljs-template-variable,
+          .tiptap pre code .hljs-tag .hljs-attr { color: #005cc5; }
+          .tiptap pre code .hljs-type,
+          .tiptap pre code .hljs-title,
+          .tiptap pre code .hljs-section,
+          .tiptap pre code .hljs-name,
+          .tiptap pre code .hljs-selector-id,
+          .tiptap pre code .hljs-selector-class { color: #6f42c1; }
+          .tiptap pre code .hljs-attribute { color: #005cc5; }
+          .tiptap pre code .hljs-built_in,
+          .tiptap pre code .hljs-builtin-name { color: #e36209; }
+          .tiptap pre code .hljs-deletion { color: #b31d28; background: #ffeef0; }
+          .tiptap pre code .hljs-meta { color: #735c0f; }
+          .tiptap pre code .hljs-emphasis { font-style: italic; }
+          .tiptap pre code .hljs-strong { font-weight: bold; }
+          .tiptap pre code .hljs-link { text-decoration: underline; }
+          /* Syntax highlighting - Dark themes (body.dark-theme set by applyTheme) */
+          body.dark-theme .tiptap pre code .hljs-comment,
+          body.dark-theme .tiptap pre code .hljs-quote { color: #8b949e; font-style: italic; }
+          body.dark-theme .tiptap pre code .hljs-keyword,
+          body.dark-theme .tiptap pre code .hljs-selector-tag { color: #ff7b72; }
+          body.dark-theme .tiptap pre code .hljs-string,
+          body.dark-theme .tiptap pre code .hljs-regexp { color: #a5d6ff; }
+          body.dark-theme .tiptap pre code .hljs-number,
+          body.dark-theme .tiptap pre code .hljs-literal,
+          body.dark-theme .tiptap pre code .hljs-variable,
+          body.dark-theme .tiptap pre code .hljs-template-variable,
+          body.dark-theme .tiptap pre code .hljs-tag .hljs-attr { color: #79c0ff; }
+          body.dark-theme .tiptap pre code .hljs-type,
+          body.dark-theme .tiptap pre code .hljs-title,
+          body.dark-theme .tiptap pre code .hljs-section,
+          body.dark-theme .tiptap pre code .hljs-name,
+          body.dark-theme .tiptap pre code .hljs-selector-id,
+          body.dark-theme .tiptap pre code .hljs-selector-class { color: #d2a8ff; }
+          body.dark-theme .tiptap pre code .hljs-attribute { color: #79c0ff; }
+          body.dark-theme .tiptap pre code .hljs-built_in,
+          body.dark-theme .tiptap pre code .hljs-builtin-name { color: #ffa657; }
+          body.dark-theme .tiptap pre code .hljs-deletion { color: #ffa198; background: rgba(248,81,73,0.15); }
+          body.dark-theme .tiptap pre code .hljs-addition { color: #7ee787; background: rgba(63,185,80,0.15); }
+          body.dark-theme .tiptap pre code .hljs-meta { color: #d29922; }
+          .tiptap blockquote {
+            border-left: 3px solid var(--crepe-color-outline, #a8a8a8);
+            margin-left: 0;
+            padding-left: 16px;
+          }
+          .tiptap hr {
+            border: none;
+            border-top: 1px solid var(--crepe-color-outline, #a8a8a8);
+            margin: 16px 0;
+          }
+          .tiptap a {
+            color: var(--crepe-color-primary, #37618e);
+            text-decoration: underline;
+          }
+          /* Placeholder styling */
+          .tiptap p.is-editor-empty:first-child::before {
+            content: attr(data-placeholder);
+            float: left;
+            color: var(--crepe-color-outline, #a8a8a8);
+            pointer-events: none;
             height: 0;
-            overflow: hidden;
+          }
+          /* Table styles */
+          .tiptap table th,
+          .tiptap table td {
+            border: 1px solid var(--crepe-color-outline, #a8a8a8);
+            padding: 8px 12px;
+          }
+          .tiptap table th {
+            background: var(--crepe-color-surface, #f7f7f7);
+            font-weight: 600;
           }
 
         </style>
       </head>
       <body style="background: var(--vscode-editor-background, #1e1e1e);">
         <div id="toolbar">
-          <select id="theme-select" aria-label="Editor theme">
-            <option value="frame">Frame</option>
-            <option value="frame-dark">Frame Dark</option>
-            <option value="nord">Nord</option>
-            <option value="nord-dark">Nord Dark</option>
-            <option value="crepe">Crepe</option>
-            <option value="crepe-dark">Crepe Dark</option>
-            <option value="catppuccin-latte">Catppuccin Latte</option>
-            <option value="catppuccin-frappe">Catppuccin Frappé</option>
-            <option value="catppuccin-macchiato">Catppuccin Macchiato</option>
-            <option value="catppuccin-mocha">Catppuccin Mocha</option>
-          </select>
-          <button id="btn-source" class="view-source-btn" aria-label="View source in text editor">View Source</button>
+          <!-- Text formatting -->
+          <div class="toolbar-group">
+            <button class="toolbar-btn" data-command="bold" title="Bold (Ctrl+B)" aria-label="Bold">
+              <svg viewBox="0 0 24 24"><path d="M13.5 15.5H10V12.5H13.5A1.5 1.5 0 0 1 15 14A1.5 1.5 0 0 1 13.5 15.5M10 6.5H13A1.5 1.5 0 0 1 14.5 8A1.5 1.5 0 0 1 13 9.5H10M15.6 10.79C16.57 10.11 17.25 9 17.25 8A4 4 0 0 0 13 4H7V18H14.04A3.96 3.96 0 0 0 17.5 14C17.5 12.31 16.73 11.41 15.6 10.79Z"/></svg>
+            </button>
+            <button class="toolbar-btn" data-command="italic" title="Italic (Ctrl+I)" aria-label="Italic">
+              <svg viewBox="0 0 24 24"><path d="M10 4V7H12.21L8.79 15H6V18H14V15H11.79L15.21 7H18V4H10Z"/></svg>
+            </button>
+            <button class="toolbar-btn" data-command="strike" title="Strikethrough" aria-label="Strikethrough">
+              <svg viewBox="0 0 24 24"><path d="M3 14H21V12H3M5 4V7H10V10H14V7H19V4M10 19H14V16H10V19Z"/></svg>
+            </button>
+            <button class="toolbar-btn" data-command="code" title="Inline Code (Ctrl+E)" aria-label="Inline Code">
+              <svg viewBox="0 0 24 24"><path d="M14.6 16.6L19.2 12L14.6 7.4L16 6L22 12L16 18L14.6 16.6M9.4 16.6L4.8 12L9.4 7.4L8 6L2 12L8 18L9.4 16.6Z"/></svg>
+            </button>
+            <button class="toolbar-btn" data-command="highlight" title="Highlight" aria-label="Highlight">
+              <svg viewBox="0 0 24 24"><path d="M15.24 2.86l5.9 5.78-8.22 8.56-1.4-.06-4.5 4.7-.84-5.3 8.22-8.56.84-5.12m-1-2.86L12.5 7.56 3.56 16.84 5 24l7.28-7.56L21.22 8l2.78-8h-9.76z"/></svg>
+            </button>
+          </div>
+
+          <div class="toolbar-separator"></div>
+
+          <!-- Heading -->
+          <div class="toolbar-group">
+            <select id="heading-select" aria-label="Heading level">
+              <option value="paragraph">Paragraph</option>
+              <option value="1">H1</option>
+              <option value="2">H2</option>
+              <option value="3">H3</option>
+              <option value="4">H4</option>
+              <option value="5">H5</option>
+              <option value="6">H6</option>
+            </select>
+          </div>
+
+          <div class="toolbar-separator"></div>
+
+          <!-- Lists -->
+          <div class="toolbar-group">
+            <button class="toolbar-btn" data-command="bulletList" title="Bullet List" aria-label="Bullet List">
+              <svg viewBox="0 0 24 24"><path d="M7 5H21V7H7V5M7 13V11H21V13H7M4 4.5A1.5 1.5 0 0 1 5.5 6A1.5 1.5 0 0 1 4 7.5A1.5 1.5 0 0 1 2.5 6A1.5 1.5 0 0 1 4 4.5M4 10.5A1.5 1.5 0 0 1 5.5 12A1.5 1.5 0 0 1 4 13.5A1.5 1.5 0 0 1 2.5 12A1.5 1.5 0 0 1 4 10.5M7 19V17H21V19H7M4 16.5A1.5 1.5 0 0 1 5.5 18A1.5 1.5 0 0 1 4 19.5A1.5 1.5 0 0 1 2.5 18A1.5 1.5 0 0 1 4 16.5Z"/></svg>
+            </button>
+            <button class="toolbar-btn" data-command="orderedList" title="Ordered List" aria-label="Ordered List">
+              <svg viewBox="0 0 24 24"><path d="M7 13V11H21V13H7M7 19V17H21V19H7M7 7V5H21V7H7M3 8V5H2V4H4V8H3M2 17V16H5V20H2V19H4V18.5H3V17.5H4V17H2M4.25 10C4.44 9.81 4.55 9.55 4.5 9.27C4.45 9 4.22 8.79 3.95 8.76C3.67 8.72 3.42 8.88 3.31 9.13L2.31 8.87C2.56 8.21 3.22 7.76 3.96 7.8C4.71 7.84 5.34 8.38 5.45 9.12C5.56 9.86 5.13 10.55 4.45 10.78L2 11.5V12.5H5V11.5L4.25 10Z"/></svg>
+            </button>
+            <button class="toolbar-btn" data-command="taskList" title="Task List" aria-label="Task List">
+              <svg viewBox="0 0 24 24"><path d="M19 3H5C3.9 3 3 3.9 3 5V19C3 20.1 3.9 21 5 21H19C20.1 21 21 20.1 21 19V5C21 3.9 20.1 3 19 3M19 19H5V5H19V19M17.99 9L16.58 7.58L9.99 14.17L7.41 11.6L5.99 13.01L9.99 17L17.99 9Z"/></svg>
+            </button>
+          </div>
+
+          <div class="toolbar-separator"></div>
+
+          <!-- Block elements -->
+          <div class="toolbar-group">
+            <button class="toolbar-btn" data-command="blockquote" title="Blockquote" aria-label="Blockquote">
+              <svg viewBox="0 0 24 24"><path d="M14 17H17L19 13V7H13V13H16L14 17M6 17H9L11 13V7H5V13H8L6 17Z"/></svg>
+            </button>
+            <button class="toolbar-btn" data-command="codeBlock" title="Code Block" aria-label="Code Block">
+              <svg viewBox="0 0 24 24"><path d="M19 3H5C3.89 3 3 3.89 3 5V19C3 20.11 3.89 21 5 21H19C20.11 21 21 20.11 21 19V5C21 3.89 20.11 3 19 3M19 19H5V5H19V19M11.5 16.5L6.5 12L11.5 7.5L12.91 8.91L9.33 12L12.91 15.09L11.5 16.5M17.5 12L12.5 16.5L11.09 15.09L14.67 12L11.09 8.91L12.5 7.5L17.5 12Z"/></svg>
+            </button>
+            <button class="toolbar-btn" data-command="horizontalRule" title="Horizontal Rule" aria-label="Horizontal Rule">
+              <svg viewBox="0 0 24 24"><path d="M19 13H5V11H19V13Z"/></svg>
+            </button>
+          </div>
+
+          <div class="toolbar-separator"></div>
+
+          <!-- Table & Image -->
+          <div class="toolbar-group">
+            <button class="toolbar-btn" data-command="insertTable" title="Insert Table" aria-label="Insert Table">
+              <svg viewBox="0 0 24 24"><path d="M5 4H19A2 2 0 0 1 21 6V18A2 2 0 0 1 19 20H5A2 2 0 0 1 3 18V6A2 2 0 0 1 5 4M5 8V12H11V8H5M13 8V12H19V8H13M5 14V18H11V14H5M13 14V18H19V14H13Z"/></svg>
+            </button>
+            <button class="toolbar-btn" data-command="link" title="Insert Link (Ctrl+K)" aria-label="Insert Link">
+              <svg viewBox="0 0 24 24"><path d="M3.9 12C3.9 10.29 5.29 8.9 7 8.9H11V7H7A5 5 0 0 0 2 12A5 5 0 0 0 7 17H11V15.1H7C5.29 15.1 3.9 13.71 3.9 12M8 13H16V11H8V13M17 7H13V8.9H17C18.71 8.9 20.1 10.29 20.1 12C20.1 13.71 18.71 15.1 17 15.1H13V17H17A5 5 0 0 0 22 12A5 5 0 0 0 17 7Z"/></svg>
+            </button>
+          </div>
+
+          <!-- Table context actions (visible only when cursor is inside a table) -->
+          <div id="table-context" class="toolbar-group hidden">
+            <div class="toolbar-separator"></div>
+            <button class="toolbar-btn" data-command="addColumnBefore" title="Add Column Before" aria-label="Add Column Before">
+              <svg viewBox="0 0 24 24"><path d="M13 2H21V22H13V20H19V4H13V2M11 8H9V11H6V13H9V16H11V13H14V11H11V8Z"/></svg>
+            </button>
+            <button class="toolbar-btn" data-command="addColumnAfter" title="Add Column After" aria-label="Add Column After">
+              <svg viewBox="0 0 24 24"><path d="M11 2H3V22H11V20H5V4H11V2M15 8H13V11H10V13H13V16H15V13H18V11H15V8Z"/></svg>
+            </button>
+            <button class="toolbar-btn" data-command="addRowAfter" title="Add Row Below" aria-label="Add Row Below">
+              <svg viewBox="0 0 24 24"><path d="M22 3H2V13H22V3M20 11H4V5H20V11M13 15H11V18H8V20H11V23H13V20H16V18H13V15Z"/></svg>
+            </button>
+            <button class="toolbar-btn" data-command="deleteColumn" title="Delete Column" aria-label="Delete Column">
+              <svg viewBox="0 0 24 24"><path d="M4 2H10V4H4V20H10V22H4A2 2 0 0 1 2 20V4A2 2 0 0 1 4 2M20 2H14V4H20V20H14V22H20A2 2 0 0 0 22 20V4A2 2 0 0 0 20 2M14.59 8L12 10.59L9.41 8L8 9.41L10.59 12L8 14.59L9.41 16L12 13.41L14.59 16L16 14.59L13.41 12L16 9.41L14.59 8Z"/></svg>
+            </button>
+            <button class="toolbar-btn" data-command="deleteRow" title="Delete Row" aria-label="Delete Row">
+              <svg viewBox="0 0 24 24"><path d="M2 4H22V10H20V6H4V10H2V4M2 20H22V14H20V18H4V14H2V20M14.59 8L12 10.59L9.41 8L8 9.41L10.59 12L8 14.59L9.41 16L12 13.41L14.59 16L16 14.59L13.41 12L16 9.41L14.59 8Z"/></svg>
+            </button>
+            <button class="toolbar-btn" data-command="deleteTable" title="Delete Table" aria-label="Delete Table">
+              <svg viewBox="0 0 24 24"><path d="M15.46 15.12L16.88 16.54L19 14.41L21.12 16.54L22.54 15.12L20.41 13L22.54 10.88L21.12 9.46L19 11.59L16.88 9.46L15.46 10.88L17.59 13L15.46 15.12M4 3H18A2 2 0 0 1 20 5V8.17C19.5 8.06 19 8 18.5 8H14V5H10V8H4V12H10V14H4V18H13.08C13.2 18.72 13.45 19.39 13.82 20H4A2 2 0 0 1 2 18V5A2 2 0 0 1 4 3Z"/></svg>
+            </button>
+          </div>
+
+          <div class="toolbar-spacer"></div>
+
+          <!-- Theme & View Source (right side) -->
+          <div class="toolbar-group">
+            <select id="theme-select" aria-label="Editor theme">
+              <option value="frame">Frame</option>
+              <option value="frame-dark">Frame Dark</option>
+              <option value="nord">Nord</option>
+              <option value="nord-dark">Nord Dark</option>
+              <option value="crepe">Crepe</option>
+              <option value="crepe-dark">Crepe Dark</option>
+              <option value="catppuccin-latte">Catppuccin Latte</option>
+              <option value="catppuccin-frappe">Catppuccin Frappé</option>
+              <option value="catppuccin-macchiato">Catppuccin Macchiato</option>
+              <option value="catppuccin-mocha">Catppuccin Mocha</option>
+            </select>
+            <button id="btn-source" class="view-source-btn" aria-label="View source in text editor">Source</button>
+          </div>
         </div>
         <div id="metadata-panel">
           <details id="metadata-details" class="hidden">
