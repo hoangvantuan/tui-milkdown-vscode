@@ -11,6 +11,8 @@ export function cleanImagePath(rawPath: string): string {
     const endBracket = p.indexOf(">");
     if (endBracket !== -1) {
       p = p.slice(1, endBracket);
+    } else {
+      p = p.slice(1);
     }
     return p.trim();
   }

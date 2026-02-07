@@ -616,7 +616,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
                     edit.replace(document.uri, fullRange, updatedText);
                     await vscode.workspace.applyEdit(edit);
                   } finally {
-                    pendingEdit = false;
+                    queueMicrotask(() => { pendingEdit = false; });
                   }
                 }
 
@@ -766,7 +766,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       script-src 'nonce-${nonce}';
       style-src ${webview.cspSource} 'unsafe-inline';
       font-src ${webview.cspSource} data:;
-      connect-src 'none';
+      connect-src blob:;
     `
       .replace(/\s+/g, " ")
       .trim();
