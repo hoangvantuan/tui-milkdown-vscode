@@ -112,7 +112,7 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 
 **Content updates:** `editor.commands.setContent()` - no destroy/recreate needed. Cursor position preserved via save/restore around setContent.
 
-**Empty paragraph serialization:** Empty paragraphs serialize as `<br>` (not `&nbsp;`). Custom `Paragraph.extend()` overrides `renderMarkdown`. Post-parse step `convertBrOnlyParagraphsToEmpty()` converts paragraph-with-only-hardBreak back to empty paragraphs for stable roundtrip.
+**Empty paragraph roundtrip:** `BlankLineHandler` extension parses MarkedJS `space` tokens into empty paragraph nodes (count = newlines - 2). Custom `Document.extend({ renderMarkdown })` serializes empty paragraphs as single `\n` (instead of `\n\n`), producing correct blank line count in markdown output.
 
 **Node naming:** Tiptap uses camelCase: `listItem`, `codeBlock`, `taskList`, `taskItem`, `tableCell`, `tableHeader`.
 

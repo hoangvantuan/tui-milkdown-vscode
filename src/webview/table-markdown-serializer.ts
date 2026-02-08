@@ -143,7 +143,7 @@ export function renderTableToMarkdown(node: JSONContent, h: MarkdownRendererHelp
   const headerRow = rows[0];
   const hasHeader = headerRow?.some(c => c.isHeader) ?? false;
 
-  let out = '\n';
+  let out = '';
 
   // Header row
   const headerTexts = Array.from({ length: colCount }, (_, i) =>
