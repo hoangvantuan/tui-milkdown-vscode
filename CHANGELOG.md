@@ -31,7 +31,7 @@ All notable changes to "TUI Markdown Editor" extension.
 
 ### Changed
 
-* **Empty line serialization**: Empty paragraphs now serialize as `<br>` instead of `&nbsp;` in markdown output for better consistency and readability
+* **Blank line roundtrip**: Empty paragraphs now roundtrip via MarkedJS `space` token parsing (`BlankLineHandler`) and custom `Document` serializer, replacing the `<br>` hack + `convertBrOnlyParagraphsToEmpty` post-parse step
 
 * **Editor Engine Migration: Milkdown Crepe -> Tiptap**
 
@@ -96,6 +96,8 @@ All notable changes to "TUI Markdown Editor" extension.
 * Removed `@milkdown/crepe` and `sharp` dependencies
 
 * Removed `paste-link-plugin.ts` (replaced by built-in Link extension)
+
+* Removed `convertBrOnlyParagraphsToEmpty` post-parse step (replaced by `BlankLineHandler` extension)
 
 * Removed Milkdown-specific hardbreak rendering CSS hack
 
