@@ -2,7 +2,7 @@
 
 > Package: `@tiptap/markdown` (Beta)
 > Parser: MarkedJS (CommonMark compliant, extensible)
-> Source: <https://tiptap.dev/docs/editor/markdown>
+> Source: [https://tiptap.dev/docs/editor/markdown](https://tiptap.dev/docs/editor/markdown)
 
 ## Architecture
 
@@ -13,15 +13,13 @@ Parsing:   Markdown String → MarkedJS Lexer (Tokenization) → Markdown Tokens
 Serialize: Tiptap JSON → Extension Render Handlers → Markdown String
 ```
 
-* Tokenizer: scans raw markdown, produces tokens
-
-* Lexer: orchestrates tokenizers sequentially, manages MarkedJS instance
-
-* Token: plain JS object `{ type, raw, text, tokens?, ... }`
-
-* Tiptap JSON: `{ type, attrs?, content?, text?, marks? }` - native ProseMirror format
+- Tokenizer: scans raw markdown, produces tokens
+- Lexer: orchestrates tokenizers sequentially, manages MarkedJS instance
+- Token: plain JS object `{ type, raw, text, tokens?, ... }`
+- Tiptap JSON: `{ type, attrs?, content?, text?, marks? }` - native ProseMirror format
 
 ### Key Concepts
+
 
 | Term        | Description                                                                          |
 | ----------- | ------------------------------------------------------------------------------------ |
@@ -29,6 +27,7 @@ Serialize: Tiptap JSON → Extension Render Handlers → Markdown String
 | Tiptap JSON | ProseMirror document format with nodes (block) and marks (inline)                    |
 | Tokenizer   | Functions that scan markdown text → tokens                                           |
 | Lexer       | Orchestrator applying tokenizers to produce complete token list                      |
+
 
 ## Installation & Setup
 
@@ -480,19 +479,18 @@ export const Callout = Node.create({
 
 ## Tokenizer Best Practices
 
-1. **Always anchor regex with** **`^`** - match from string start only
-2. **Return** **`undefined`** **on no match** - essential for fallback
-3. **Include** **`raw`** **property** - must contain full matched string
+1. **Always anchor regex with** `**^**` - match from string start only
+2. **Return** `**undefined**` **on no match** - essential for fallback
+3. **Include** `**raw**` **property** - must contain full matched string
 4. **Use non-greedy quantifiers** - `+?` and `*?` over greedy
-5. **Use** **`start()`** **optimization** - skip irrelevant text portions
+5. **Use** `**start()**` **optimization** - skip irrelevant text portions
 6. **Use correct lexer method** - `lexer.inlineTokens()` for inline, `lexer.blockTokens()` for blocks
 7. **Test edge cases** - empty content, nesting, unclosed syntax
 
 ## Limitations
 
-* Comments unsupported (lost during markdown content replacement)
+- Comments unsupported (lost during markdown content replacement)
+- Table cells allow only one child node (markdown syntax constraint)
+- Beta status - API may change
 
-* Table cells allow only one child node (markdown syntax constraint)
-
-* Beta status - API may change
-
+<br>

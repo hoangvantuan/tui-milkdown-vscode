@@ -6,6 +6,7 @@ import { Table, TableRow, TableCell, TableHeader } from "@tiptap/extension-table
 import { CodeBlockLowlight } from "@tiptap/extension-code-block-lowlight";
 import { TaskList, TaskItem } from "@tiptap/extension-list";
 import { Paragraph } from "@tiptap/extension-paragraph";
+import { Document } from "@tiptap/extension-document";
 import { Placeholder } from "@tiptap/extension-placeholder";
 import { Markdown } from "@tiptap/markdown";
 import { createLowlight } from "lowlight";
@@ -47,6 +48,24 @@ const EscapeToken = Extension.create({
   markdownTokenName: "escape",
   parseMarkdown(token: any, helpers: any) {
     return helpers.createTextNode(token.text || "");
+  },
+});
+
+// Parse marked `space` tokens (blank lines between blocks) as empty paragraphs.
+// marked preserves exact newline count in space.raw:
+//   "\n\n" (2) = normal paragraph break → 0 empty paras
+//   "\n\n\n" (3) = 1 blank line → 1 empty para
+//   "\n\n\n\n" (4) = 2 blank lines → 2 empty paras
+const BlankLineHandler = Extension.create({
+  name: "blankLineHandler",
+  markdownTokenName: "space",
+  parseMarkdown(token: any, helpers: any) {
+    const newlines = (token.raw?.match(/\n/g) || []).length;
+    const emptyCount = newlines - 2;
+    if (emptyCount <= 0) return [];
+    return Array.from({ length: emptyCount }, () =>
+      helpers.createNode("paragraph", undefined, []),
+    );
   },
 });
 
@@ -621,17 +640,37 @@ function initEditor(initialContent: string = ""): Editor | null {
         StarterKit.configure({
           codeBlock: false, // Replaced by CodeBlockLowlight
           paragraph: false, // Replaced by custom Paragraph below
+          document: false, // Replaced by custom Document below
           link: {
             openOnClick: false,
             autolink: true,
             linkOnPaste: true,
           },
         }),
+        Document.extend({
+          // Custom doc serializer: joins children with '\n\n', but each empty paragraph
+          // only adds a single '\n' (one blank line in source) instead of '\n\n' + '' + '\n\n'.
+          renderMarkdown(node: any, h: any) {
+            if (!node.content) return '';
+            const children = Array.isArray(node.content) ? node.content : [];
+            let result = '';
+            for (const child of children) {
+              const isEmpty = child.type === 'paragraph' && (!child.content || child.content.length === 0);
+              if (isEmpty) {
+                result += '\n';
+              } else {
+                if (result.length > 0) result += '\n\n';
+                result += h.renderChildren([child]);
+              }
+            }
+            return result;
+          },
+        }),
         Paragraph.extend({
           renderMarkdown(node: any, h: any) {
             if (!node) return '';
             const content = Array.isArray(node.content) ? node.content : [];
-            if (content.length === 0) return '<br>';
+            if (content.length === 0) return '';
             return h.renderChildren(content);
           },
         }),
@@ -668,6 +707,7 @@ function initEditor(initialContent: string = ""): Editor | null {
           },
         }),
         EscapeToken,
+        BlankLineHandler,
         ...conditionalExtensions,
       ],
       content: initialContent,
@@ -794,31 +834,6 @@ function initEditor(initialContent: string = ""): Editor | null {
     );
     return null;
   }
-}
-
-// Convert paragraphs containing only a hardBreak (from <br> parsing) to empty paragraphs.
-// This ensures roundtrip: empty paragraph → <br> → parse → paragraph(hardBreak) → empty paragraph.
-function convertBrOnlyParagraphsToEmpty(ed: Editor): void {
-  const { doc, schema } = ed.state;
-  const positions: { pos: number; nodeSize: number }[] = [];
-
-  doc.descendants((node, pos) => {
-    if (node.type.name === 'paragraph' &&
-        node.childCount === 1 &&
-        node.firstChild?.type.name === 'hardBreak') {
-      positions.push({ pos, nodeSize: node.nodeSize });
-    }
-  });
-
-  if (positions.length === 0) return;
-
-  // Process in reverse to maintain position validity
-  positions.sort((a, b) => b.pos - a.pos);
-  let tr = ed.state.tr;
-  for (const { pos, nodeSize } of positions) {
-    tr = tr.replaceWith(pos, pos + nodeSize, schema.nodes.paragraph.create());
-  }
-  ed.view.dispatch(tr);
 }
 
 function updateEditorContent(content: string): void {
@@ -1037,8 +1052,6 @@ window.addEventListener("message", async (event) => {
           if (editor) {
             // Transform table cells: convert text patterns (-, N., [x]) to proper list nodes
             transformTableCellsAfterParse(editor);
-            // Convert <br>-only paragraphs (from parsing) to empty paragraphs
-            convertBrOnlyParagraphsToEmpty(editor);
           }
         } catch (err) {
           console.error("[Tiptap] Update failed:", err);
