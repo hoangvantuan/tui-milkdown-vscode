@@ -2,6 +2,14 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## \[2.0.2] - 2026-02-12
+
+### Changed
+
+* **Table Cell Padding**: Made table content more compact by adjusting cell padding and adding specific spacing for elements within table cells
+
+* **Heading Margins**: Adjusted heading top margins and introduced bottom margins for h1-h6 elements for improved readability
+
 ## \[2.0.0] - 2026-02-07
 
 ### Added
