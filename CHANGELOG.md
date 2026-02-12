@@ -2,6 +2,12 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## \[2.0.5] - 2026-02-12
+
+### Fixed
+
+* **Inline Code Exit in Table Cells**: Added `CodeExitHandler` extension so pressing ArrowRight at the end of an inline code span exits the code mark, allowing users to continue typing normal text (previously stuck in code formatting inside table cells)
+
 ## \[2.0.4] - 2026-02-12
 
 ### Added

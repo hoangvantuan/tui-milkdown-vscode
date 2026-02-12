@@ -72,6 +72,59 @@ const BlankLineHandler = Extension.create({
   },
 });
 
+// Fix: allow exiting inline `code` marks with ArrowRight anywhere (not just at paragraph end).
+// Tiptap's built-in Mark.handleExit only fires when cursor is at $from.end() (parent block end),
+// which fails in table cells or mid-text. This extension intercepts ArrowRight when the cursor
+// sits at the right edge of a code mark and removes the stored mark so subsequent typing is plain text.
+const CodeExitHandler = Extension.create({
+  name: "codeExitHandler",
+
+  addKeyboardShortcuts() {
+    return {
+      ArrowRight: ({ editor: ed }) => {
+        const { $from } = ed.state.selection;
+        // Only handle collapsed cursor
+        if (!ed.state.selection.empty) return false;
+
+        const codeType = ed.schema.marks.code;
+        if (!codeType) return false;
+
+        // Check if the cursor currently has the code mark active
+        const storedMarks = ed.state.storedMarks;
+        const activeMarks = storedMarks ?? $from.marks();
+        const hasCode = activeMarks.some((m: any) => m.type === codeType);
+        if (!hasCode) return false;
+
+        // Check if we're at the right edge of the code mark range.
+        // The character after the cursor should NOT have the code mark, or cursor is at parent end.
+        const isAtParentEnd = $from.pos === $from.end();
+        const afterPos = $from.pos;
+        const nodeAfter = $from.nodeAfter;
+
+        const isAtCodeEdge = isAtParentEnd ||
+          (nodeAfter && !codeType.isInSet(nodeAfter.marks));
+
+        if (!isAtCodeEdge) return false;
+
+        // Exit the code mark: remove stored mark and insert a space
+        const { tr } = ed.state;
+        const codeMark = activeMarks.find((m: any) => m.type === codeType);
+        if (codeMark) {
+          tr.removeStoredMark(codeMark);
+        }
+
+        if (isAtParentEnd) {
+          // At end of block: insert a space to create content outside code mark
+          tr.insertText(" ", afterPos);
+        }
+
+        ed.view.dispatch(tr);
+        return true;
+      },
+    };
+  },
+});
+
 declare function acquireVsCodeApi(): {
   postMessage(message: unknown): void;
   getState(): { theme?: string } | null;
@@ -734,6 +787,7 @@ function initEditor(initialContent: string = ""): Editor | null {
         AlertNode,
         EscapeToken,
         BlankLineHandler,
+        CodeExitHandler,
         MermaidDiagram,
         ...conditionalExtensions,
       ],
