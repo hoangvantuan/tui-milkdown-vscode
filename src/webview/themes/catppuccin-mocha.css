@@ -9,6 +9,6 @@
   --crepe-color-inline-code: #f38ba8;
   --crepe-color-highlight: #393028;
 
-  --crepe-font-default: "Noto Sans", Arial, Helvetica, sans-serif;
-  --crepe-font-code: "Space Mono", Menlo, Monaco, "Courier New", Courier, monospace;
+  --crepe-font-default: "Inter", Arial, Helvetica, sans-serif;
+  --crepe-font-code: "Cascadia Code", "Fira Code", Menlo, Monaco, "Courier New", Courier, monospace;
 }

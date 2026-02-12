@@ -136,7 +136,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
    */
   private originalImagePaths: Map<string, Map<string, string>> = new Map();
 
-  constructor(private readonly context: vscode.ExtensionContext) {}
+  constructor(private readonly context: vscode.ExtensionContext) { }
 
   async resolveCustomTextEditor(
     document: vscode.TextDocument,
@@ -825,6 +825,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .tiptap blockquote {
             background: var(--crepe-color-surface);
             border-color: var(--crepe-color-outline);
+            overflow: hidden;
           }
           .tiptap li {
             font-size: calc(16px * var(--editor-font-scale, 1));
@@ -888,10 +889,11 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .tiptap .line-highlight::after {
             content: '';
             position: absolute;
-            top: 0;
-            bottom: 0;
-            left: 0;
-            right: 0;
+            top: -4px;
+            bottom: -4px;
+            left: -4px;
+            right: -4px;
+            border-radius: 3px;
             background: rgba(0, 0, 0, 0.08);
             pointer-events: none;
             z-index: -1;
@@ -1212,7 +1214,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           /* Base Tiptap editor styles */
           .tiptap {
             outline: none;
-            font-family: var(--crepe-font-default, "Noto Sans", Arial, Helvetica, sans-serif);
+            font-family: var(--crepe-font-default, "Inter", Arial, Helvetica, sans-serif);
             color: var(--crepe-color-on-background, inherit);
             background: var(--crepe-color-background, transparent);
           }
@@ -1300,7 +1302,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .tiptap blockquote {
             border-left: 3px solid var(--crepe-color-outline, #a8a8a8);
             margin-left: 0;
-            padding-left: 16px;
+            padding: 0px 16px;
           }
           .tiptap hr {
             border: none;

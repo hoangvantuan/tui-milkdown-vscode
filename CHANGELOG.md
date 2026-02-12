@@ -2,6 +2,26 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## \[2.0.3] - 2026-02-12
+
+### Changed
+
+* **Theme Font Configuration**: Updated fonts across all themes for improved markdown readability
+
+  * Frame / Frame Dark: Noto Sans → Inter, Space Mono → JetBrains Mono
+
+  * Crepe / Crepe Dark: Open Sans → Source Serif 4 (serif for warm reading experience)
+
+  * Catppuccin (Latte, Frappé, Macchiato, Mocha): Noto Sans → Inter, Space Mono → Cascadia Code
+
+  * Nord / Nord Dark: unchanged (already Inter + JetBrains Mono)
+
+  * Updated default fallback font from Noto Sans to Inter
+
+* **Blockquote Styling**: Added `overflow: hidden` to prevent line-highlight from bleeding outside blockquote boundaries
+
+* **Line Highlight Cursor**: Extended highlight area with padding offsets (`-4px` all sides) and `border-radius: 3px` for a more comfortable, less cramped appearance
+
 ## \[2.0.2] - 2026-02-12
 
 ### Changed

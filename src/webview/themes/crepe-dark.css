@@ -8,6 +8,6 @@
   --crepe-color-inline-code: #ffb4ab;
   --crepe-color-highlight: #3d3520;
 
-  --crepe-font-default: "Open Sans", Arial, Helvetica, sans-serif;
+  --crepe-font-default: "Source Serif 4", "Source Serif Pro", Georgia, serif;
   --crepe-font-code: "Fira Code", Menlo, Monaco, "Courier New", Courier, monospace;
 }
