@@ -789,12 +789,18 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             --heading-h4-size: 20px;
             --heading-h5-size: 18px;
             --heading-h6-size: 16px;
-            --heading-h1-margin: 24px;
-            --heading-h2-margin: 20px;
-            --heading-h3-margin: 16px;
-            --heading-h4-margin: 12px;
-            --heading-h5-margin: 8px;
-            --heading-h6-margin: 8px;
+            --heading-h1-margin: 32px;
+            --heading-h2-margin: 28px;
+            --heading-h3-margin: 24px;
+            --heading-h4-margin: 20px;
+            --heading-h5-margin: 16px;
+            --heading-h6-margin: 16px;
+            --heading-h1-margin-bottom: 12px;
+            --heading-h2-margin-bottom: 10px;
+            --heading-h3-margin-bottom: 8px;
+            --heading-h4-margin-bottom: 8px;
+            --heading-h5-margin-bottom: 6px;
+            --heading-h6-margin-bottom: 6px;
             --content-max-width: 1200px;
           }
           * { box-sizing: border-box; }
@@ -867,12 +873,12 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .tiptap h4,
           .tiptap h5,
           .tiptap h6 { position: relative; }
-          .tiptap h1 { font-size: var(--heading-h1-size, 32px) !important; margin-top: var(--heading-h1-margin, 24px) !important; }
-          .tiptap h2 { font-size: var(--heading-h2-size, 28px) !important; margin-top: var(--heading-h2-margin, 20px) !important; }
-          .tiptap h3 { font-size: var(--heading-h3-size, 24px) !important; margin-top: var(--heading-h3-margin, 16px) !important; }
-          .tiptap h4 { font-size: var(--heading-h4-size, 20px) !important; margin-top: var(--heading-h4-margin, 12px) !important; }
-          .tiptap h5 { font-size: var(--heading-h5-size, 18px) !important; margin-top: var(--heading-h5-margin, 8px) !important; }
-          .tiptap h6 { font-size: var(--heading-h6-size, 16px) !important; margin-top: var(--heading-h6-margin, 8px) !important; }
+          .tiptap h1 { font-size: var(--heading-h1-size, 32px) !important; margin-top: var(--heading-h1-margin, 32px) !important; margin-bottom: var(--heading-h1-margin-bottom, 12px) !important; }
+          .tiptap h2 { font-size: var(--heading-h2-size, 28px) !important; margin-top: var(--heading-h2-margin, 28px) !important; margin-bottom: var(--heading-h2-margin-bottom, 10px) !important; }
+          .tiptap h3 { font-size: var(--heading-h3-size, 24px) !important; margin-top: var(--heading-h3-margin, 24px) !important; margin-bottom: var(--heading-h3-margin-bottom, 8px) !important; }
+          .tiptap h4 { font-size: var(--heading-h4-size, 20px) !important; margin-top: var(--heading-h4-margin, 20px) !important; margin-bottom: var(--heading-h4-margin-bottom, 8px) !important; }
+          .tiptap h5 { font-size: var(--heading-h5-size, 18px) !important; margin-top: var(--heading-h5-margin, 16px) !important; margin-bottom: var(--heading-h5-margin-bottom, 6px) !important; }
+          .tiptap h6 { font-size: var(--heading-h6-size, 16px) !important; margin-top: var(--heading-h6-margin, 16px) !important; margin-bottom: var(--heading-h6-margin-bottom, 6px) !important; }
 
           /* Line highlight for current cursor position */
           .tiptap .line-highlight {
