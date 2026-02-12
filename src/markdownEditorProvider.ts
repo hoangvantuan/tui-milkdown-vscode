@@ -1323,11 +1323,24 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .tiptap table th,
           .tiptap table td {
             border: 1px solid var(--crepe-color-outline, #a8a8a8);
-            padding: 8px 12px;
+            padding: 6px 10px;
           }
           .tiptap table th {
             background: var(--crepe-color-surface, #f7f7f7);
             font-weight: 600;
+          }
+          /* Compact spacing for elements inside table cells */
+          .tiptap table p {
+            margin: 2px 0;
+          }
+          .tiptap table ul,
+          .tiptap table ol {
+            margin: 2px 0;
+            padding-left: 20px;
+          }
+          .tiptap table pre {
+            margin: 2px 0;
+            padding: 6px 10px;
           }
 
         </style>
