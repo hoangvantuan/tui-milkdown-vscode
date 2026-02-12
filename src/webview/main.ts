@@ -42,6 +42,7 @@ import { renderTableToMarkdown } from "./table-markdown-serializer";
 import { transformTableCellsAfterParse } from "./table-cell-content-parser";
 import { MermaidDiagram, updateMermaidTheme, clearMermaidCache } from "./mermaid-plugin";
 import { AlertNode, ALERT_REGEX, ALERT_TYPES, getFirstText, stripAlertPrefix } from "./alert-extension";
+import { TableContextMenu } from "./table-context-menu";
 import { Blockquote } from "@tiptap/extension-blockquote";
 
 // Fix: @tiptap/markdown v3.19.0 drops `escape` tokens from marked parser,
@@ -789,6 +790,7 @@ function initEditor(initialContent: string = ""): Editor | null {
         BlankLineHandler,
         CodeExitHandler,
         MermaidDiagram,
+        TableContextMenu,
         ...conditionalExtensions,
       ],
       content: initialContent,

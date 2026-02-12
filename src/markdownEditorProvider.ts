@@ -1403,6 +1403,65 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             margin: 2px 0;
             padding: 6px 10px;
           }
+          /* Cell selection highlight (ProseMirror adds .selectedCell automatically) */
+          .tiptap table td,
+          .tiptap table th {
+            position: relative;
+          }
+          .tiptap table .selectedCell::after {
+            content: '';
+            position: absolute;
+            left: 0; right: 0; top: 0; bottom: 0;
+            background: rgba(200, 200, 255, 0.4);
+            pointer-events: none;
+            z-index: 2;
+          }
+          body.dark-theme .tiptap table .selectedCell::after {
+            background: rgba(100, 100, 200, 0.3);
+          }
+          /* Table right-click context menu */
+          .table-context-menu {
+            position: absolute;
+            z-index: 1000;
+            min-width: 180px;
+            background: var(--vscode-menu-background, var(--vscode-editor-background, #fff));
+            border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border, #ccc));
+            border-radius: 6px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            padding: 4px 0;
+            font-size: 13px;
+            color: var(--vscode-menu-foreground, var(--vscode-editor-foreground, #333));
+          }
+          .table-ctx-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            padding: 6px 12px;
+            border: none;
+            background: transparent;
+            color: inherit;
+            font-size: 13px;
+            cursor: pointer;
+            text-align: left;
+          }
+          .table-ctx-item:hover {
+            background: var(--vscode-list-hoverBackground, rgba(0,0,0,0.06));
+          }
+          .table-ctx-icon {
+            width: 20px;
+            text-align: center;
+            flex-shrink: 0;
+            font-size: 12px;
+          }
+          .table-ctx-label {
+            flex: 1;
+          }
+          .table-ctx-divider {
+            height: 1px;
+            background: var(--vscode-menu-separatorBackground, var(--vscode-panel-border, #ddd));
+            margin: 4px 0;
+          }
 
           /* Mermaid diagram preview */
           .mermaid-preview {

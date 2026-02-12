@@ -2,6 +2,14 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## \[2.0.6] - 2026-02-12
+
+### Added
+
+* **Table Right-Click Context Menu**: Right-click on any table cell to access Select Row/Column/Table, Add Row Above/Below, Add Column Before/After, and Delete Row/Column/Table actions
+
+* **Cell Selection Highlight**: Drag-selecting across table cells now shows a visual highlight overlay (blue tint), supporting both light and dark themes
+
 ## \[2.0.5] - 2026-02-12
 
 ### Fixed
