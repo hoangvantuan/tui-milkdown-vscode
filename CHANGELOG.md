@@ -2,6 +2,12 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## \[2.0.7] - 2026-02-12
+
+### Improved
+
+* **Mermaid Diagram Selective Reload**: Switching between edit/view mode no longer re-renders all diagrams — only the changed diagram re-renders. Preserves widget DOM elements on selection changes for a smoother, flicker-free experience
+
 ## \[2.0.6] - 2026-02-12
 
 ### Added

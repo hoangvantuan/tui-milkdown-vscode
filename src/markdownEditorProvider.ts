@@ -1463,21 +1463,81 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             margin: 4px 0;
           }
 
+          /* ─── Mermaid View/Edit Mode ─── */
+
+          /* Code block inside mermaid wrapper: hidden in view mode */
+          .mermaid-code-block {
+            position: relative;
+          }
+          .mermaid-code-block:not(.mermaid-editing) {
+            /* Collapsed: hide the <pre> code block */
+            max-height: 0 !important;
+            overflow: hidden !important;
+            opacity: 0 !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            border: none !important;
+          }
+
+          /* Edit mode: reveal the code block with smooth animation */
+          .mermaid-code-block.mermaid-editing {
+            max-height: 2000px;
+            opacity: 1;
+            transition: max-height 0.3s ease-out, opacity 0.2s ease-out;
+          }
+
           /* Mermaid diagram preview */
           .mermaid-preview {
             margin: 8px 0 16px 0;
             padding: 16px;
-            border: 1px solid var(--crepe-color-outline, #ccc);
+            border: 2px solid var(--crepe-color-outline, #ccc);
             border-radius: 8px;
             background: var(--crepe-color-surface, #fafafa);
             text-align: center;
             overflow-x: auto;
             user-select: none;
+            cursor: pointer;
+            position: relative;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+          }
+          .mermaid-preview:hover {
+            border-color: var(--vscode-focusBorder, #007acc);
+            box-shadow: 0 0 0 1px var(--vscode-focusBorder, rgba(0,122,204,0.3));
           }
           .mermaid-preview svg {
             max-width: 100%;
             height: auto;
           }
+
+          /* Edit hint: shown on hover via CSS pseudo-element (immune to innerHTML changes) */
+          .mermaid-preview::after {
+            content: 'Double-click to edit';
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            background: var(--vscode-badge-background, rgba(0,0,0,0.06));
+            color: var(--vscode-badge-foreground, #666);
+            opacity: 0;
+            transition: opacity 0.15s ease;
+            pointer-events: none;
+          }
+          .mermaid-preview:hover::after {
+            opacity: 0.8;
+          }
+
+          /* When editing: highlight the preview border, hide hint */
+          .mermaid-code-block.mermaid-editing + .mermaid-preview {
+            border-color: var(--vscode-focusBorder, #007acc);
+            cursor: default;
+          }
+          .mermaid-code-block.mermaid-editing + .mermaid-preview::after {
+            display: none;
+          }
+
+          /* Error state */
           .mermaid-preview.mermaid-error {
             border-color: var(--vscode-inputValidation-errorBorder, #be1100);
             background: var(--vscode-inputValidation-errorBackground, rgba(190,17,0,0.05));
@@ -1495,8 +1555,14 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             font-size: 12px;
             font-style: italic;
           }
+
+          /* Dark theme overrides */
           body.dark-theme .mermaid-preview {
             background: rgba(255, 255, 255, 0.03);
+          }
+          body.dark-theme .mermaid-preview::after {
+            background: rgba(255,255,255,0.1);
+            color: rgba(255,255,255,0.7);
           }
 
         </style>

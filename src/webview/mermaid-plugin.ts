@@ -5,9 +5,14 @@
  * after code blocks with language="mermaid". The code block itself remains
  * editable via CodeBlockLowlight; the rendered preview is a non-editable
  * widget decoration inserted after the code block.
+ *
+ * UX: View/Edit mode toggle
+ * - View mode (default): code block is hidden, only SVG preview is shown
+ * - Edit mode (double-click on preview): code block + preview shown (stacked)
+ * - Click outside / cursor leaves: returns to view mode
  */
 import { Extension } from "@tiptap/core";
-import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import mermaid from "mermaid";
 
@@ -104,8 +109,23 @@ export function clearMermaidCache(): void {
 }
 
 /**
+ * Check if cursor position is inside a mermaid code block.
+ * Returns the start position of the mermaid code block, or -1 if not inside one.
+ */
+function getActiveMermaidPos(state: any): number {
+    const { $from } = state.selection;
+    for (let d = $from.depth; d > 0; d--) {
+        const node = $from.node(d);
+        if (node.type.name === "codeBlock" && node.attrs.language === "mermaid") {
+            return $from.before(d);
+        }
+    }
+    return -1;
+}
+
+/**
  * Tiptap Extension — adds a ProseMirror plugin that creates widget
- * decorations after mermaid code blocks.
+ * decorations after mermaid code blocks and manages view/edit mode.
  */
 export const MermaidDiagram = Extension.create({
     name: "mermaidDiagram",
@@ -113,8 +133,9 @@ export const MermaidDiagram = Extension.create({
     addProseMirrorPlugins() {
         // Track pending renders by code-block position
         const pendingTimers = new Map<number, ReturnType<typeof setTimeout>>();
-        // Track DOM elements by code
-        const activeEls = new Map<number, { el: HTMLElement; code: string }>();
+
+        // Track previous active position to avoid unnecessary decoration rebuilds
+        let prevActivePos = -1;
 
         return [
             new Plugin({
@@ -122,12 +143,25 @@ export const MermaidDiagram = Extension.create({
 
                 state: {
                     init(_, state) {
-                        return buildDecorations(state.doc);
+                        prevActivePos = getActiveMermaidPos(state);
+                        return buildDecorations(state.doc, prevActivePos);
                     },
                     apply(tr, oldDecos, _oldState, newState) {
+                        const newActivePos = getActiveMermaidPos(newState);
+
                         if (tr.docChanged) {
-                            return buildDecorations(newState.doc);
+                            // Content changed: rebuild everything (widgets + node decos)
+                            prevActivePos = newActivePos;
+                            return buildDecorations(newState.doc, newActivePos);
                         }
+
+                        if (newActivePos !== prevActivePos) {
+                            // Selection moved between mermaid blocks:
+                            // Preserve widget decorations, only update node CSS classes
+                            prevActivePos = newActivePos;
+                            return rebuildNodeDecosOnly(newState.doc, newActivePos, oldDecos, tr);
+                        }
+
                         return oldDecos;
                     },
                 },
@@ -138,7 +172,47 @@ export const MermaidDiagram = Extension.create({
                     },
                 },
 
-                view() {
+                view(editorView) {
+                    // Native DOM handler: double-click on preview → enter edit mode
+                    // Attached to document to capture events from widget decorations,
+                    // which may render outside editorView.dom's subtree.
+                    function handleDblClick(event: MouseEvent): void {
+                        const target = event.target as HTMLElement;
+                        const previewEl = target.closest?.(".mermaid-preview") as HTMLElement | null;
+                        if (!previewEl) return;
+
+                        const dataPosStr = previewEl.getAttribute("data-pos");
+                        if (!dataPosStr) return;
+
+                        event.preventDefault();
+                        event.stopPropagation();
+
+                        const endPos = parseInt(dataPosStr, 10);
+                        // Find the mermaid code block that ends at this position
+                        let targetPos = -1;
+                        editorView.state.doc.descendants((n: any, p: number) => {
+                            if (n.type.name === "codeBlock" && n.attrs.language === "mermaid") {
+                                if (p + n.nodeSize === endPos) {
+                                    targetPos = p;
+                                }
+                            }
+                        });
+
+                        if (targetPos >= 0) {
+                            const tr = editorView.state.tr.setSelection(
+                                TextSelection.near(
+                                    editorView.state.doc.resolve(targetPos + 1)
+                                )
+                            );
+                            editorView.dispatch(tr);
+                            editorView.focus();
+                        }
+                    }
+
+                    // Use document-level listener to ensure we catch events from widget
+                    // decorations (they can be outside editorView.dom in the DOM tree)
+                    document.addEventListener("dblclick", handleDblClick);
+
                     return {
                         update(view) {
                             const isDark = document.body.classList.contains("dark-theme");
@@ -180,9 +254,9 @@ export const MermaidDiagram = Extension.create({
                         },
 
                         destroy() {
+                            document.removeEventListener("dblclick", handleDblClick);
                             for (const timer of pendingTimers.values()) clearTimeout(timer);
                             pendingTimers.clear();
-                            activeEls.clear();
                         },
                     };
                 },
@@ -192,15 +266,31 @@ export const MermaidDiagram = Extension.create({
 });
 
 /**
- * Scan the document and create widget decorations after each mermaid code block.
+ * Scan the document and create decorations for mermaid code blocks:
+ * 1. Node decoration on the code block itself (adds .mermaid-code-block class, and .mermaid-editing when active)
+ * 2. Widget decoration after the code block (SVG preview container)
  */
-function buildDecorations(doc: any): DecorationSet {
+function buildDecorations(doc: any, activeMermaidPos: number): DecorationSet {
     const decorations: Decoration[] = [];
 
     doc.descendants((node: any, pos: number) => {
         if (node.type.name !== "codeBlock" || node.attrs.language !== "mermaid") return;
 
+        const isEditing = pos === activeMermaidPos;
         const endPos = pos + node.nodeSize;
+
+        // Node decoration: add classes to the code block's <pre> wrapper
+        const nodeClasses = isEditing
+            ? "mermaid-code-block mermaid-editing"
+            : "mermaid-code-block";
+
+        decorations.push(
+            Decoration.node(pos, endPos, {
+                class: nodeClasses,
+            }, { isNodeDeco: true })
+        );
+
+        // Widget decoration: SVG preview container after the code block
         const widget = Decoration.widget(endPos, () => {
             const el = document.createElement("div");
             el.className = "mermaid-preview";
@@ -217,4 +307,49 @@ function buildDecorations(doc: any): DecorationSet {
     });
 
     return DecorationSet.create(doc, decorations);
+}
+
+/**
+ * Rebuild only node decorations (CSS classes) while preserving widget decorations.
+ * This avoids destroying and recreating widget DOM elements when only the
+ * selection/active-mermaid-block changes, preventing unnecessary re-renders.
+ */
+function rebuildNodeDecosOnly(
+    doc: any,
+    activeMermaidPos: number,
+    oldDecos: DecorationSet,
+    tr: any
+): DecorationSet {
+    // Map existing decorations to new positions
+    let decos = oldDecos.map(tr.mapping, doc);
+
+    // Collect old node decorations to remove, and build new ones
+    const toRemove: Decoration[] = [];
+    const toAdd: Decoration[] = [];
+
+    doc.descendants((node: any, pos: number) => {
+        if (node.type.name !== "codeBlock" || node.attrs.language !== "mermaid") return;
+
+        const isEditing = pos === activeMermaidPos;
+        const endPos = pos + node.nodeSize;
+
+        // Find and collect existing node decorations at this range for removal
+        const existing = decos.find(pos, endPos, (spec: any) => spec.isNodeDeco);
+        toRemove.push(...existing);
+
+        // Create new node decoration with updated CSS class
+        const nodeClasses = isEditing
+            ? "mermaid-code-block mermaid-editing"
+            : "mermaid-code-block";
+
+        toAdd.push(
+            Decoration.node(pos, endPos, { class: nodeClasses }, { isNodeDeco: true })
+        );
+    });
+
+    // Apply: remove old node decos, add updated ones
+    decos = decos.remove(toRemove);
+    decos = decos.add(doc, toAdd);
+
+    return decos;
 }
