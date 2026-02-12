@@ -40,6 +40,9 @@ import { HeadingLevel } from "./heading-level-plugin";
 import { setupImageEditOverlay, handleUrlEditResponse, handleImageRenameResponse, setImageMap } from "./image-edit-plugin";
 import { renderTableToMarkdown } from "./table-markdown-serializer";
 import { transformTableCellsAfterParse } from "./table-cell-content-parser";
+import { MermaidDiagram, updateMermaidTheme, clearMermaidCache } from "./mermaid-plugin";
+import { AlertNode, ALERT_REGEX, ALERT_TYPES, getFirstText, stripAlertPrefix } from "./alert-extension";
+import { Blockquote } from "@tiptap/extension-blockquote";
 
 // Fix: @tiptap/markdown v3.19.0 drops `escape` tokens from marked parser,
 // causing escaped characters like \_ to be silently lost during roundtrip.
@@ -641,10 +644,30 @@ function initEditor(initialContent: string = ""): Editor | null {
           codeBlock: false, // Replaced by CodeBlockLowlight
           paragraph: false, // Replaced by custom Paragraph below
           document: false, // Replaced by custom Document below
+          blockquote: false, // Replaced by custom Blockquote with alert detection
           link: {
             openOnClick: false,
             autolink: true,
             linkOnPaste: true,
+          },
+        }),
+        // Custom Blockquote that detects GitHub-style alerts [!NOTE], [!TIP], etc.
+        Blockquote.extend({
+          parseMarkdown(token: any, helpers: any) {
+            const firstText = getFirstText(token);
+            if (firstText) {
+              const match = firstText.match(ALERT_REGEX);
+              if (match) {
+                const alertType = match[1].toUpperCase();
+                if ((ALERT_TYPES as readonly string[]).includes(alertType)) {
+                  const strippedTokens = stripAlertPrefix(token.tokens);
+                  const children = helpers.parseChildren(strippedTokens);
+                  return helpers.createNode('alert', { type: alertType }, children);
+                }
+              }
+            }
+            // Not an alert → create a regular blockquote
+            return helpers.createNode('blockquote', undefined, helpers.parseChildren(token.tokens || []));
           },
         }),
         Document.extend({
@@ -691,6 +714,8 @@ function initEditor(initialContent: string = ""): Editor | null {
         TableHeader,
         CodeBlockLowlight.configure({
           lowlight,
+          enableTabIndentation: true,
+          tabSize: 2,
         }),
         TaskList,
         TaskItem.configure({
@@ -706,8 +731,10 @@ function initEditor(initialContent: string = ""): Editor | null {
             breaks: false,
           },
         }),
+        AlertNode,
         EscapeToken,
         BlankLineHandler,
+        MermaidDiagram,
         ...conditionalExtensions,
       ],
       content: initialContent,
@@ -884,6 +911,9 @@ function handleLinkEditResponse(editId: string, newUrl: string | null): void {
 function applyTheme(theme: "dark" | "light"): void {
   document.body.classList.remove("dark-theme", "light-theme");
   document.body.classList.add(`${theme}-theme`);
+  // Sync mermaid diagram theme
+  clearMermaidCache();
+  updateMermaidTheme(theme === "dark");
 }
 
 // Toolbar command mapping
@@ -926,16 +956,16 @@ function updateToolbarActiveState(ed: Editor): void {
     if (!cmd) continue;
     const isActive =
       cmd === 'bold' ? ed.isActive('bold') :
-      cmd === 'italic' ? ed.isActive('italic') :
-      cmd === 'strike' ? ed.isActive('strike') :
-      cmd === 'code' ? ed.isActive('code') :
-      cmd === 'highlight' ? ed.isActive('highlight') :
-      cmd === 'bulletList' ? ed.isActive('bulletList') :
-      cmd === 'orderedList' ? ed.isActive('orderedList') :
-      cmd === 'taskList' ? ed.isActive('taskList') :
-      cmd === 'blockquote' ? ed.isActive('blockquote') :
-      cmd === 'codeBlock' ? ed.isActive('codeBlock') :
-      false;
+        cmd === 'italic' ? ed.isActive('italic') :
+          cmd === 'strike' ? ed.isActive('strike') :
+            cmd === 'code' ? ed.isActive('code') :
+              cmd === 'highlight' ? ed.isActive('highlight') :
+                cmd === 'bulletList' ? ed.isActive('bulletList') :
+                  cmd === 'orderedList' ? ed.isActive('orderedList') :
+                    cmd === 'taskList' ? ed.isActive('taskList') :
+                      cmd === 'blockquote' ? ed.isActive('blockquote') :
+                        cmd === 'codeBlock' ? ed.isActive('codeBlock') :
+                          false;
     btn.classList.toggle('is-active', isActive);
   }
 

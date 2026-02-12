@@ -2,7 +2,7 @@
   "name": "tui-milkdown-vscode",
   "displayName": "TUI Markdown Editor",
   "description": "A beautiful WYSIWYG Markdown editor powered by Tiptap. Edit markdown files with rich text experience and theme selection.",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "publisher": "tuanhv",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -156,6 +156,7 @@
     "@tiptap/pm": "^3.19.0",
     "@tiptap/starter-kit": "^3.19.0",
     "js-yaml": "^4.1.1",
-    "lowlight": "^3.3.0"
+    "lowlight": "^3.3.0",
+    "mermaid": "^11.12.2"
   }
 }

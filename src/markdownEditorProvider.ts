@@ -1304,6 +1304,65 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             margin-left: 0;
             padding: 0px 16px;
           }
+
+          /* GitHub-style Alerts / Admonitions */
+          .tiptap .alert {
+            border-left: 4px solid;
+            border-radius: 6px;
+            padding: 12px 16px;
+            margin: 12px 0;
+          }
+          .tiptap .alert p:first-child { margin-top: 0; }
+          .tiptap .alert p:last-child { margin-bottom: 0; }
+          .tiptap .alert::before {
+            display: block;
+            font-weight: 600;
+            font-size: calc(14px * var(--editor-font-scale, 1));
+            margin-bottom: 6px;
+          }
+
+          /* NOTE - Blue */
+          .tiptap .alert-note {
+            border-color: #2f81f7;
+            background: rgba(47, 129, 247, 0.08);
+          }
+          .tiptap .alert-note::before { content: "📝 Note"; color: #2f81f7; }
+
+          /* TIP - Green */
+          .tiptap .alert-tip {
+            border-color: #3fb950;
+            background: rgba(63, 185, 80, 0.08);
+          }
+          .tiptap .alert-tip::before { content: "💡 Tip"; color: #3fb950; }
+
+          /* IMPORTANT - Purple */
+          .tiptap .alert-important {
+            border-color: #a371f7;
+            background: rgba(163, 113, 247, 0.08);
+          }
+          .tiptap .alert-important::before { content: "❗ Important"; color: #a371f7; }
+
+          /* WARNING - Yellow/Orange */
+          .tiptap .alert-warning {
+            border-color: #d29922;
+            background: rgba(210, 153, 34, 0.08);
+          }
+          .tiptap .alert-warning::before { content: "⚠️ Warning"; color: #d29922; }
+
+          /* CAUTION - Red */
+          .tiptap .alert-caution {
+            border-color: #f85149;
+            background: rgba(248, 81, 73, 0.08);
+          }
+          .tiptap .alert-caution::before { content: "🔴 Caution"; color: #f85149; }
+
+          /* Dark theme overrides for alerts */
+          body.dark-theme .tiptap .alert-note { background: rgba(47, 129, 247, 0.12); }
+          body.dark-theme .tiptap .alert-tip { background: rgba(63, 185, 80, 0.12); }
+          body.dark-theme .tiptap .alert-important { background: rgba(163, 113, 247, 0.12); }
+          body.dark-theme .tiptap .alert-warning { background: rgba(210, 153, 34, 0.12); }
+          body.dark-theme .tiptap .alert-caution { background: rgba(248, 81, 73, 0.12); }
+
           .tiptap hr {
             border: none;
             border-top: 1px solid var(--crepe-color-outline, #a8a8a8);
@@ -1343,6 +1402,42 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .tiptap table pre {
             margin: 2px 0;
             padding: 6px 10px;
+          }
+
+          /* Mermaid diagram preview */
+          .mermaid-preview {
+            margin: 8px 0 16px 0;
+            padding: 16px;
+            border: 1px solid var(--crepe-color-outline, #ccc);
+            border-radius: 8px;
+            background: var(--crepe-color-surface, #fafafa);
+            text-align: center;
+            overflow-x: auto;
+            user-select: none;
+          }
+          .mermaid-preview svg {
+            max-width: 100%;
+            height: auto;
+          }
+          .mermaid-preview.mermaid-error {
+            border-color: var(--vscode-inputValidation-errorBorder, #be1100);
+            background: var(--vscode-inputValidation-errorBackground, rgba(190,17,0,0.05));
+            text-align: left;
+          }
+          .mermaid-preview .mermaid-err-msg {
+            color: var(--vscode-errorForeground, #be1100);
+            font-family: var(--vscode-editor-font-family, monospace);
+            font-size: 12px;
+            white-space: pre-wrap;
+            word-break: break-word;
+          }
+          .mermaid-preview .mermaid-loading {
+            color: var(--vscode-descriptionForeground, #888);
+            font-size: 12px;
+            font-style: italic;
+          }
+          body.dark-theme .mermaid-preview {
+            background: rgba(255, 255, 255, 0.03);
           }
 
         </style>

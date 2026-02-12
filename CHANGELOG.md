@@ -2,6 +2,16 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## \[2.0.4] - 2026-02-12
+
+### Added
+
+* **Mermaid Diagram Rendering**: Code blocks with `mermaid` language are now rendered as live SVG diagrams with automatic theme syncing (light/dark), error display, and caching
+
+* **GitHub-Style Alerts**: Blockquotes starting with `[!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, or `[!CAUTION]` render as color-coded alert boxes with icons and dark theme support
+
+* **Tab Indentation in Code Blocks**: Enabled tab key for indentation inside code blocks (2-space tab size)
+
 ## \[2.0.3] - 2026-02-12
 
 ### Changed
