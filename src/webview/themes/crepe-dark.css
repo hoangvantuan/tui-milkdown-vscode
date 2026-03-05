@@ -8,6 +8,7 @@
   --crepe-color-inline-code: #ffb4ab;
   --crepe-color-highlight: #3d3520;
 
-  --crepe-font-default: "Source Serif 4", "Source Serif Pro", Georgia, serif;
-  --crepe-font-code: "Fira Code", Menlo, Monaco, "Courier New", Courier, monospace;
+  /* ui-serif = New York on macOS (Apple reading font), falls back to Source Serif 4 if installed, then Georgia */
+  --crepe-font-default: ui-serif, "Source Serif 4", "Source Serif Pro", Georgia, serif;
+  --crepe-font-code: "Cascadia Code", "Fira Code", Menlo, Monaco, "Courier New", monospace;
 }

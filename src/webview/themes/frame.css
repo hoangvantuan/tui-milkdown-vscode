@@ -3,10 +3,10 @@
   --crepe-color-background: #ffffff;
   --crepe-color-on-background: #000000;
   --crepe-color-surface: #f7f7f7;
-  --crepe-color-outline: #a8a8a8;
+  --crepe-color-outline: #767676; /* WCAG AA compliant (#a8a8a8 failed on white background) */
   --crepe-color-primary: #333333;
   --crepe-color-inline-code: #ba1a1a;
 
-  --crepe-font-default: "Inter", Arial, Helvetica, sans-serif;
-  --crepe-font-code: "JetBrains Mono", Menlo, Monaco, "Courier New", Courier, monospace;
+  --crepe-font-default: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  --crepe-font-code: "Cascadia Code", "JetBrains Mono", Menlo, Monaco, "Courier New", monospace;
 }

@@ -110,6 +110,12 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 
 **Theme system:** CSS variables loaded from `src/webview/themes/`, scoped by body class (e.g., `.theme-frame .tiptap`). Dark theme overrides use `body.dark-theme` selector (set by `applyTheme()`).
 
+**Theme font strategy:**
+* Default font (`--crepe-font-default`): All themes use `system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif` — picks the OS's native reading font (SF Pro on macOS, Segoe UI on Windows). No external font download needed.
+* Crepe themes use `ui-serif, "Source Serif 4", ..., Georgia, serif` — `ui-serif` resolves to New York on macOS, excellent for long-form reading.
+* Code font (`--crepe-font-code`): All themes prioritize `"Cascadia Code"` (bundled with VS Code, always available), then per-theme fallbacks (`"JetBrains Mono"` for Frame/Nord, `"Fira Code"` for Crepe/Catppuccin).
+* Nord Dark uses the official Nord palette (Polar Night / Snow Storm / Frost / Aurora) — visually distinct from Frame Dark.
+
 **Content updates:** `editor.commands.setContent()` - no destroy/recreate needed. Cursor position preserved via save/restore around setContent.
 
 **Empty paragraph roundtrip:** `BlankLineHandler` extension parses MarkedJS `space` tokens into empty paragraph nodes (count = newlines - 2). Custom `Document.extend({ renderMarkdown })` serializes empty paragraphs as single `\n` (instead of `\n\n`), producing correct blank line count in markdown output.
