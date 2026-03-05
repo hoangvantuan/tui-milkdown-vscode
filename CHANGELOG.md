@@ -2,6 +2,30 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## \[2.0.8] - 2026-03-05
+
+### Changed
+
+* **Theme Font Overhaul**: Replaced static `"Noto Sans"` with `system-ui` stack across all themes — delivers the OS's native reading font (San Francisco on macOS, Segoe UI on Windows) without requiring font installation
+
+  * Frame / Frame Dark: `Noto Sans` → `system-ui` stack; code font: `Space Mono` → `Cascadia Code` (bundled with VS Code)
+
+  * Nord / Nord Dark: `Noto Sans` → `system-ui` stack; code font: `Space Mono` → `Cascadia Code`
+
+  * Catppuccin (Latte, Frappé, Macchiato, Mocha): `Noto Sans` → `system-ui` stack
+
+  * Crepe / Crepe Dark: switched to `ui-serif` first (New York on macOS), then `Source Serif 4 → Georgia` as fallback; code font: `Space Mono` → `Cascadia Code`
+
+* **Nord Dark — Real Nord Palette**: Replaced generic dark-gray colors with official Nord palette
+
+  * Background `#1b1c1d` → `#2e3440` (Polar Night 1), surface → `#3b4252`, outline → `#4c566a`, primary → `#88c0d0` (Frost teal), inline-code → `#bf616a` (Aurora red)
+
+  * Nord Dark now visually distinct from Frame Dark (previously near-identical)
+
+### Fixed
+
+* **Frame Light Outline Contrast**: `--crepe-color-outline` `#a8a8a8` → `#767676` (now passes WCAG AA 4.5:1 on white background)
+
 ## \[2.0.7] - 2026-02-12
 
 ### Improved

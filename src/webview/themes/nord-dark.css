@@ -1,13 +1,17 @@
-/* Nord Dark Theme */
+/* Nord Dark Theme - uses official Nord palette (https://www.nordtheme.com) */
+/* Polar Night: #2e3440 #3b4252 #434c5e #4c566a */
+/* Snow Storm: #d8dee9 #e5e9f0 #eceff4 */
+/* Frost: #8fbcbb #88c0d0 #81a1c1 #5e81ac */
+/* Aurora: #bf616a #d08770 #ebcb8b #a3be8c #b48ead */
 .theme-nord-dark .tiptap {
-  --crepe-color-background: #1b1c1d;
-  --crepe-color-on-background: #f8f9ff;
-  --crepe-color-surface: #111418;
-  --crepe-color-outline: #8d9199;
-  --crepe-color-primary: #a1c9fd;
-  --crepe-color-inline-code: #ffb4ab;
-  --crepe-color-highlight: #3b3926;
+  --crepe-color-background: #2e3440; /* Polar Night 1 */
+  --crepe-color-on-background: #eceff4; /* Snow Storm 3 */
+  --crepe-color-surface: #3b4252; /* Polar Night 2 */
+  --crepe-color-outline: #4c566a; /* Polar Night 4 */
+  --crepe-color-primary: #88c0d0; /* Frost 2 (teal-blue) */
+  --crepe-color-inline-code: #bf616a; /* Aurora red */
+  --crepe-color-highlight: #434c5e; /* Polar Night 3 */
 
-  --crepe-font-default: Inter, Arial, Helvetica, sans-serif;
-  --crepe-font-code: "JetBrains Mono", Menlo, Monaco, "Courier New", Courier, monospace;
+  --crepe-font-default: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  --crepe-font-code: "Cascadia Code", "JetBrains Mono", Menlo, Monaco, "Courier New", monospace;
 }
