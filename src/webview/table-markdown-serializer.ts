@@ -130,7 +130,7 @@ export function renderTableToMarkdown(node: JSONContent, h: MarkdownRendererHelp
   const colCount = rows.reduce((max, r) => Math.max(max, r.length), 0);
   if (colCount === 0) return '';
 
-  // Column widths (min 3 for separator dashes)
+  // Column widths (min 3 for separator dashes) — padding for readability when table is edited
   const colWidths = new Array(colCount).fill(3);
   for (const r of rows) {
     for (let i = 0; i < colCount; i++) {
