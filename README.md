@@ -7,6 +7,7 @@ A beautiful WYSIWYG Markdown editor for VS Code powered by Tiptap.
 ## Features
 
 - **Rich Text Editing**: WYSIWYG markdown editing powered by Tiptap + `@tiptap/markdown` (MarkedJS parser, GFM support)
+- **Markdown Format Preservation**: Original formatting (bullet styles, emphasis markers, fence types, HR patterns) preserved through edit cycles via intelligent diff/patch engine
 - **Syntax Highlighting**: Code blocks with language-aware highlighting via lowlight (19 languages)
 - **Task Lists**: Checkbox support with nested task items
 - **Table Editing**: Resizable tables with multi-line cell content (lists, breaks) preserved in markdown

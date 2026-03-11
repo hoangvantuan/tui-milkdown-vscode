@@ -2,6 +2,20 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## \[Unreleased]
+
+### Added
+
+* **Markdown Fidelity Engine**: 3-layer system preserving original markdown formatting during editing
+
+  * Layer 1 - Marker Preserving Extensions: 8 Tiptap extensions (BulletList, OrderedList, Heading, HorizontalRule, CodeBlock, Italic, Bold, Table) capture and reproduce original syntax markers from MarkedJS tokens
+
+  * Layer 2 - Document Style Detector: Analyzes original markdown to detect dominant formatting style (bullet chars: `-`/`*`/`+`, emphasis chars: `_`/`*`, fence chars: `` ` ``/`~`, HR styles: `---`/`***`/`___`) and provides fallback for new nodes
+
+  * Layer 3 - LCS Diff & Patch: Line-level Longest Common Subsequence diff preserves unchanged lines verbatim while only replacing lines with actual content changes (2000-line performance cap)
+
+  * User's stylistic choices now persist through multiple edit/save cycles
+
 ## \[2.0.8] - 2026-03-05
 
 ### Changed

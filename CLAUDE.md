@@ -67,6 +67,9 @@ src/
     ├── image-edit-plugin.ts  # Double-click image URL editing
     ├── table-markdown-serializer.ts # Custom GFM table serializer (multi-line cells)
     ├── table-cell-content-parser.ts # Post-parse transformer for table cell lists/breaks
+    ├── document-style-detector.ts # Detects dominant markdown formatting style (bullets, emphasis, fences, HR)
+    ├── marker-preserving-extensions.ts # 8 Tiptap extensions preserving original syntax markers
+    ├── markdown-diff-patch.ts # LCS diff engine for line-level markdown format preservation
     └── themes/               # Theme CSS files (scoped by body class)
         ├── index.css              # Imports all theme CSS
         ├── frame.css              # Frame light theme
@@ -352,6 +355,57 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 * Detects list patterns (`- item`, `N. item`, `[x] item`) → proper list nodes
 
 * Groups consecutive same-type segments into single list block
+
+## Markdown Fidelity Engine
+
+A 3-layer system preserving original markdown formatting during Tiptap editor roundtrip. Ensures user's stylistic choices (bullet chars, emphasis markers, fence styles, HR patterns) persist through edit cycles.
+
+**Layer 1 - Marker Preserving Extensions** (`src/webview/marker-preserving-extensions.ts`):
+
+* 8 Tiptap extension overrides: BulletList, OrderedList, Heading, HorizontalRule, CodeBlock, Italic, Bold, Table
+
+* Captures original syntax markers from MarkedJS tokens during `parseMarkdown()`
+
+* Reproduces original markers during `renderMarkdown()` serialization
+
+* Examples: `-` vs `*` for bullets, `_` vs `*` for emphasis, `` ``` `` vs `~~~` for fences
+
+**Layer 2 - Document Style Detector** (`src/webview/document-style-detector.ts`):
+
+* Analyzes original markdown to detect dominant formatting style
+
+* Extracts: preferred bullet char (`-`, `*`, `+`), emphasis char (`_`, `*`), fence char (`` ` ``, `~`), HR style (`---`, `***`, `___`, `***`)
+
+* Provides fallback style for new nodes added during editing (lists, blockquotes, code blocks without detected patterns)
+
+* Called on `initEditor()` to scan document before editing begins
+
+**Layer 3 - LCS Diff & Patch** (`src/webview/markdown-diff-patch.ts`):
+
+* Line-level Longest Common Subsequence (LCS) diff comparing serialized output with original markdown
+
+* Unchanged lines keep original verbatim (preserves spacing, style, comments)
+
+* Only replaces lines containing actual content changes
+
+* 2000-line performance cap to prevent slowdown on large files
+
+* Handles edge cases: removed lines, added lines, reordered content
+
+**Integration** (`src/webview/main.ts`):
+
+* On `initEditor()`: Call `detectDocumentStyle()` to populate style cache
+
+* On `editor.getMarkdown()`: Apply marker preservation via extension overrides, then run LCS diff/patch
+
+* Result: User's formatting choices preserved even after multiple edit/save cycles
+
+**Data Flow**:
+
+1. Original markdown loaded → Detect dominant style (Layer 2) → Parse via marker-preserving extensions (Layer 1)
+2. User edits → Editor serializes to markdown with preserved markers
+3. Send to extension → Apply LCS diff/patch (Layer 3) → Only changed lines modified, rest preserved verbatim
+4. Saved to disk → Next load repeats the cycle with new detection baseline
 
 ## Development Guidelines
 

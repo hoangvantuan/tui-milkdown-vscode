@@ -2,8 +2,7 @@ import { Editor, Extension } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { Image } from "@tiptap/extension-image";
 import { Highlight } from "@tiptap/extension-highlight";
-import { Table, TableRow, TableCell, TableHeader } from "@tiptap/extension-table";
-import { CodeBlockLowlight } from "@tiptap/extension-code-block-lowlight";
+import { TableRow, TableCell, TableHeader } from "@tiptap/extension-table";
 import { TaskList, TaskItem } from "@tiptap/extension-list";
 import { Paragraph } from "@tiptap/extension-paragraph";
 import { Document } from "@tiptap/extension-document";
@@ -38,12 +37,18 @@ import {
 import { LineHighlight } from "./line-highlight-plugin";
 import { HeadingLevel } from "./heading-level-plugin";
 import { setupImageEditOverlay, handleUrlEditResponse, handleImageRenameResponse, setImageMap } from "./image-edit-plugin";
-import { renderTableToMarkdown } from "./table-markdown-serializer";
 import { transformTableCellsAfterParse } from "./table-cell-content-parser";
 import { MermaidDiagram, updateMermaidTheme, clearMermaidCache } from "./mermaid-plugin";
 import { AlertNode, ALERT_REGEX, ALERT_TYPES, getFirstText, stripAlertPrefix } from "./alert-extension";
 import { TableContextMenu } from "./table-context-menu";
 import { Blockquote } from "@tiptap/extension-blockquote";
+import { detectDocStyle } from "./document-style-detector";
+import { patchMarkdown } from "./markdown-diff-patch";
+import {
+  BulletListPreserve, OrderedListPreserve, HeadingPreserve,
+  HorizontalRulePreserve, ItalicPreserve, BoldPreserve,
+  createCodeBlockPreserve, TablePreserve,
+} from "./marker-preserving-extensions";
 
 // Fix: @tiptap/markdown v3.19.0 drops `escape` tokens from marked parser,
 // causing escaped characters like \_ to be silently lost during roundtrip.
@@ -174,6 +179,7 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let globalThemeReceived: ThemeName | null = null;
 let currentFrontmatter: string | null = null;
 let currentBody: string = "";
+let originalBody: string = "";
 let lastSentState: string | null = null;
 let highlightCurrentLine = true;
 let currentImageMap: Record<string, string> = {};
@@ -695,7 +701,13 @@ function initEditor(initialContent: string = ""): Editor | null {
       element: editorEl,
       extensions: [
         StarterKit.configure({
-          codeBlock: false, // Replaced by CodeBlockLowlight
+          bulletList: false, // Replaced by BulletListPreserve
+          orderedList: false, // Replaced by OrderedListPreserve
+          heading: false, // Replaced by HeadingPreserve
+          horizontalRule: false, // Replaced by HorizontalRulePreserve
+          bold: false, // Replaced by BoldPreserve
+          italic: false, // Replaced by ItalicPreserve
+          codeBlock: false, // Replaced by CodeBlockLowlight/createCodeBlockPreserve
           paragraph: false, // Replaced by custom Paragraph below
           document: false, // Replaced by custom Document below
           blockquote: false, // Replaced by custom Blockquote with alert detection
@@ -705,6 +717,12 @@ function initEditor(initialContent: string = ""): Editor | null {
             linkOnPaste: true,
           },
         }),
+        BulletListPreserve,
+        OrderedListPreserve,
+        HeadingPreserve,
+        HorizontalRulePreserve,
+        BoldPreserve,
+        ItalicPreserve,
         // Custom Blockquote that detects GitHub-style alerts [!NOTE], [!TIP], etc.
         Blockquote.extend({
           parseMarkdown(token: any, helpers: any) {
@@ -756,21 +774,11 @@ function initEditor(initialContent: string = ""): Editor | null {
           allowBase64: true,
         }),
         Highlight,
-        Table.extend({
-          renderMarkdown(node: any, h: any) {
-            return renderTableToMarkdown(node, h);
-          },
-        }).configure({
-          resizable: true,
-        }),
+        TablePreserve,
         TableRow,
         TableCell,
         TableHeader,
-        CodeBlockLowlight.configure({
-          lowlight,
-          enableTabIndentation: true,
-          tabSize: 2,
-        }),
+        createCodeBlockPreserve(lowlight, { enableTabIndentation: true, tabSize: 2 }),
         TaskList,
         TaskItem.configure({
           nested: true,
@@ -896,7 +904,9 @@ function initEditor(initialContent: string = ""): Editor | null {
         if (isUpdatingFromExtension) return;
         // Get markdown from @tiptap/markdown
         const markdown = ed.getMarkdown();
-        currentBody = transformForSave(markdown, currentImageMap);
+        const rawBody = transformForSave(markdown, currentImageMap);
+        currentBody = patchMarkdown(originalBody, rawBody);
+        originalBody = currentBody;
         debouncedPostEdit(reconstructContent(currentFrontmatter, currentBody));
       },
       onSelectionUpdate: ({ editor: ed }) => {
@@ -1124,6 +1134,8 @@ window.addEventListener("message", async (event) => {
           const parsed = parseContent(message.content);
           currentFrontmatter = parsed.frontmatter;
           currentBody = parsed.body;
+          originalBody = parsed.body;
+          detectDocStyle(parsed.body);
 
           updateMetadataPanel(parsed.frontmatter, parsed.isValid, parsed.error);
 
