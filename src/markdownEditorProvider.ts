@@ -862,26 +862,26 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             list-style: none;
             padding-left: 0;
           }
-          .tiptap ul[data-type="taskList"] li {
+          .tiptap ul[data-type="taskList"] > li {
             display: flex;
             align-items: flex-start;
             gap: calc(8px * var(--editor-font-scale, 1));
           }
-          .tiptap ul[data-type="taskList"] li > label {
+          .tiptap ul[data-type="taskList"] > li > label {
             flex-shrink: 0;
             margin-top: calc(4px * var(--editor-font-scale, 1));
             user-select: none;
           }
-          .tiptap ul[data-type="taskList"] li > label input[type="checkbox"] {
+          .tiptap ul[data-type="taskList"] > li > label input[type="checkbox"] {
             cursor: pointer;
             width: calc(16px * var(--editor-font-scale, 1));
             height: calc(16px * var(--editor-font-scale, 1));
             accent-color: var(--crepe-color-primary, var(--vscode-focusBorder));
           }
-          .tiptap ul[data-type="taskList"] li > div {
+          .tiptap ul[data-type="taskList"] > li > div {
             flex: 1;
           }
-          .tiptap ul[data-type="taskList"] li[data-checked="true"] > div p {
+          .tiptap ul[data-type="taskList"] > li[data-checked="true"] > div p {
             text-decoration: line-through;
             opacity: 0.5;
             transition: opacity 0.2s ease-out;
