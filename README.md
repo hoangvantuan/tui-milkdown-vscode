@@ -8,13 +8,18 @@ A beautiful WYSIWYG Markdown editor for VS Code powered by Tiptap.
 
 - **Rich Text Editing**: WYSIWYG markdown editing powered by Tiptap + `@tiptap/markdown` (MarkedJS parser, GFM support)
 - **Syntax Highlighting**: Code blocks with language-aware highlighting via lowlight (19 languages)
+- **Mermaid Diagrams**: Live SVG preview for `mermaid` code blocks with view/edit mode toggle, theme sync, and caching
+- **GitHub-Style Alerts**: `[!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]` render as color-coded alert boxes
 - **Task Lists**: Checkbox support with nested task items
 - **Table Editing**: Resizable tables with multi-line cell content (lists, breaks) preserved in markdown
+- **Table Context Menu**: Right-click on table cells for select/add/delete row/column/table actions
+- **Cell Selection Highlight**: Drag-selecting across table cells shows visual highlight overlay
 - **Theme Selection**: 10 editor themes including Catppuccin palette (4 variants)
 - **View Source**: Toggle between WYSIWYG and source view (Ctrl/Cmd+Shift+M)
 - **Cursor Line Highlight**: Visual highlight of current block/paragraph
 - **Table of Contents**: Sidebar with click-to-scroll, active heading tracking, depth filter, and collapse/expand
 - **Heading Level Badges**: H1-H6 indicators next to headings
+- **Heading Collapse/Expand**: Toggle arrows on headings to collapse/expand content sections
 - **Metadata Panel**: Collapsible YAML frontmatter editor with validation
 - **Image Upload**: Paste images from clipboard or drag-and-drop into editor
 - **Image URL Editing**: Double-click on image to edit URL/path
@@ -22,6 +27,7 @@ A beautiful WYSIWYG Markdown editor for VS Code powered by Tiptap.
 - **Auto Rename Images**: Rename image files when you change the path in markdown
 - **Auto Delete Images**: Delete image files when removed from markdown (moves to Trash)
 - **Local Image Display**: Renders local images from document folder and workspace
+- **Tab Indentation**: Tab key inserts 2-space indentation inside code blocks
 - **Large File Warning**: Protection for files >500KB
 - **Configurable Font Size**: Adjust editor font size (8-32px)
 - **Configurable Heading Sizes**: Customize font sizes for H1-H6 headings (12-72px)

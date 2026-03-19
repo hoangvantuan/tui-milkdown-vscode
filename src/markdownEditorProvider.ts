@@ -1240,14 +1240,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             font-family: var(--vscode-editor-font-family, monospace);
             transition: opacity 0.15s ease-out;
           }
-          .tiptap h1:hover .heading-level-badge,
-          .tiptap h2:hover .heading-level-badge,
-          .tiptap h3:hover .heading-level-badge,
-          .tiptap h4:hover .heading-level-badge,
-          .tiptap h5:hover .heading-level-badge,
-          .tiptap h6:hover .heading-level-badge {
-            opacity: 0.8;
-          }
           /* Light themes */
           body.theme-frame .heading-level-badge,
           body.theme-nord .heading-level-badge,
@@ -1279,20 +1271,10 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             font-family: var(--vscode-editor-font-family, monospace);
           }
           /* Hover heading: hide badge, show arrow */
-          .tiptap h1:hover .heading-collapse-toggle,
-          .tiptap h2:hover .heading-collapse-toggle,
-          .tiptap h3:hover .heading-collapse-toggle,
-          .tiptap h4:hover .heading-collapse-toggle,
-          .tiptap h5:hover .heading-collapse-toggle,
-          .tiptap h6:hover .heading-collapse-toggle {
+          .tiptap :is(h1,h2,h3,h4,h5,h6):hover .heading-collapse-toggle {
             opacity: 0.6;
           }
-          .tiptap h1:hover .heading-level-badge,
-          .tiptap h2:hover .heading-level-badge,
-          .tiptap h3:hover .heading-level-badge,
-          .tiptap h4:hover .heading-level-badge,
-          .tiptap h5:hover .heading-level-badge,
-          .tiptap h6:hover .heading-level-badge {
+          .tiptap :is(h1,h2,h3,h4,h5,h6):hover .heading-level-badge {
             opacity: 0;
           }
           .heading-collapse-toggle:hover {
