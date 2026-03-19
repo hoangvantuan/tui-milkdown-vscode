@@ -1,11 +1,11 @@
 /* Frame Dark Theme */
 .theme-frame-dark .tiptap {
-  --crepe-color-background: #1a1a1a;
-  --crepe-color-on-background: #e6e6e6;
-  --crepe-color-surface: #121212;
-  --crepe-color-outline: #6b6b6b;
-  --crepe-color-primary: #b5b5b5;
-  --crepe-color-inline-code: #ff6666;
+  --crepe-color-background: #1a1b1e;
+  --crepe-color-on-background: #e4e5e9;
+  --crepe-color-surface: #141518;
+  --crepe-color-outline: #3d3f45;
+  --crepe-color-primary: #6b9fff;
+  --crepe-color-inline-code: #f97583;
   --crepe-color-highlight: #3d3520;
 
   --crepe-font-default: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;

@@ -2,6 +2,32 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## \[2.0.9] - 2026-03-19
+
+### Changed
+
+* **Typography Redesign**: Perfect Fourth heading scale (1.333 ratio), line-height 1.6, generous heading margins for clear section grouping
+* **Responsive Content Width**: 760px default (65-70 chars/line), adaptive for narrow panels, tables can overflow with scroll
+* **Editor Padding**: Increased to 32px/48px for document-like feel
+* **Blockquote Style**: Clean border (primary color) + no background, subtle hover effect
+* **Link Style**: Underline replaced with animated border-bottom on hover
+* **Table Enhancement**: Larger cell padding (10px 14px), row hover highlight, zebra striping
+* **Code Blocks**: Focus ring on edit, hover border, increased padding
+* **HR Spacing**: 32px margin (was 16px) with 50% opacity for softer separation
+* **Image Polish**: 6px border-radius, subtle shadow on hover
+
+### Added
+
+* **Modern CSS**: `text-wrap: balance` on headings, `text-wrap: pretty` on paragraphs, ligatures (`font-feature-settings`), `font-optical-sizing`, `-webkit-font-smoothing: antialiased`
+* **Micro-interactions**: Toolbar button transitions (0.15s), heading badge hover opacity, line highlight transition, task checkbox fade
+* **Reduced Motion**: `prefers-reduced-motion` media query disables all animations
+
+### Fixed
+
+* **Nord Dark Inline Code WCAG**: `#bf616a` (3.05:1) → `#d08770` Aurora orange (~4.8:1) — now passes WCAG AA
+* **Frame Light Colors**: Softer text (#1a1b1e), blue links (#2563eb), lighter borders (#d0d5dd), warmer inline-code (#c4432b)
+* **Frame Dark Colors**: Blue-tinted background (#1a1b1e), blue accent links (#6b9fff), cooler surface (#141518), softer inline-code (#f97583)
+
 ## \[2.0.8] - 2026-03-05
 
 ### Changed
