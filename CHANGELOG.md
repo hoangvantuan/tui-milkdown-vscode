@@ -8,6 +8,8 @@ All notable changes to "TUI Markdown Editor" extension.
 
 * **Table of Contents Sidebar**: Toggleable TOC panel inside the editor with click-to-scroll navigation, active heading highlight, H1-H6 depth filter, collapse/expand sections, and state persistence
 
+* **Heading Collapse/Expand**: Visual-only toggle arrows on H1-H6 headings to collapse/expand content sections until next same-or-higher-level heading; state persisted across webview reloads
+
 ### Fixed
 
 * TOC button moved to right side of toolbar for better visibility

@@ -64,6 +64,7 @@ src/
     ├── frontmatter.ts        # YAML parsing & validation utilities
     ├── line-highlight-plugin.ts # ProseMirror plugin for cursor line highlight
     ├── heading-level-plugin.ts # ProseMirror plugin for H1-H6 level badges
+    ├── heading-collapse-plugin.ts # ProseMirror plugin for heading collapse/expand toggles
     ├── image-edit-plugin.ts  # Double-click image URL editing
     ├── table-markdown-serializer.ts # Custom GFM table serializer (multi-line cells)
     ├── table-cell-content-parser.ts # Post-parse transformer for table cell lists/breaks
@@ -346,6 +347,56 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 * Light themes: `rgba(0, 0, 0, 0.6)` (default)
 
 * Dark themes: `rgba(255, 255, 255, 0.5)` via `body.dark-theme` selector
+
+## Heading Collapse
+
+**Plugin** (`src/webview/heading-collapse-plugin.ts`):
+
+* ProseMirror plugin for visual-only heading collapse/expand toggles
+
+* Decoration-based: no schema changes, no markdown impact
+
+* **Toggle arrow**: `Decoration.widget` at `pos + 1` with `side: -1` (left of badge)
+
+* **Content hiding**: `Decoration.node` with `collapsed-content` class on section nodes below collapsed heading
+
+* **Stable heading keys**: `"H{level}:{text}:{occurrence}"` to survive position shifts; changes when heading text edited
+
+* **Section detection**: Collapses all nodes until next heading at same or higher level, or end of document
+
+* **State tracking**: `Map<string, boolean>` in plugin state for collapsed heading keys
+
+* **Click handler**: `handleDOMEvents.click` on toggle arrow to dispatch transaction with collapse meta
+
+**State Persistence** (in `src/webview/main.ts`):
+
+* Saved in `vscode.setState()` under `collapsedHeadings: string[]`
+
+* Restored after editor init via `setCollapsedHeadings()` helper
+
+* Updated on transaction via `onTransaction` hook when collapse meta present
+
+**CSS** (in `src/markdownEditorProvider.ts`):
+
+* Toggle arrow: `position: absolute; left: -32px` (left of heading), hidden by default, visible on hover/when collapsed
+
+* Arrow colors: light theme `rgba(0, 0, 0, 0.5)`, dark theme `rgba(255, 255, 255, 0.5)`
+
+* Arrow transition: 0.15s ease-out for opacity/background (respects `prefers-reduced-motion`)
+
+* Collapsed content: `display: none !important` to hide section nodes
+
+* Collapsed heading indicator: dashed border (1px, 0.15 opacity) to show hidden content exists
+
+**Coexistence**:
+
+* **Heading level badge**: Both add widgets at `pos + 1`, but use different `side` values (-1 for collapse arrow, 0+ for badge) — no conflict
+
+* **TOC sidebar**: Independent heading extraction; TOC continues to track all headings (including hidden ones for state persistence)
+
+* **Line highlight**: Won't highlight nodes with `display: none`
+
+* **Markdown output**: `editor.getMarkdown()` unaffected — decorations are visual-only
 
 ## TOC Sidebar
 
