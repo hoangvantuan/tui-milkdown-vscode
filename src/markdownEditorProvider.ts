@@ -1766,6 +1766,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             color: var(--vscode-list-activeSelectionForeground);
             opacity: 1;
           }
+          @media (max-width: 600px) {
+            #toc-sidebar { width: 180px; min-width: 180px; }
+          }
 
           /* Reduced motion — respect OS accessibility setting */
           @media (prefers-reduced-motion: reduce) {

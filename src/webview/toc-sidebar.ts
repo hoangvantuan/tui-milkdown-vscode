@@ -192,15 +192,24 @@ export function setupTocSidebar(
   renderFullToc();
 }
 
-// Called from onTransaction — lightweight update
+// Debounce TOC rebuild to avoid full DOM rebuild on every keystroke
+let tocRebuildTimer: ReturnType<typeof setTimeout> | null = null;
+const TOC_REBUILD_DEBOUNCE = 200;
+
+// Called from onTransaction — debounces rebuild, updates active immediately
 export function updateTocFromEditor(editor: Editor, docChanged: boolean): void {
   tocEditor = editor;
   if (!tocContainer) return;
 
   if (docChanged) {
-    cachedHeadings = extractHeadings(editor.state.doc);
-    cachedTree = buildTocTree(cachedHeadings);
-    renderFullToc();
+    if (tocRebuildTimer) clearTimeout(tocRebuildTimer);
+    tocRebuildTimer = setTimeout(() => {
+      cachedHeadings = extractHeadings(editor.state.doc);
+      cachedTree = buildTocTree(cachedHeadings);
+      renderFullToc();
+      updateActive(editor.state.selection.from);
+      tocRebuildTimer = null;
+    }, TOC_REBUILD_DEBOUNCE);
   }
 
   const { from } = editor.state.selection;

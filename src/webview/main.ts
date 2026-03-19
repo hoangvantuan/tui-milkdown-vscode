@@ -632,7 +632,7 @@ function setTheme(themeName: ThemeName, saveGlobal = true): void {
   const select = getThemeSelect();
   if (select) select.value = themeName;
 
-  vscode.setState({ theme: themeName });
+  vscode.setState({ ...vscode.getState(), theme: themeName });
 
   if (saveGlobal) {
     globalThemeReceived = themeName;
@@ -908,7 +908,6 @@ function initEditor(initialContent: string = ""): Editor | null {
       },
       onSelectionUpdate: ({ editor: ed }) => {
         updateToolbarActiveState(ed);
-        updateTocFromEditor(ed, false);
       },
       onTransaction: ({ editor: ed, transaction: tr }) => {
         updateToolbarActiveState(ed);
@@ -1138,9 +1137,10 @@ window.addEventListener("message", async (event) => {
 
           const displayBody = transformForDisplay(parsed.body, currentImageMap);
 
+          let justInitialized = false;
           if (!editor) {
             editor = initEditor(displayBody);
-            if (editor) initTocSidebar();
+            if (editor) { initTocSidebar(); justInitialized = true; }
           } else {
             updateEditorContent(displayBody);
           }
@@ -1148,8 +1148,8 @@ window.addEventListener("message", async (event) => {
           if (editor) {
             // Transform table cells: convert text patterns (-, N., [x]) to proper list nodes
             transformTableCellsAfterParse(editor);
-            // Update TOC after content change
-            updateTocFromEditor(editor, true);
+            // Update TOC after content change (skip if just initialized — initTocSidebar already did it)
+            if (!justInitialized) updateTocFromEditor(editor, true);
           }
         } catch (err) {
           console.error("[Tiptap] Update failed:", err);
@@ -1233,7 +1233,6 @@ function setupTocHandlers(): void {
   const depthFilterContainer = document.getElementById("toc-depth-filter");
   const savedState = vscode.getState();
   const savedFilter = savedState?.tocDepthFilter || [1, 2, 3, 4, 5, 6];
-  setTocDepthFilter(savedFilter);
 
   // Render depth filter buttons
   if (depthFilterContainer) {
