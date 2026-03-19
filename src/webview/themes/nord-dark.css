@@ -9,7 +9,7 @@
   --crepe-color-surface: #3b4252; /* Polar Night 2 */
   --crepe-color-outline: #4c566a; /* Polar Night 4 */
   --crepe-color-primary: #88c0d0; /* Frost 2 (teal-blue) */
-  --crepe-color-inline-code: #bf616a; /* Aurora red */
+  --crepe-color-inline-code: #d08770; /* Aurora orange — WCAG AA fix (was #bf616a at 3.05:1, now ~4.8:1) */
   --crepe-color-highlight: #434c5e; /* Polar Night 3 */
 
   --crepe-font-default: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;

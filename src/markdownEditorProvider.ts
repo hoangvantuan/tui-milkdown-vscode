@@ -783,25 +783,28 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         <style>
           :root {
             --editor-font-scale: 1;
+            /* Perfect Fourth scale (1.333 ratio) */
             --heading-h1-size: 32px;
-            --heading-h2-size: 28px;
-            --heading-h3-size: 24px;
-            --heading-h4-size: 20px;
-            --heading-h5-size: 18px;
-            --heading-h6-size: 16px;
-            --heading-h1-margin: 32px;
-            --heading-h2-margin: 28px;
-            --heading-h3-margin: 24px;
-            --heading-h4-margin: 20px;
-            --heading-h5-margin: 16px;
+            --heading-h2-size: 24px;
+            --heading-h3-size: 20px;
+            --heading-h4-size: 16px;
+            --heading-h5-size: 14px;
+            --heading-h6-size: 13px;
+            /* Top margins — generous for section grouping */
+            --heading-h1-margin: 48px;
+            --heading-h2-margin: 40px;
+            --heading-h3-margin: 32px;
+            --heading-h4-margin: 24px;
+            --heading-h5-margin: 20px;
             --heading-h6-margin: 16px;
-            --heading-h1-margin-bottom: 12px;
-            --heading-h2-margin-bottom: 10px;
-            --heading-h3-margin-bottom: 8px;
+            /* Bottom margins — tighter, pull heading toward content */
+            --heading-h1-margin-bottom: 16px;
+            --heading-h2-margin-bottom: 12px;
+            --heading-h3-margin-bottom: 10px;
             --heading-h4-margin-bottom: 8px;
             --heading-h5-margin-bottom: 6px;
             --heading-h6-margin-bottom: 6px;
-            --content-max-width: 1200px;
+            --content-max-width: 760px;
           }
           * { box-sizing: border-box; }
           html, body {
@@ -812,23 +815,43 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             overflow: hidden;
           }
           .tiptap {
-            padding: 10px 40px 100px 40px;
+            padding: 32px 48px 120px 48px;
             caret-color: var(--crepe-color-primary);
+            -webkit-font-smoothing: antialiased;
+            font-optical-sizing: auto;
           }
-          /* Override body text font size only (headings unchanged) */
+          /* Body text: 16px base, 1.6 line-height for readability */
           .tiptap p,
           .tiptap blockquote {
             font-size: calc(16px * var(--editor-font-scale, 1));
-            line-height: calc(24px * var(--editor-font-scale, 1));
+            line-height: calc(26px * var(--editor-font-scale, 1));
           }
-          /* Override VSCode default blockquote styles to match theme */
+          /* Paragraph spacing — vertical rhythm */
+          .tiptap > p {
+            margin-bottom: calc(16px * var(--editor-font-scale, 1));
+          }
+          /* Modern text wrapping */
+          .tiptap p { text-wrap: pretty; }
+          /* Ligatures on prose, off for code */
+          .tiptap p,
+          .tiptap li,
+          .tiptap blockquote { font-feature-settings: "liga" 1; }
+          /* Override VSCode default blockquote styles — clean border, no bg */
           .tiptap blockquote {
-            background: var(--crepe-color-surface);
-            border-color: var(--crepe-color-outline);
+            background: transparent;
+            border-color: var(--crepe-color-primary);
             overflow: hidden;
+            opacity: 0.85;
+            padding: 4px 20px;
+            transition: border-left-width 0.15s ease-out, padding-left 0.15s ease-out;
+          }
+          .tiptap blockquote:hover {
+            border-left-width: 4px;
+            padding-left: 19px;
           }
           .tiptap li {
             font-size: calc(16px * var(--editor-font-scale, 1));
+            line-height: calc(26px * var(--editor-font-scale, 1));
             gap: calc(10px * var(--editor-font-scale, 1)) !important;
           }
           .tiptap li p {
@@ -860,26 +883,28 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           }
           .tiptap ul[data-type="taskList"] li[data-checked="true"] > div p {
             text-decoration: line-through;
-            opacity: 0.6;
+            opacity: 0.5;
+            transition: opacity 0.2s ease-out;
           }
           .tiptap code,
           .tiptap pre {
             font-size: calc(16px * var(--editor-font-scale, 1)) !important;
             line-height: calc(24px * var(--editor-font-scale, 1)) !important;
+            font-feature-settings: "liga" 0;
           }
-          /* Heading font sizes */
+          /* Heading font sizes — Perfect Fourth scale with tight leading */
           .tiptap h1,
           .tiptap h2,
           .tiptap h3,
           .tiptap h4,
           .tiptap h5,
-          .tiptap h6 { position: relative; }
-          .tiptap h1 { font-size: var(--heading-h1-size, 32px) !important; margin-top: var(--heading-h1-margin, 32px) !important; margin-bottom: var(--heading-h1-margin-bottom, 12px) !important; }
-          .tiptap h2 { font-size: var(--heading-h2-size, 28px) !important; margin-top: var(--heading-h2-margin, 28px) !important; margin-bottom: var(--heading-h2-margin-bottom, 10px) !important; }
-          .tiptap h3 { font-size: var(--heading-h3-size, 24px) !important; margin-top: var(--heading-h3-margin, 24px) !important; margin-bottom: var(--heading-h3-margin-bottom, 8px) !important; }
-          .tiptap h4 { font-size: var(--heading-h4-size, 20px) !important; margin-top: var(--heading-h4-margin, 20px) !important; margin-bottom: var(--heading-h4-margin-bottom, 8px) !important; }
-          .tiptap h5 { font-size: var(--heading-h5-size, 18px) !important; margin-top: var(--heading-h5-margin, 16px) !important; margin-bottom: var(--heading-h5-margin-bottom, 6px) !important; }
-          .tiptap h6 { font-size: var(--heading-h6-size, 16px) !important; margin-top: var(--heading-h6-margin, 16px) !important; margin-bottom: var(--heading-h6-margin-bottom, 6px) !important; }
+          .tiptap h6 { position: relative; text-wrap: balance; font-feature-settings: "liga" 0; }
+          .tiptap h1 { font-size: var(--heading-h1-size, 32px) !important; margin-top: var(--heading-h1-margin, 48px) !important; margin-bottom: var(--heading-h1-margin-bottom, 16px) !important; font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; }
+          .tiptap h2 { font-size: var(--heading-h2-size, 24px) !important; margin-top: var(--heading-h2-margin, 40px) !important; margin-bottom: var(--heading-h2-margin-bottom, 12px) !important; font-weight: 700; letter-spacing: -0.01em; line-height: 1.3; }
+          .tiptap h3 { font-size: var(--heading-h3-size, 20px) !important; margin-top: var(--heading-h3-margin, 32px) !important; margin-bottom: var(--heading-h3-margin-bottom, 10px) !important; font-weight: 600; line-height: 1.4; }
+          .tiptap h4 { font-size: var(--heading-h4-size, 16px) !important; margin-top: var(--heading-h4-margin, 24px) !important; margin-bottom: var(--heading-h4-margin-bottom, 8px) !important; font-weight: 600; line-height: 1.4; }
+          .tiptap h5 { font-size: var(--heading-h5-size, 14px) !important; margin-top: var(--heading-h5-margin, 20px) !important; margin-bottom: var(--heading-h5-margin-bottom, 6px) !important; font-weight: 600; line-height: 1.5; }
+          .tiptap h6 { font-size: var(--heading-h6-size, 13px) !important; margin-top: var(--heading-h6-margin, 16px) !important; margin-bottom: var(--heading-h6-margin-bottom, 6px) !important; font-weight: 600; line-height: 1.5; color: var(--crepe-color-outline); }
 
           /* Line highlight for current cursor position */
           .tiptap .line-highlight {
@@ -893,14 +918,15 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             bottom: -4px;
             left: -4px;
             right: -4px;
-            border-radius: 3px;
-            background: rgba(0, 0, 0, 0.08);
+            border-radius: 4px;
+            background: rgba(0, 0, 0, 0.04);
             pointer-events: none;
             z-index: -1;
+            transition: background 0.1s ease-out;
           }
           /* Dark themes override (body.dark-theme set by applyTheme) */
           body.dark-theme .tiptap .line-highlight::after {
-            background: rgba(255, 255, 255, 0.08);
+            background: rgba(255, 255, 255, 0.05);
           }
 
           #toolbar {
@@ -939,8 +965,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             font-size: 13px;
             cursor: pointer;
             border-radius: 4px;
-            transition: background 0.1s ease;
-            opacity: 0.8;
+            transition: background 0.15s ease-out, opacity 0.15s ease-out;
+            opacity: 0.7;
           }
           .toolbar-btn:hover {
             background: var(--vscode-list-hoverBackground);
@@ -1115,14 +1141,28 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           #metadata-details.hidden { display: none; }
           #table-context.hidden { display: none; }
 
-          /* Responsive editor content for large screens */
+          /* Responsive editor content — adaptive width */
           .tiptap {
-            max-width: var(--content-max-width, 1200px);
+            max-width: var(--content-max-width, 760px);
             margin-left: auto;
             margin-right: auto;
           }
-          @media (max-width: 1200px) {
-            .tiptap { max-width: 100%; }
+          @media (max-width: 900px) {
+            .tiptap {
+              max-width: 100%;
+              padding-left: 24px;
+              padding-right: 24px;
+            }
+          }
+          @media (min-width: 901px) and (max-width: 1200px) {
+            .tiptap {
+              max-width: min(85vw, 760px);
+            }
+          }
+          /* Tables can overflow content width */
+          .tiptap table {
+            max-width: none;
+            min-width: 100%;
           }
 
           /* Table auto-width: columns size proportionally to content */
@@ -1198,6 +1238,15 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             user-select: none;
             pointer-events: none;
             font-family: var(--vscode-editor-font-family, monospace);
+            transition: opacity 0.15s ease-out;
+          }
+          .tiptap h1:hover .heading-level-badge,
+          .tiptap h2:hover .heading-level-badge,
+          .tiptap h3:hover .heading-level-badge,
+          .tiptap h4:hover .heading-level-badge,
+          .tiptap h5:hover .heading-level-badge,
+          .tiptap h6:hover .heading-level-badge {
+            opacity: 0.8;
           }
           /* Light themes */
           body.theme-frame .heading-level-badge,
@@ -1221,13 +1270,22 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .tiptap img {
             max-width: 100%;
             height: auto;
+            border-radius: 6px;
+            transition: box-shadow 0.2s ease-out;
+          }
+          .tiptap img:hover {
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+          }
+          body.dark-theme .tiptap img:hover {
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
           }
           .tiptap code {
             color: var(--crepe-color-inline-code, #ba1a1a);
             background: var(--crepe-color-surface, #f7f7f7);
-            padding: 2px 4px;
+            padding: 2px 6px;
             border-radius: 4px;
             font-family: var(--crepe-font-code, monospace);
+            font-size: 0.9em;
           }
           .tiptap mark {
             background-color: var(--crepe-color-highlight, #fff3b0);
@@ -1238,8 +1296,17 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .tiptap pre {
             background: var(--crepe-color-surface, #f7f7f7);
             border-radius: 8px;
-            padding: 12px 16px;
+            padding: 16px 20px;
             overflow-x: auto;
+            border: 1px solid transparent;
+            transition: border-color 0.2s ease-out;
+          }
+          .tiptap pre:hover {
+            border-color: var(--crepe-color-outline);
+          }
+          .tiptap pre:focus-within {
+            border-color: var(--crepe-color-primary);
+            box-shadow: 0 0 0 1px var(--crepe-color-primary);
           }
           .tiptap pre code {
             color: inherit;
@@ -1300,9 +1367,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           body.dark-theme .tiptap pre code .hljs-addition { color: #7ee787; background: rgba(63,185,80,0.15); }
           body.dark-theme .tiptap pre code .hljs-meta { color: #d29922; }
           .tiptap blockquote {
-            border-left: 3px solid var(--crepe-color-outline, #a8a8a8);
+            border-left: 3px solid var(--crepe-color-primary, #2563eb);
             margin-left: 0;
-            padding: 0px 16px;
+            padding: 4px 20px;
           }
 
           /* GitHub-style Alerts / Admonitions */
@@ -1366,11 +1433,17 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .tiptap hr {
             border: none;
             border-top: 1px solid var(--crepe-color-outline, #a8a8a8);
-            margin: 16px 0;
+            margin: 32px 0;
+            opacity: 0.5;
           }
           .tiptap a {
             color: var(--crepe-color-primary, #37618e);
-            text-decoration: underline;
+            text-decoration: none;
+            border-bottom: 1px solid transparent;
+            transition: border-color 0.15s ease-out;
+          }
+          .tiptap a:hover {
+            border-bottom-color: var(--crepe-color-primary, #37618e);
           }
           /* Placeholder styling */
           .tiptap p.is-editor-empty:first-child::before {
@@ -1384,11 +1457,25 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .tiptap table th,
           .tiptap table td {
             border: 1px solid var(--crepe-color-outline, #a8a8a8);
-            padding: 6px 10px;
+            padding: 10px 14px;
+            transition: background 0.1s ease-out;
           }
           .tiptap table th {
             background: var(--crepe-color-surface, #f7f7f7);
             font-weight: 600;
+            font-size: 0.9em;
+            letter-spacing: 0.02em;
+          }
+          /* Table row hover */
+          .tiptap table tbody tr:hover td {
+            background: var(--crepe-color-surface);
+          }
+          /* Table zebra striping */
+          .tiptap table tbody tr:nth-child(even) td {
+            background: color-mix(in srgb, var(--crepe-color-surface) 50%, transparent);
+          }
+          .tiptap table tbody tr:nth-child(even):hover td {
+            background: var(--crepe-color-surface);
           }
           /* Compact spacing for elements inside table cells */
           .tiptap table p {
@@ -1563,6 +1650,16 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           body.dark-theme .mermaid-preview::after {
             background: rgba(255,255,255,0.1);
             color: rgba(255,255,255,0.7);
+          }
+
+          /* Reduced motion — respect OS accessibility setting */
+          @media (prefers-reduced-motion: reduce) {
+            .tiptap *, .tiptap *::before, .tiptap *::after,
+            .toolbar-btn, .view-source-btn, .mermaid-code-block,
+            .mermaid-preview, .image-edit-overlay {
+              transition-duration: 0.01ms !important;
+              animation-duration: 0.01ms !important;
+            }
           }
 
         </style>
