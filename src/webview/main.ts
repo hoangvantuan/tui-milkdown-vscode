@@ -45,6 +45,7 @@ import { AlertNode, ALERT_REGEX, ALERT_TYPES, getFirstText, stripAlertPrefix } f
 import { TableContextMenu } from "./table-context-menu";
 import { Blockquote } from "@tiptap/extension-blockquote";
 import { setupTocSidebar, updateTocFromEditor, setTocDepthFilter, getTocDepthFilter } from "./toc-sidebar";
+import { HeadingCollapse, collapsePluginKey, getCollapsedHeadings, setCollapsedHeadings } from "./heading-collapse-plugin";
 
 // Fix: @tiptap/markdown v3.19.0 drops `escape` tokens from marked parser,
 // causing escaped characters like \_ to be silently lost during roundtrip.
@@ -131,6 +132,7 @@ interface WebviewState {
   theme?: string;
   tocVisible?: boolean;
   tocDepthFilter?: number[];
+  collapsedHeadings?: string[];
 }
 
 declare function acquireVsCodeApi(): {
@@ -695,6 +697,7 @@ function initEditor(initialContent: string = ""): Editor | null {
     // Build conditional extensions
     const conditionalExtensions = [
       HeadingLevel,
+      HeadingCollapse,
       ...(highlightCurrentLine ? [LineHighlight] : []),
     ];
 
@@ -912,6 +915,12 @@ function initEditor(initialContent: string = ""): Editor | null {
       onTransaction: ({ editor: ed, transaction: tr }) => {
         updateToolbarActiveState(ed);
         updateTocFromEditor(ed, tr.docChanged);
+        // Persist collapsed heading state on toggle only
+        const collapseMeta = tr.getMeta(collapsePluginKey);
+        if (collapseMeta?.type === "toggle") {
+          const keys = getCollapsedHeadings(ed.state);
+          vscode.setState({ ...vscode.getState(), collapsedHeadings: keys });
+        }
       },
     });
 
@@ -1148,6 +1157,13 @@ window.addEventListener("message", async (event) => {
           if (editor) {
             // Transform table cells: convert text patterns (-, N., [x]) to proper list nodes
             transformTableCellsAfterParse(editor);
+            // Restore collapsed headings from saved state after first init
+            if (justInitialized) {
+              const saved = vscode.getState();
+              if (saved?.collapsedHeadings?.length) {
+                setCollapsedHeadings(editor.view, saved.collapsedHeadings);
+              }
+            }
             // Update TOC after content change (skip if just initialized — initTocSidebar already did it)
             if (!justInitialized) updateTocFromEditor(editor, true);
           }

@@ -64,6 +64,7 @@ src/
     ├── frontmatter.ts        # YAML parsing & validation utilities
     ├── line-highlight-plugin.ts # ProseMirror plugin for cursor line highlight
     ├── heading-level-plugin.ts # ProseMirror plugin for H1-H6 level badges
+    ├── heading-collapse-plugin.ts # ProseMirror plugin for heading collapse/expand toggles
     ├── image-edit-plugin.ts  # Double-click image URL editing
     ├── table-markdown-serializer.ts # Custom GFM table serializer (multi-line cells)
     ├── table-cell-content-parser.ts # Post-parse transformer for table cell lists/breaks
@@ -139,6 +140,8 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 **Content updates:** `editor.commands.setContent()` - no destroy/recreate needed. Cursor position preserved via save/restore around setContent.
 
 **Empty paragraph roundtrip:** `BlankLineHandler` extension parses MarkedJS `space` tokens into empty paragraph nodes (count = newlines - 2). Custom `Document.extend({ renderMarkdown })` serializes empty paragraphs as single `\n` (instead of `\n\n`), producing correct blank line count in markdown output.
+
+**Task list CSS gotcha:** Task list selectors MUST use direct child combinator (`ul[data-type="taskList"] > li`) — descendant combinator leaks `display: flex` to nested regular list items, breaking vertical layout.
 
 **Node naming:** Tiptap uses camelCase: `listItem`, `codeBlock`, `taskList`, `taskItem`, `tableCell`, `tableHeader`.
 
@@ -346,6 +349,60 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 * Light themes: `rgba(0, 0, 0, 0.6)` (default)
 
 * Dark themes: `rgba(255, 255, 255, 0.5)` via `body.dark-theme` selector
+
+## Heading Collapse
+
+**Plugin** (`src/webview/heading-collapse-plugin.ts`):
+
+* ProseMirror plugin for visual-only heading collapse/expand toggles
+
+* Decoration-based: no schema changes, no markdown impact
+
+* **Toggle arrow**: `Decoration.widget` at `pos + 1` with `side: -2` (renders before badge)
+
+* **Content hiding**: `Decoration.node` with `collapsed-content` class on section nodes below collapsed heading
+
+* **Stable heading keys**: `"H{level}:{text}:{occurrence}"` to survive position shifts; changes when heading text edited
+
+* **Section detection**: Collapses all nodes until next heading at same or higher level, or end of document
+
+* **State tracking**: `Map<string, boolean>` in plugin state for collapsed heading keys
+
+* **Click handler**: `handleDOMEvents.click` on toggle arrow to dispatch transaction with collapse meta
+
+**State Persistence** (in `src/webview/main.ts`):
+
+* Saved in `vscode.setState()` under `collapsedHeadings: string[]`
+
+* Restored after editor init via `setCollapsedHeadings()` helper
+
+* Updated on transaction via `onTransaction` hook when collapse meta present
+
+**CSS** (in `src/markdownEditorProvider.ts`):
+
+* Toggle arrow overlaps heading-level-badge at same position (`left: -15px; top: 3px`), hidden by default (`opacity: 0`)
+
+* **Hover swap**: On heading hover, badge fades out (`opacity: 0`) and arrow fades in (`opacity: 0.6`) — click to toggle collapse
+
+* **Collapsed state**: Arrow always visible, badge always hidden (via `.heading-collapsed-indicator` parent class)
+
+* Arrow colors: light `rgba(0, 0, 0, 0.5)`, dark `rgba(255, 255, 255, 0.5)`, `z-index: 2` above badge
+
+* Collapsed content: `display: none !important` to hide section nodes
+
+* Collapsed heading indicator: dashed border (1px, 0.15 opacity)
+
+* `prefers-reduced-motion`: disables transitions
+
+**Coexistence**:
+
+* **Heading level badge**: Both at `pos + 1`, same absolute position; CSS hover-swap mechanism — arrow has `z-index: 2` above badge
+
+* **TOC sidebar**: Independent heading extraction; TOC continues to track all headings (including hidden ones for state persistence)
+
+* **Line highlight**: Won't highlight nodes with `display: none`
+
+* **Markdown output**: `editor.getMarkdown()` unaffected — decorations are visual-only
 
 ## TOC Sidebar
 

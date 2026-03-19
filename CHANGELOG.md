@@ -2,11 +2,19 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## \[2.3.1] - 2026-03-19
+
+### Fixed
+
+* **Task List Nested Layout**: Fixed `display: flex` leaking to nested list items inside task lists, causing paragraphs and code blocks to render side-by-side instead of vertically stacked. Changed CSS selectors from descendant to direct child combinator (`ul[data-type="taskList"] > li`)
+
 ## \[2.3.0] - 2026-03-19
 
 ### Added
 
 * **Table of Contents Sidebar**: Toggleable TOC panel inside the editor with click-to-scroll navigation, active heading highlight, H1-H6 depth filter, collapse/expand sections, and state persistence
+
+* **Heading Collapse/Expand**: Visual-only toggle arrows on H1-H6 headings to collapse/expand content sections until next same-or-higher-level heading; hover heading badge to reveal toggle arrow; state persisted across webview reloads
 
 ### Fixed
 

@@ -862,26 +862,26 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             list-style: none;
             padding-left: 0;
           }
-          .tiptap ul[data-type="taskList"] li {
+          .tiptap ul[data-type="taskList"] > li {
             display: flex;
             align-items: flex-start;
             gap: calc(8px * var(--editor-font-scale, 1));
           }
-          .tiptap ul[data-type="taskList"] li > label {
+          .tiptap ul[data-type="taskList"] > li > label {
             flex-shrink: 0;
             margin-top: calc(4px * var(--editor-font-scale, 1));
             user-select: none;
           }
-          .tiptap ul[data-type="taskList"] li > label input[type="checkbox"] {
+          .tiptap ul[data-type="taskList"] > li > label input[type="checkbox"] {
             cursor: pointer;
             width: calc(16px * var(--editor-font-scale, 1));
             height: calc(16px * var(--editor-font-scale, 1));
             accent-color: var(--crepe-color-primary, var(--vscode-focusBorder));
           }
-          .tiptap ul[data-type="taskList"] li > div {
+          .tiptap ul[data-type="taskList"] > li > div {
             flex: 1;
           }
-          .tiptap ul[data-type="taskList"] li[data-checked="true"] > div p {
+          .tiptap ul[data-type="taskList"] > li[data-checked="true"] > div p {
             text-decoration: line-through;
             opacity: 0.5;
             transition: opacity 0.2s ease-out;
@@ -898,7 +898,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .tiptap h3,
           .tiptap h4,
           .tiptap h5,
-          .tiptap h6 { position: relative; text-wrap: balance; font-feature-settings: "liga" 0; }
+          .tiptap h6 { position: relative; font-feature-settings: "liga" 0; }
           .tiptap h1 { font-size: var(--heading-h1-size, 32px) !important; margin-top: var(--heading-h1-margin, 48px) !important; margin-bottom: var(--heading-h1-margin-bottom, 16px) !important; font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; }
           .tiptap h2 { font-size: var(--heading-h2-size, 24px) !important; margin-top: var(--heading-h2-margin, 40px) !important; margin-bottom: var(--heading-h2-margin-bottom, 12px) !important; font-weight: 700; letter-spacing: -0.01em; line-height: 1.3; }
           .tiptap h3 { font-size: var(--heading-h3-size, 20px) !important; margin-top: var(--heading-h3-margin, 32px) !important; margin-bottom: var(--heading-h3-margin-bottom, 10px) !important; font-weight: 600; line-height: 1.4; }
@@ -1154,6 +1154,11 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
               padding-right: 24px;
             }
           }
+          /* Table wrapper: horizontal scroll for wide tables */
+          .tiptap .tableWrapper {
+            overflow-x: auto;
+            max-width: 100%;
+          }
           /* Tables can overflow content width */
           .tiptap table {
             max-width: none;
@@ -1253,6 +1258,73 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           /* Dark themes (body.dark-theme set by applyTheme) */
           body.dark-theme .heading-level-badge {
             color: rgba(255, 255, 255, 0.5);
+          }
+
+          /* Heading collapse toggle arrow — overlaps badge, shown on hover */
+          .heading-collapse-toggle {
+            position: absolute;
+            left: -15px;
+            top: 3px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 500;
+            opacity: 0;
+            user-select: none;
+            padding: 0;
+            border-radius: 3px;
+            transition: opacity 0.15s ease-out;
+            line-height: 1;
+            z-index: 2;
+            color: rgba(0, 0, 0, 0.5);
+            font-family: var(--vscode-editor-font-family, monospace);
+          }
+          /* Hover heading: hide badge, show arrow */
+          .tiptap h1:hover .heading-collapse-toggle,
+          .tiptap h2:hover .heading-collapse-toggle,
+          .tiptap h3:hover .heading-collapse-toggle,
+          .tiptap h4:hover .heading-collapse-toggle,
+          .tiptap h5:hover .heading-collapse-toggle,
+          .tiptap h6:hover .heading-collapse-toggle {
+            opacity: 0.6;
+          }
+          .tiptap h1:hover .heading-level-badge,
+          .tiptap h2:hover .heading-level-badge,
+          .tiptap h3:hover .heading-level-badge,
+          .tiptap h4:hover .heading-level-badge,
+          .tiptap h5:hover .heading-level-badge,
+          .tiptap h6:hover .heading-level-badge {
+            opacity: 0;
+          }
+          .heading-collapse-toggle:hover {
+            opacity: 1 !important;
+          }
+          /* Collapsed state: always show arrow, always hide badge */
+          .heading-collapsed-indicator .heading-collapse-toggle {
+            opacity: 0.6;
+          }
+          .heading-collapsed-indicator .heading-level-badge {
+            opacity: 0 !important;
+          }
+          body.dark-theme .heading-collapse-toggle {
+            color: rgba(255, 255, 255, 0.5);
+          }
+          /* Hidden content under collapsed heading */
+          .collapsed-content {
+            display: none !important;
+          }
+          /* Dashed border on collapsed headings */
+          .heading-collapsed-indicator {
+            border-bottom: 1px dashed rgba(0, 0, 0, 0.15);
+            padding-bottom: 4px;
+            margin-bottom: 8px;
+          }
+          body.dark-theme .heading-collapsed-indicator {
+            border-bottom-color: rgba(255, 255, 255, 0.15);
+          }
+          @media (prefers-reduced-motion: reduce) {
+            .heading-collapse-toggle {
+              transition: none;
+            }
           }
 
           /* Base Tiptap editor styles */
