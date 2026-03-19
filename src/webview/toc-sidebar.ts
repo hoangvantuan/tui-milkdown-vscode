@@ -51,26 +51,14 @@ export function buildTocTree(flat: TocEntry[]): TocEntry[] {
 function renderTree(
   container: HTMLElement,
   items: TocEntry[],
-  depthFilter: Set<number>,
   onClickEntry: (pos: number) => void,
 ): void {
   for (const item of items) {
-    if (!depthFilter.has(item.level)) {
-      // Still render children that pass the filter
-      if (item.children.length > 0) {
-        renderTree(container, item.children, depthFilter, onClickEntry);
-      }
-      continue;
-    }
-
     const row = document.createElement("div");
     row.className = `toc-entry toc-level-${item.level}`;
     row.dataset.pos = String(item.pos);
 
-    const visibleChildren = item.children.filter((c) =>
-      hasVisibleDescendant(c, depthFilter),
-    );
-    const hasChildren = visibleChildren.length > 0;
+    const hasChildren = item.children.length > 0;
 
     if (hasChildren) {
       const arrow = document.createElement("span");
@@ -98,21 +86,15 @@ function renderTree(
     if (hasChildren) {
       const childContainer = document.createElement("div");
       childContainer.className = "toc-children";
-      renderTree(childContainer, item.children, depthFilter, onClickEntry);
+      renderTree(childContainer, item.children, onClickEntry);
       container.appendChild(childContainer);
     }
   }
 }
 
-function hasVisibleDescendant(entry: TocEntry, depthFilter: Set<number>): boolean {
-  if (depthFilter.has(entry.level)) return true;
-  return entry.children.some((c) => hasVisibleDescendant(c, depthFilter));
-}
-
 // State
 let cachedHeadings: TocEntry[] = [];
 let cachedTree: TocEntry[] = [];
-let currentDepthFilter = new Set([1, 2, 3, 4, 5, 6]);
 let tocContainer: HTMLElement | null = null;
 let tocEditor: Editor | null = null;
 
@@ -124,12 +106,22 @@ function scrollToHeading(pos: number): void {
     const safePos = Math.min(pos + 1, docSize);
     tocEditor.commands.focus(safePos);
 
-    // Use DOM scrollIntoView for reliable "scroll to top" behavior
-    const domAtPos = tocEditor.view.domAtPos(safePos);
-    const node = domAtPos.node;
-    const el = node instanceof HTMLElement ? node : node.parentElement;
+    // Use nodeDOM to get the actual heading block element (not an inline child)
+    const headingDom = tocEditor.view.nodeDOM(pos);
+    const el = headingDom instanceof HTMLElement ? headingDom : null;
     if (el) {
-      el.scrollIntoView({ block: "start", behavior: "smooth" });
+      // Delay to run after focus() scroll settles, offset 60px from top for breathing room
+      requestAnimationFrame(() => {
+        const scroller = document.getElementById("editor-container");
+        if (scroller) {
+          const elRect = el.getBoundingClientRect();
+          const scrollerRect = scroller.getBoundingClientRect();
+          const targetTop = elRect.top - scrollerRect.top + scroller.scrollTop - 60;
+          scroller.scrollTo({ top: Math.max(0, targetTop), behavior: "smooth" });
+        } else {
+          el.scrollIntoView({ block: "start", behavior: "smooth" });
+        }
+      });
     }
   } catch {
     // Position may be invalid after doc change
@@ -148,7 +140,7 @@ function renderFullToc(): void {
     return;
   }
 
-  renderTree(tocContainer, cachedTree, currentDepthFilter, scrollToHeading);
+  renderTree(tocContainer, cachedTree, scrollToHeading);
 }
 
 // Update active heading highlight based on cursor position
@@ -179,13 +171,9 @@ function updateActive(cursorPos: number): void {
 export function setupTocSidebar(
   editor: Editor,
   container: HTMLElement,
-  depthFilter?: number[],
 ): void {
   tocEditor = editor;
   tocContainer = container;
-  if (depthFilter) {
-    currentDepthFilter = new Set(depthFilter);
-  }
 
   cachedHeadings = extractHeadings(editor.state.doc);
   cachedTree = buildTocTree(cachedHeadings);
@@ -216,17 +204,3 @@ export function updateTocFromEditor(editor: Editor, docChanged: boolean): void {
   updateActive(from);
 }
 
-// Depth filter toggle — called from UI
-export function setTocDepthFilter(levels: number[]): void {
-  currentDepthFilter = new Set(levels);
-  renderFullToc();
-  // Update active state after re-render
-  if (tocEditor) {
-    const { from } = tocEditor.state.selection;
-    updateActive(from);
-  }
-}
-
-export function getTocDepthFilter(): number[] {
-  return [...currentDepthFilter].sort();
-}

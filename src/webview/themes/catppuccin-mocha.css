@@ -1,5 +1,12 @@
 /* Catppuccin Mocha Theme - Darkest variant (Original) */
 /* https://catppuccin.com/palette */
+.theme-catppuccin-mocha {
+  --accent-primary: #B4BEFE;
+  --accent-rgb: 180, 190, 254;
+  --toolbar-bg-rgb: 30, 30, 46;
+  --border-rgb: 255, 255, 255;
+  --toolbar-fg: #cdd6f4;
+}
 .theme-catppuccin-mocha .tiptap {
   --crepe-color-background: #1e1e2e;
   --crepe-color-on-background: #cdd6f4;

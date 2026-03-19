@@ -2,6 +2,36 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## \[2.4.0] - 2026-03-19
+
+### Added
+
+* **Code Block Header**: Language badge with dropdown selector (19 languages) and one-click copy button with visual feedback; skips Mermaid blocks
+* **Glassmorphic Toolbar**: Frosted-glass effect with `backdrop-filter: blur(12px)`, stroke-based Lucide icons replacing filled MDI icons, press-scale micro-interaction on buttons
+* **Theme Accent Variables**: All 10 themes now expose `--accent-primary`, `--accent-rgb`, `--toolbar-bg-rgb`, `--border-rgb`, `--toolbar-fg` for consistent UI outside `.tiptap`
+* **Link Hover Animation**: Underline slides in via `background-size` transition (replaces `border-bottom`)
+* **Selection Highlight**: `::selection` uses theme accent color
+* **Gradient HR**: Horizontal rule fades to transparent at edges
+* **Custom Scrollbar**: Thin 6px scrollbar for editor, 4px for TOC sidebar
+* **High Contrast Support**: `prefers-contrast: more` media query adds visible borders and underlines
+* **Smooth Theme Transitions**: Background and text color animate on theme switch (0.3s ease)
+
+### Changed
+
+* **Toolbar Styling**: Custom `appearance: none` selects with SVG chevron, unified `border-radius: 6px`, reduced gap (4px → 2px)
+* **Editor Padding**: Fixed padding replaced with fluid `clamp(24px, 5vw, 80px)`; bottom padding increased to `40vh` for comfortable writing
+* **TOC Sidebar**: Removed H1-H6 depth filter buttons for cleaner UI; simplified API (`setupTocSidebar` no longer takes `depthFilter` param)
+* **TOC Scroll**: Uses `view.nodeDOM()` with 60px top offset for precise heading positioning
+* **TOC Active State**: Accent-colored highlight with inset left border (`box-shadow: inset 2px 0 0`)
+* **Inline Code Background**: Uses `--border-rgb` variable for subtle theme-aware background
+* **Table Header**: Subtle accent tint on `<th>` cells
+* **Image Hover**: Enhanced shadow + micro-scale (1.003×), removed separate light/dark hover rules
+
+### Removed
+
+* **TOC Depth Filter**: `setTocDepthFilter()`, `getTocDepthFilter()` exports and related UI (H1-H6 toggle buttons)
+* **`tocDepthFilter` state**: No longer persisted in `vscode.setState()`
+
 ## \[2.3.1] - 2026-03-19
 
 ### Fixed

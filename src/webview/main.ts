@@ -44,8 +44,9 @@ import { MermaidDiagram, updateMermaidTheme, clearMermaidCache } from "./mermaid
 import { AlertNode, ALERT_REGEX, ALERT_TYPES, getFirstText, stripAlertPrefix } from "./alert-extension";
 import { TableContextMenu } from "./table-context-menu";
 import { Blockquote } from "@tiptap/extension-blockquote";
-import { setupTocSidebar, updateTocFromEditor, setTocDepthFilter, getTocDepthFilter } from "./toc-sidebar";
+import { setupTocSidebar, updateTocFromEditor } from "./toc-sidebar";
 import { HeadingCollapse, collapsePluginKey, getCollapsedHeadings, setCollapsedHeadings } from "./heading-collapse-plugin";
+import { CodeBlockEnhancement } from "./code-block-plugin";
 
 // Fix: @tiptap/markdown v3.19.0 drops `escape` tokens from marked parser,
 // causing escaped characters like \_ to be silently lost during roundtrip.
@@ -131,7 +132,6 @@ const CodeExitHandler = Extension.create({
 interface WebviewState {
   theme?: string;
   tocVisible?: boolean;
-  tocDepthFilter?: number[];
   collapsedHeadings?: string[];
 }
 
@@ -698,6 +698,7 @@ function initEditor(initialContent: string = ""): Editor | null {
     const conditionalExtensions = [
       HeadingLevel,
       HeadingCollapse,
+      CodeBlockEnhancement,
       ...(highlightCurrentLine ? [LineHighlight] : []),
     ];
 
@@ -1242,35 +1243,11 @@ window.addEventListener("message", async (event) => {
   }
 });
 
-// TOC sidebar setup — registers button handlers and depth filter UI
+// TOC sidebar setup — registers toggle button handler
 function setupTocHandlers(): void {
   const tocSidebar = document.getElementById("toc-sidebar");
   const tocBtn = document.getElementById("btn-toc");
-  const depthFilterContainer = document.getElementById("toc-depth-filter");
-  const savedState = vscode.getState();
-  const savedFilter = savedState?.tocDepthFilter || [1, 2, 3, 4, 5, 6];
 
-  // Render depth filter buttons
-  if (depthFilterContainer) {
-    for (let level = 1; level <= 6; level++) {
-      const btn = document.createElement("button");
-      btn.className = `toc-depth-btn${savedFilter.includes(level) ? " active" : ""}`;
-      btn.textContent = String(level);
-      btn.title = `Toggle H${level}`;
-      btn.addEventListener("click", () => {
-        btn.classList.toggle("active");
-        const activeLevels: number[] = [];
-        depthFilterContainer.querySelectorAll(".toc-depth-btn.active").forEach((b) => {
-          activeLevels.push(parseInt(b.textContent || "0", 10));
-        });
-        setTocDepthFilter(activeLevels);
-        vscode.setState({ ...vscode.getState(), tocDepthFilter: activeLevels });
-      });
-      depthFilterContainer.appendChild(btn);
-    }
-  }
-
-  // Toggle handler
   tocBtn?.addEventListener("click", () => {
     const isHidden = tocSidebar?.classList.toggle("hidden");
     tocBtn.classList.toggle("is-active", !isHidden);
@@ -1284,12 +1261,10 @@ function initTocSidebar(): void {
   const tocContainer = document.getElementById("toc-entries");
   if (!tocContainer) return;
 
-  const savedState = vscode.getState();
-  const savedFilter = savedState?.tocDepthFilter || [1, 2, 3, 4, 5, 6];
-  setupTocSidebar(editor, tocContainer, savedFilter);
+  setupTocSidebar(editor, tocContainer);
 
   // Restore visibility AFTER TOC content is populated
-  if (savedState?.tocVisible) {
+  if (vscode.getState()?.tocVisible) {
     const tocSidebar = document.getElementById("toc-sidebar");
     const tocBtn = document.getElementById("btn-toc");
     tocSidebar?.classList.remove("hidden");

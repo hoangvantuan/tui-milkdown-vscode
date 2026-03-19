@@ -3,6 +3,13 @@
 /* Snow Storm: #d8dee9 #e5e9f0 #eceff4 */
 /* Frost: #8fbcbb #88c0d0 #81a1c1 #5e81ac */
 /* Aurora: #bf616a #d08770 #ebcb8b #a3be8c #b48ead */
+.theme-nord-dark {
+  --accent-primary: #88C0D0;
+  --accent-rgb: 136, 192, 208;
+  --toolbar-bg-rgb: 46, 52, 64;
+  --border-rgb: 255, 255, 255;
+  --toolbar-fg: #eceff4;
+}
 .theme-nord-dark .tiptap {
   --crepe-color-background: #2e3440; /* Polar Night 1 */
   --crepe-color-on-background: #eceff4; /* Snow Storm 3 */

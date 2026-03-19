@@ -1,5 +1,12 @@
 /* Catppuccin Frappe Theme - Subdued dark variant */
 /* https://catppuccin.com/palette */
+.theme-catppuccin-frappe {
+  --accent-primary: #BABBF1;
+  --accent-rgb: 186, 187, 241;
+  --toolbar-bg-rgb: 48, 52, 70;
+  --border-rgb: 255, 255, 255;
+  --toolbar-fg: #c6d0f5;
+}
 .theme-catppuccin-frappe .tiptap {
   --crepe-color-background: #303446;
   --crepe-color-on-background: #c6d0f5;

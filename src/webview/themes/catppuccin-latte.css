@@ -1,5 +1,12 @@
 /* Catppuccin Latte Theme - Light variant */
 /* https://catppuccin.com/palette */
+.theme-catppuccin-latte {
+  --accent-primary: #7287FD;
+  --accent-rgb: 114, 135, 253;
+  --toolbar-bg-rgb: 239, 241, 245;
+  --border-rgb: 0, 0, 0;
+  --toolbar-fg: #4c4f69;
+}
 .theme-catppuccin-latte .tiptap {
   --crepe-color-background: #eff1f5;
   --crepe-color-on-background: #4c4f69;

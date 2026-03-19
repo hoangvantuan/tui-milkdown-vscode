@@ -70,6 +70,7 @@ src/
     ├── line-highlight-plugin.ts # ProseMirror plugin for cursor line highlight
     ├── heading-level-plugin.ts # ProseMirror plugin for H1-H6 level badges
     ├── heading-collapse-plugin.ts # ProseMirror plugin for heading collapse/expand toggles
+    ├── code-block-plugin.ts  # Code block header: language badge dropdown + copy button
     ├── image-edit-plugin.ts  # Double-click image URL editing
     ├── table-markdown-serializer.ts # Custom GFM table serializer (multi-line cells)
     ├── table-cell-content-parser.ts # Post-parse transformer for table cell lists/breaks
@@ -107,7 +108,7 @@ Extension provides these settings via `tuiMarkdown.*` namespace:
 
 Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for markdown roundtrip.
 
-**Extensions:** StarterKit (includes Link with `autolink: true, linkOnPaste: true`), Image, Highlight, Table (resizable + custom `renderMarkdown` hook), CodeBlockLowlight (syntax highlighting via lowlight/highlight.js), TaskList + TaskItem, Placeholder, Markdown (GFM + configurable indentation), AlertNode (GitHub-style alerts), MermaidDiagram (SVG preview), TableContextMenu (right-click menu).
+**Extensions:** StarterKit (includes Link with `autolink: true, linkOnPaste: true`), Image, Highlight, Table (resizable + custom `renderMarkdown` hook), CodeBlockLowlight (syntax highlighting via lowlight/highlight.js), TaskList + TaskItem, Placeholder, Markdown (GFM + configurable indentation), AlertNode (GitHub-style alerts), MermaidDiagram (SVG preview), TableContextMenu (right-click menu), CodeBlockEnhancement (language badge + copy button).
 
 **Markdown API:**
 
@@ -125,7 +126,7 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 * Nord Dark uses the official Nord palette (Polar Night / Snow Storm / Frost / Aurora) — visually distinct from Frame Dark.
 
 **Typography & spacing strategy:**
-* Content max-width: 760px default (65-70 chars/line), responsive breakpoints at 900px and 1200px
+* Content max-width: 100% with fluid padding `clamp(24px, 5vw, 80px)`
 * Body line-height: 1.625 (26px/16px) for optimal readability
 * Heading scale: Perfect Fourth ratio (1.333) — H1:32, H2:24, H3:20, H4:16, H5:14, H6:13
 * Heading margins: generous top (48-16px) for section grouping, tight bottom (16-6px) to pull toward content
@@ -137,7 +138,7 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 * Toolbar buttons: 0.15s ease-out transitions
 * Code blocks: hover border, focus ring on edit
 * Images: 6px border-radius, hover shadow
-* Links: border-bottom animation (no underline)
+* Links: underline slide-in via `background-size` transition
 * Table rows: hover highlight, zebra striping
 * Blockquotes: border thickens on hover (3px→4px)
 * Heading badges: opacity increases on hover (0.5→0.8)
@@ -422,8 +423,6 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 
 * `updateTocFromEditor(editor, docChanged)`: Debounced rebuild (200ms) on doc changes, immediate active heading update on selection
 
-* `setTocDepthFilter(levels)`: H1-H6 toggle filter, re-renders tree
-
 **Layout** (in `src/markdownEditorProvider.ts`):
 
 * `#main-layout` flexbox wrapper: sidebar (220px fixed) + editor container (flex: 1)
@@ -434,21 +433,57 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 
 **Integration** (in `src/webview/main.ts`):
 
-* `setupTocHandlers()`: Registers toolbar toggle, depth filter buttons
+* `setupTocHandlers()`: Registers toolbar toggle button
 
 * `initTocSidebar()`: Called after editor init, restores visibility state AFTER content populated
 
-* State persisted in `vscode.setState()`: `tocVisible`, `tocDepthFilter`
+* State persisted in `vscode.setState()`: `tocVisible`
 
 * Hooked into `onTransaction` (not `onSelectionUpdate` — onTransaction covers both)
 
 **Key patterns:**
 
-* DOM scroll: `el.scrollIntoView({ block: "start", behavior: "smooth" })` for click-to-scroll
+* DOM scroll: `view.nodeDOM(pos)` + `requestAnimationFrame` with 60px top offset for precise heading positioning
 
 * XSS safe: Uses `textContent` (not `innerHTML`) for heading text
 
 * `vscode.setState()` must use spread pattern: `{ ...getState(), key: value }` to preserve other state (theme, TOC)
+
+## Code Block Enhancement
+
+**Plugin** (`src/webview/code-block-plugin.ts`):
+
+* Tiptap Extension using ProseMirror `Decoration.widget` at `pos + 1` (inside codeBlock, before content)
+
+* **Language badge**: Displays normalized language name with chevron; click opens dropdown selector (19 languages)
+
+* **Copy button**: Clipboard icon, appears on code block hover (`opacity: 0` → `0.6`); checkmark feedback on copy (1.5s)
+
+* **Language aliases**: Maps common abbreviations (`js`→`javascript`, `ts`→`typescript`, `py`→`python`, etc.)
+
+* **Mermaid skip**: Ignores `language === "mermaid"` blocks (handled by mermaid-plugin)
+
+* **Selective rebuild**: Only rebuilds decorations on `tr.docChanged` (not selection changes)
+
+**CSS classes**: `.code-block-header`, `.code-lang-badge`, `.code-lang-dropdown`, `.code-lang-item`, `.code-copy-btn`
+
+## Glassmorphic Toolbar
+
+**Styling** (in `src/markdownEditorProvider.ts`):
+
+* `backdrop-filter: blur(12px)` with `@supports` fallback to solid background
+
+* Theme-aware via CSS custom properties: `--toolbar-bg-rgb`, `--border-rgb`, `--toolbar-fg`
+
+* All 10 themes expose body-level variables for toolbar and UI elements outside `.tiptap`
+
+* Icons: Stroke-based Lucide SVGs (`fill: none; stroke: currentColor; stroke-width: 2`)
+
+* Select dropdowns: Custom `appearance: none` with SVG chevron arrow
+
+* Active button: Accent-colored background (`rgba(--accent-rgb, 0.15)`)
+
+* Press interaction: `transform: scale(0.93)` on `:active` with bounce easing
 
 ## Mermaid Diagrams
 

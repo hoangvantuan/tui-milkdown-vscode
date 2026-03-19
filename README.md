@@ -8,6 +8,7 @@ A beautiful WYSIWYG Markdown editor for VS Code powered by Tiptap.
 
 - **Rich Text Editing**: WYSIWYG markdown editing powered by Tiptap + `@tiptap/markdown` (MarkedJS parser, GFM support)
 - **Syntax Highlighting**: Code blocks with language-aware highlighting via lowlight (19 languages)
+- **Code Block Header**: Language badge with dropdown selector and copy-to-clipboard button
 - **Mermaid Diagrams**: Live SVG preview for `mermaid` code blocks with view/edit mode toggle, theme sync, and caching
 - **GitHub-Style Alerts**: `[!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]` render as color-coded alert boxes
 - **Task Lists**: Checkbox support with nested task items
@@ -17,7 +18,7 @@ A beautiful WYSIWYG Markdown editor for VS Code powered by Tiptap.
 - **Theme Selection**: 10 editor themes including Catppuccin palette (4 variants)
 - **View Source**: Toggle between WYSIWYG and source view (Ctrl/Cmd+Shift+M)
 - **Cursor Line Highlight**: Visual highlight of current block/paragraph
-- **Table of Contents**: Sidebar with click-to-scroll, active heading tracking, depth filter, and collapse/expand
+- **Table of Contents**: Sidebar with click-to-scroll, active heading tracking, and collapse/expand
 - **Heading Level Badges**: H1-H6 indicators next to headings
 - **Heading Collapse/Expand**: Toggle arrows on headings to collapse/expand content sections
 - **Metadata Panel**: Collapsible YAML frontmatter editor with validation
