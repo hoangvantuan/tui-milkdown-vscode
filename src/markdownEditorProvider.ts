@@ -1260,23 +1260,25 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             color: rgba(255, 255, 255, 0.5);
           }
 
-          /* Heading collapse toggle arrow */
+          /* Heading collapse toggle arrow — overlaps badge, shown on hover */
           .heading-collapse-toggle {
             position: absolute;
-            left: -32px;
-            top: 50%;
-            transform: translateY(-50%);
+            left: -15px;
+            top: 3px;
             cursor: pointer;
-            font-size: 10px;
+            font-size: 11px;
+            font-weight: 500;
             opacity: 0;
             user-select: none;
-            padding: 2px 4px;
+            padding: 0;
             border-radius: 3px;
-            transition: opacity 0.15s ease-out, background 0.15s ease-out;
+            transition: opacity 0.15s ease-out;
             line-height: 1;
-            z-index: 1;
+            z-index: 2;
             color: rgba(0, 0, 0, 0.5);
+            font-family: var(--vscode-editor-font-family, monospace);
           }
+          /* Hover heading: hide badge, show arrow */
           .tiptap h1:hover .heading-collapse-toggle,
           .tiptap h2:hover .heading-collapse-toggle,
           .tiptap h3:hover .heading-collapse-toggle,
@@ -1285,18 +1287,26 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .tiptap h6:hover .heading-collapse-toggle {
             opacity: 0.6;
           }
-          .heading-collapse-toggle.collapsed {
-            opacity: 0.6;
+          .tiptap h1:hover .heading-level-badge,
+          .tiptap h2:hover .heading-level-badge,
+          .tiptap h3:hover .heading-level-badge,
+          .tiptap h4:hover .heading-level-badge,
+          .tiptap h5:hover .heading-level-badge,
+          .tiptap h6:hover .heading-level-badge {
+            opacity: 0;
           }
           .heading-collapse-toggle:hover {
             opacity: 1 !important;
-            background: rgba(0, 0, 0, 0.08);
+          }
+          /* Collapsed state: always show arrow, always hide badge */
+          .heading-collapsed-indicator .heading-collapse-toggle {
+            opacity: 0.6;
+          }
+          .heading-collapsed-indicator .heading-level-badge {
+            opacity: 0 !important;
           }
           body.dark-theme .heading-collapse-toggle {
             color: rgba(255, 255, 255, 0.5);
-          }
-          body.dark-theme .heading-collapse-toggle:hover {
-            background: rgba(255, 255, 255, 0.1);
           }
           /* Hidden content under collapsed heading */
           .collapsed-content {
