@@ -1881,19 +1881,14 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             </button>
           </div>
 
-          <div class="toolbar-separator"></div>
+          <div class="toolbar-spacer"></div>
 
-          <!-- TOC toggle -->
+          <!-- TOC toggle + Theme & View Source (right side) -->
           <div class="toolbar-group">
             <button class="toolbar-btn" id="btn-toc" title="Table of Contents" aria-label="Toggle Table of Contents">
               <svg viewBox="0 0 24 24"><path d="M3 9H17V7H3V9M3 13H17V11H3V13M3 17H17V15H3V17M19 17H21V15H19V17M19 7V9H21V7H19M19 13H21V11H19V13Z"/></svg>
             </button>
-          </div>
-
-          <div class="toolbar-spacer"></div>
-
-          <!-- Theme & View Source (right side) -->
-          <div class="toolbar-group">
+            <div class="toolbar-separator"></div>
             <select id="theme-select" aria-label="Editor theme">
               <option value="frame">Frame</option>
               <option value="frame-dark">Frame Dark</option>
