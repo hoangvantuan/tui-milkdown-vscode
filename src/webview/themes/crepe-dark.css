@@ -1,4 +1,11 @@
 /* Crepe Dark Theme */
+.theme-crepe-dark {
+  --accent-primary: #E8A87C;
+  --accent-rgb: 232, 168, 124;
+  --toolbar-bg-rgb: 31, 27, 22;
+  --border-rgb: 255, 255, 255;
+  --toolbar-fg: #eae1d9;
+}
 .theme-crepe-dark .tiptap {
   --crepe-color-background: #1f1b16;
   --crepe-color-on-background: #eae1d9;

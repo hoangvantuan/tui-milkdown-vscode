@@ -1,4 +1,11 @@
 /* Crepe Light Theme */
+.theme-crepe {
+  --accent-primary: #D4956A;
+  --accent-rgb: 212, 149, 106;
+  --toolbar-bg-rgb: 255, 253, 251;
+  --border-rgb: 0, 0, 0;
+  --toolbar-fg: #1f1b16;
+}
 .theme-crepe .tiptap {
   --crepe-color-background: #fffdfb;
   --crepe-color-on-background: #1f1b16;

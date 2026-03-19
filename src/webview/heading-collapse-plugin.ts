@@ -40,28 +40,26 @@ function getSectionRange(
   headingLevel: number,
 ): { from: number; to: number } | null {
   let sectionStart = -1;
-  let sectionEnd = -1;
   let pastHeading = false;
 
-  doc.forEach((node, offset) => {
-    if (sectionEnd !== -1) return; // already found boundary
+  for (let i = 0, offset = 0; i < doc.childCount; i++) {
+    const child = doc.child(i);
     if (offset === headingPos) {
       pastHeading = true;
-      return;
+      offset += child.nodeSize;
+      continue;
     }
-    if (!pastHeading) return;
-
-    if (sectionStart === -1) sectionStart = offset;
-
-    if (node.type.name === "heading" && (node.attrs.level as number) <= headingLevel) {
-      sectionEnd = offset;
-      return;
+    if (pastHeading) {
+      if (sectionStart === -1) sectionStart = offset;
+      if (child.type.name === "heading" && (child.attrs.level as number) <= headingLevel) {
+        return { from: sectionStart, to: offset };
+      }
     }
-  });
+    offset += child.nodeSize;
+  }
 
   if (sectionStart === -1) return null;
-  if (sectionEnd === -1) sectionEnd = doc.content.size;
-  return sectionStart < sectionEnd ? { from: sectionStart, to: sectionEnd } : null;
+  return { from: sectionStart, to: doc.content.size };
 }
 
 /** Build decorations: toggle widget per heading + hiding class on collapsed content. */

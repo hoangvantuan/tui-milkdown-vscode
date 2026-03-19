@@ -57,17 +57,24 @@ src/
 ├── extension.ts              # Entry point, registers MarkdownEditorProvider
 ├── markdownEditorProvider.ts # CustomTextEditorProvider + HTML/CSS template
 ├── constants.ts              # Shared constants (MAX_FILE_SIZE)
-├── utils/getNonce.ts         # CSP nonce generator
-├── utils/clean-image-path.ts  # Shared image path cleaning utility (removes titles, angle brackets)
+├── utils/
+│   ├── getNonce.ts           # CSP nonce generator
+│   ├── clean-image-path.ts   # Shared image path cleaning utility (removes titles, angle brackets)
+│   └── image-rename-handler.ts # Image rename/delete detection, execution, workspace reference updates
 └── webview/
     ├── main.ts               # Browser-side Tiptap editor
+    ├── index.html            # HTML template for webview (loaded by markdownEditorProvider)
     ├── frontmatter.ts        # YAML parsing & validation utilities
+    ├── alert-extension.ts    # GitHub-style alert blocks ([!NOTE], [!TIP], etc.)
+    ├── mermaid-plugin.ts     # Mermaid diagram rendering (SVG preview, view/edit mode, caching)
     ├── line-highlight-plugin.ts # ProseMirror plugin for cursor line highlight
     ├── heading-level-plugin.ts # ProseMirror plugin for H1-H6 level badges
     ├── heading-collapse-plugin.ts # ProseMirror plugin for heading collapse/expand toggles
+    ├── code-block-plugin.ts  # Code block header: language badge dropdown + copy button
     ├── image-edit-plugin.ts  # Double-click image URL editing
     ├── table-markdown-serializer.ts # Custom GFM table serializer (multi-line cells)
     ├── table-cell-content-parser.ts # Post-parse transformer for table cell lists/breaks
+    ├── table-context-menu.ts # Right-click context menu for table operations
     ├── toc-sidebar.ts        # Table of Contents sidebar (extract, tree, render, active tracking)
     └── themes/               # Theme CSS files (scoped by body class)
         ├── index.css              # Imports all theme CSS
@@ -101,7 +108,7 @@ Extension provides these settings via `tuiMarkdown.*` namespace:
 
 Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for markdown roundtrip.
 
-**Extensions:** StarterKit (includes Link with `autolink: true, linkOnPaste: true`), Image, Highlight, Table (resizable + custom `renderMarkdown` hook), CodeBlockLowlight (syntax highlighting via lowlight/highlight.js), TaskList + TaskItem, Placeholder, Markdown (GFM + configurable indentation).
+**Extensions:** StarterKit (includes Link with `autolink: true, linkOnPaste: true`), Image, Highlight, Table (resizable + custom `renderMarkdown` hook), CodeBlockLowlight (syntax highlighting via lowlight/highlight.js), TaskList + TaskItem, Placeholder, Markdown (GFM + configurable indentation), AlertNode (GitHub-style alerts), MermaidDiagram (SVG preview), TableContextMenu (right-click menu), CodeBlockEnhancement (language badge + copy button).
 
 **Markdown API:**
 
@@ -119,7 +126,7 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 * Nord Dark uses the official Nord palette (Polar Night / Snow Storm / Frost / Aurora) — visually distinct from Frame Dark.
 
 **Typography & spacing strategy:**
-* Content max-width: 760px default (65-70 chars/line), responsive breakpoints at 900px and 1200px
+* Content max-width: 100% with fluid padding `clamp(24px, 5vw, 80px)`
 * Body line-height: 1.625 (26px/16px) for optimal readability
 * Heading scale: Perfect Fourth ratio (1.333) — H1:32, H2:24, H3:20, H4:16, H5:14, H6:13
 * Heading margins: generous top (48-16px) for section grouping, tight bottom (16-6px) to pull toward content
@@ -131,7 +138,7 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 * Toolbar buttons: 0.15s ease-out transitions
 * Code blocks: hover border, focus ring on edit
 * Images: 6px border-radius, hover shadow
-* Links: border-bottom animation (no underline)
+* Links: underline slide-in via `background-size` transition
 * Table rows: hover highlight, zebra striping
 * Blockquotes: border thickens on hover (3px→4px)
 * Heading badges: opacity increases on hover (0.5→0.8)
@@ -416,8 +423,6 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 
 * `updateTocFromEditor(editor, docChanged)`: Debounced rebuild (200ms) on doc changes, immediate active heading update on selection
 
-* `setTocDepthFilter(levels)`: H1-H6 toggle filter, re-renders tree
-
 **Layout** (in `src/markdownEditorProvider.ts`):
 
 * `#main-layout` flexbox wrapper: sidebar (220px fixed) + editor container (flex: 1)
@@ -428,21 +433,113 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 
 **Integration** (in `src/webview/main.ts`):
 
-* `setupTocHandlers()`: Registers toolbar toggle, depth filter buttons
+* `setupTocHandlers()`: Registers toolbar toggle button
 
 * `initTocSidebar()`: Called after editor init, restores visibility state AFTER content populated
 
-* State persisted in `vscode.setState()`: `tocVisible`, `tocDepthFilter`
+* State persisted in `vscode.setState()`: `tocVisible`
 
 * Hooked into `onTransaction` (not `onSelectionUpdate` — onTransaction covers both)
 
 **Key patterns:**
 
-* DOM scroll: `el.scrollIntoView({ block: "start", behavior: "smooth" })` for click-to-scroll
+* DOM scroll: `view.nodeDOM(pos)` + `requestAnimationFrame` with 60px top offset for precise heading positioning
 
 * XSS safe: Uses `textContent` (not `innerHTML`) for heading text
 
 * `vscode.setState()` must use spread pattern: `{ ...getState(), key: value }` to preserve other state (theme, TOC)
+
+## Code Block Enhancement
+
+**Plugin** (`src/webview/code-block-plugin.ts`):
+
+* Tiptap Extension using ProseMirror `Decoration.widget` at `pos + 1` (inside codeBlock, before content)
+
+* **Language badge**: Displays normalized language name with chevron; click opens dropdown selector (19 languages)
+
+* **Copy button**: Clipboard icon, appears on code block hover (`opacity: 0` → `0.6`); checkmark feedback on copy (1.5s)
+
+* **Language aliases**: Maps common abbreviations (`js`→`javascript`, `ts`→`typescript`, `py`→`python`, etc.)
+
+* **Mermaid skip**: Ignores `language === "mermaid"` blocks (handled by mermaid-plugin)
+
+* **Selective rebuild**: Only rebuilds decorations on `tr.docChanged` (not selection changes)
+
+**CSS classes**: `.code-block-header`, `.code-lang-badge`, `.code-lang-dropdown`, `.code-lang-item`, `.code-copy-btn`
+
+## Glassmorphic Toolbar
+
+**Styling** (in `src/markdownEditorProvider.ts`):
+
+* `backdrop-filter: blur(12px)` with `@supports` fallback to solid background
+
+* Theme-aware via CSS custom properties: `--toolbar-bg-rgb`, `--border-rgb`, `--toolbar-fg`
+
+* All 10 themes expose body-level variables for toolbar and UI elements outside `.tiptap`
+
+* Icons: Stroke-based Lucide SVGs (`fill: none; stroke: currentColor; stroke-width: 2`)
+
+* Select dropdowns: Custom `appearance: none` with SVG chevron arrow
+
+* Active button: Accent-colored background (`rgba(--accent-rgb, 0.15)`)
+
+* Press interaction: `transform: scale(0.93)` on `:active` with bounce easing
+
+## Mermaid Diagrams
+
+**Plugin** (`src/webview/mermaid-plugin.ts`):
+
+* Tiptap Extension wrapping a ProseMirror plugin with widget decorations
+
+* Renders SVG previews after `mermaid` code blocks using `mermaid` library (v11)
+
+* **View/Edit mode**: View mode (default) hides code block, shows SVG only; double-click preview enters edit mode (code + preview stacked); cursor leave returns to view mode
+
+* **Selective re-render**: `rebuildNodeDecosOnly()` preserves widget DOM elements when only selection changes (no flicker)
+
+* **Render caching**: `renderCache` Map avoids re-rendering identical diagrams
+
+* **Theme sync**: `updateMermaidTheme(isDark)` + `clearMermaidCache()` called on theme change
+
+* **Debounced rendering**: 500ms debounce per code block position to avoid excessive renders during typing
+
+* **Error handling**: Parse errors shown inline with `mermaid-error` class, stale temp elements cleaned up
+
+**CSS classes**: `.mermaid-code-block`, `.mermaid-editing`, `.mermaid-preview`, `.mermaid-error`
+
+**Dependencies**: `mermaid@^11.12.2`
+
+## GitHub-Style Alerts
+
+**Extension** (`src/webview/alert-extension.ts`):
+
+* Custom `AlertNode` Tiptap node for `[!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]`
+
+* **Integration**: Blockquote extension (from StarterKit) is extended in `main.ts` to override `parseMarkdown` — detects `[!TYPE]` prefix and creates `alert` node instead of `blockquote`
+
+* **Serialization**: `renderMarkdown()` outputs `> [!TYPE]\n> content` format
+
+* **DOM output**: `<div data-alert-type="note" class="alert alert-note">...</div>`
+
+* **Helper functions**: `getFirstText()` walks token children, `stripAlertPrefix()` removes `[!TYPE]` from parsed tokens
+
+**CSS**: Color-coded alert boxes with icons, dark theme support (in `markdownEditorProvider.ts`)
+
+## Table Context Menu
+
+**Extension** (`src/webview/table-context-menu.ts`):
+
+* Right-click context menu for table operations using ProseMirror plugin
+
+* **Actions**: Select Row/Column/Table, Add Row Above/Below, Add Column Before/After, Delete Row/Column/Table
+
+* **Selection**: Uses `CellSelection`, `TableMap`, `cellAround` from `@tiptap/pm/tables`
+
+* **Positioning**: Container-relative coordinates with overflow adjustment
+
+* **Cleanup**: Closes on Escape key, click outside, or editor scroll
+
+**CSS**: `.table-context-menu`, `.table-ctx-item`, `.table-ctx-divider` (in `markdownEditorProvider.ts`)
 
 ## Table Serializer
 

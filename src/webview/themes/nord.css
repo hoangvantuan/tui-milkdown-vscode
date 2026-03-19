@@ -1,4 +1,11 @@
 /* Nord Light Theme */
+.theme-nord {
+  --accent-primary: #5E81AC;
+  --accent-rgb: 94, 129, 172;
+  --toolbar-bg-rgb: 253, 252, 255;
+  --border-rgb: 0, 0, 0;
+  --toolbar-fg: #1b1c1d;
+}
 .theme-nord .tiptap {
   --crepe-color-background: #fdfcff;
   --crepe-color-on-background: #1b1c1d;

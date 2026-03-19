@@ -813,12 +813,14 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             width: 100%;
             height: 100%;
             overflow: hidden;
+            transition: background-color 0.3s ease, color 0.3s ease;
           }
           .tiptap {
-            padding: 32px 48px 120px 48px;
+            padding: 32px 48px 40vh 48px;
             caret-color: var(--crepe-color-primary);
             -webkit-font-smoothing: antialiased;
             font-optical-sizing: auto;
+            transition: background-color 0.3s ease, color 0.3s ease;
           }
           /* Body text: 16px base, 1.6 line-height for readability */
           .tiptap p,
@@ -929,93 +931,125 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             background: rgba(255, 255, 255, 0.05);
           }
 
+          /* ─── Glassmorphic Toolbar ─── */
           #toolbar {
             display: flex;
             align-items: center;
-            gap: 4px;
-            padding: 4px 8px;
-            background: var(--vscode-editor-background);
-            border-bottom: 1px solid var(--vscode-panel-border);
+            gap: 2px;
+            padding: 6px 12px;
+            background: rgba(var(--toolbar-bg-rgb, 255, 255, 255), 0.8);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(var(--border-rgb, 0, 0, 0), 0.08);
+            color: var(--toolbar-fg, var(--vscode-editor-foreground));
             position: sticky;
             top: 0;
             z-index: 100;
             flex-wrap: wrap;
           }
+          body.dark-theme #toolbar {
+            background: rgba(var(--toolbar-bg-rgb, 30, 30, 30), 0.85);
+            border-bottom-color: rgba(255, 255, 255, 0.08);
+          }
+          @supports not (backdrop-filter: blur(12px)) {
+            #toolbar {
+              background: var(--vscode-editor-background);
+              border-bottom: 1px solid var(--vscode-panel-border);
+            }
+          }
           .toolbar-group {
             display: flex;
             align-items: center;
-            gap: 4px;
+            gap: 2px;
           }
           .toolbar-separator {
             width: 1px;
-            height: 20px;
-            background: var(--vscode-panel-border);
+            height: 16px;
+            background: currentColor;
+            opacity: 0.12;
             margin: 0 4px;
           }
           .toolbar-btn {
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 28px;
-            height: 28px;
+            width: 30px;
+            height: 30px;
             padding: 0;
             background: transparent;
             border: 1px solid transparent;
-            color: var(--vscode-editor-foreground);
-            font-size: 13px;
+            color: inherit;
             cursor: pointer;
-            border-radius: 4px;
-            transition: background 0.15s ease-out, opacity 0.15s ease-out;
-            opacity: 0.7;
+            border-radius: 6px;
+            transition: background 0.15s ease-out, opacity 0.15s ease-out, transform 0.1s ease-out;
+            opacity: 0.6;
           }
           .toolbar-btn:hover {
             background: var(--vscode-list-hoverBackground);
             opacity: 1;
           }
+          .toolbar-btn:active {
+            transform: scale(0.93);
+            transition: transform 0.08s cubic-bezier(0.34, 1.56, 0.64, 1);
+          }
           .toolbar-btn.is-active {
-            background: var(--vscode-list-activeSelectionBackground);
-            color: var(--vscode-list-activeSelectionForeground);
+            background: rgba(var(--accent-rgb, 59, 130, 246), 0.15);
+            color: var(--accent-primary, var(--vscode-list-activeSelectionForeground));
             opacity: 1;
           }
           .toolbar-btn svg {
             width: 16px;
             height: 16px;
-            fill: currentColor;
+            stroke: currentColor;
+            stroke-width: 2;
+            fill: none;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+          }
+          /* Custom select styling with appearance:none + SVG arrow */
+          #heading-select,
+          #theme-select {
+            -webkit-appearance: none;
+            appearance: none;
+            background-color: rgba(var(--border-rgb, 0, 0, 0), 0.05);
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 8px center;
+            padding: 4px 28px 4px 10px;
+            border: 1px solid rgba(var(--border-rgb, 0, 0, 0), 0.08);
+            border-radius: 6px;
+            height: 30px;
+            color: inherit;
+            cursor: pointer;
+            transition: background-color 0.15s ease-out, border-color 0.15s ease-out;
           }
           #heading-select {
-            padding: 2px 4px;
-            background: var(--vscode-dropdown-background);
-            color: var(--vscode-dropdown-foreground);
-            border: 1px solid var(--vscode-dropdown-border);
-            border-radius: 4px;
             font-size: 12px;
-            cursor: pointer;
-            height: 28px;
+            font-weight: 500;
+          }
+          #theme-select {
+            font-size: 11px;
+          }
+          #heading-select:hover,
+          #theme-select:hover {
+            background-color: rgba(var(--border-rgb, 0, 0, 0), 0.1);
+            border-color: rgba(var(--border-rgb, 0, 0, 0), 0.15);
           }
           .toolbar-spacer { flex: 1; }
-          #theme-select {
-            padding: 2px 4px;
-            background: var(--vscode-dropdown-background);
-            color: var(--vscode-dropdown-foreground);
-            border: 1px solid var(--vscode-dropdown-border);
-            border-radius: 4px;
-            font-size: 12px;
-            cursor: pointer;
-            height: 28px;
-          }
           .view-source-btn {
             padding: 4px 10px;
-            background: var(--vscode-button-secondaryBackground);
-            border: none;
-            color: var(--vscode-button-secondaryForeground);
-            font-size: 12px;
+            background: rgba(var(--border-rgb, 0, 0, 0), 0.05);
+            border: 1px solid rgba(var(--border-rgb, 0, 0, 0), 0.1);
+            color: inherit;
+            font-size: 11px;
+            font-weight: 500;
             cursor: pointer;
-            border-radius: 4px;
-            transition: background 0.15s ease;
-            height: 28px;
+            border-radius: 6px;
+            height: 30px;
+            transition: background-color 0.15s ease-out, color 0.15s ease-out;
           }
           .view-source-btn:hover {
-            background: var(--vscode-list-hoverBackground);
+            background: rgba(var(--border-rgb, 0, 0, 0), 0.1);
           }
 
           #editor-container {
@@ -1142,17 +1176,11 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           #metadata-details.hidden { display: none; }
           #table-context.hidden { display: none; }
 
-          /* Full-width editor with comfortable padding */
+          /* Full-width editor with fluid padding */
           .tiptap {
             max-width: 100%;
-            padding-left: 64px;
-            padding-right: 64px;
-          }
-          @media (max-width: 900px) {
-            .tiptap {
-              padding-left: 24px;
-              padding-right: 24px;
-            }
+            padding-left: clamp(24px, 5vw, 80px);
+            padding-right: clamp(24px, 5vw, 80px);
           }
           /* Table wrapper: horizontal scroll for wide tables */
           .tiptap .tableWrapper {
@@ -1240,14 +1268,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             font-family: var(--vscode-editor-font-family, monospace);
             transition: opacity 0.15s ease-out;
           }
-          .tiptap h1:hover .heading-level-badge,
-          .tiptap h2:hover .heading-level-badge,
-          .tiptap h3:hover .heading-level-badge,
-          .tiptap h4:hover .heading-level-badge,
-          .tiptap h5:hover .heading-level-badge,
-          .tiptap h6:hover .heading-level-badge {
-            opacity: 0.8;
-          }
           /* Light themes */
           body.theme-frame .heading-level-badge,
           body.theme-nord .heading-level-badge,
@@ -1279,20 +1299,10 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             font-family: var(--vscode-editor-font-family, monospace);
           }
           /* Hover heading: hide badge, show arrow */
-          .tiptap h1:hover .heading-collapse-toggle,
-          .tiptap h2:hover .heading-collapse-toggle,
-          .tiptap h3:hover .heading-collapse-toggle,
-          .tiptap h4:hover .heading-collapse-toggle,
-          .tiptap h5:hover .heading-collapse-toggle,
-          .tiptap h6:hover .heading-collapse-toggle {
+          .tiptap :is(h1,h2,h3,h4,h5,h6):hover .heading-collapse-toggle {
             opacity: 0.6;
           }
-          .tiptap h1:hover .heading-level-badge,
-          .tiptap h2:hover .heading-level-badge,
-          .tiptap h3:hover .heading-level-badge,
-          .tiptap h4:hover .heading-level-badge,
-          .tiptap h5:hover .heading-level-badge,
-          .tiptap h6:hover .heading-level-badge {
+          .tiptap :is(h1,h2,h3,h4,h5,h6):hover .heading-level-badge {
             opacity: 0;
           }
           .heading-collapse-toggle:hover {
@@ -1338,13 +1348,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             max-width: 100%;
             height: auto;
             border-radius: 6px;
-            transition: box-shadow 0.2s ease-out;
-          }
-          .tiptap img:hover {
-            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-          }
-          body.dark-theme .tiptap img:hover {
-            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+            transition: box-shadow 0.25s ease-out, transform 0.25s ease-out;
           }
           .tiptap code {
             color: var(--crepe-color-inline-code, #ba1a1a);
@@ -1433,6 +1437,90 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           body.dark-theme .tiptap pre code .hljs-deletion { color: #ffa198; background: rgba(248,81,73,0.15); }
           body.dark-theme .tiptap pre code .hljs-addition { color: #7ee787; background: rgba(63,185,80,0.15); }
           body.dark-theme .tiptap pre code .hljs-meta { color: #d29922; }
+
+          /* ─── Code Block Header (language badge + copy button) ─── */
+          .code-block-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 12px;
+            background: rgba(0, 0, 0, 0.03);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+            border-radius: 8px 8px 0 0;
+            margin: -16px -20px 12px -20px;
+            user-select: none;
+          }
+          body.dark-theme .code-block-header {
+            background: rgba(255, 255, 255, 0.04);
+            border-bottom-color: rgba(255, 255, 255, 0.08);
+          }
+          .code-lang-badge {
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--crepe-color-on-surface, #666);
+            opacity: 0.7;
+            text-transform: lowercase;
+            font-family: var(--crepe-font-code, monospace);
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            padding: 1px 4px;
+            border-radius: 3px;
+            transition: opacity 0.15s ease-out, background 0.1s ease-out;
+          }
+          .code-lang-badge:hover { opacity: 1; background: rgba(0, 0, 0, 0.06); }
+          body.dark-theme .code-lang-badge:hover { background: rgba(255, 255, 255, 0.1); }
+          .code-lang-badge svg { opacity: 0.5; flex-shrink: 0; }
+          .code-lang-dropdown {
+            position: absolute;
+            z-index: 1000;
+            background: var(--crepe-color-surface, #fff);
+            border: 1px solid rgba(0, 0, 0, 0.12);
+            border-radius: 6px;
+            padding: 4px 0;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            max-height: 240px;
+            overflow-y: auto;
+            min-width: 120px;
+          }
+          body.dark-theme .code-lang-dropdown {
+            background: var(--crepe-color-surface, #1e1e2e);
+            border-color: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+          }
+          .code-lang-item {
+            padding: 5px 12px;
+            font-size: 12px;
+            font-family: var(--crepe-font-code, monospace);
+            cursor: pointer;
+            color: var(--crepe-color-on-surface, #333);
+          }
+          body.dark-theme .code-lang-item { color: rgba(255, 255, 255, 0.85); }
+          .code-lang-item:hover { background: rgba(0, 0, 0, 0.06); }
+          body.dark-theme .code-lang-item:hover { background: rgba(255, 255, 255, 0.12); }
+          .code-lang-item.active { color: var(--crepe-color-primary, #2563eb); font-weight: 600; }
+          body.dark-theme .code-lang-item.active { color: var(--crepe-color-primary, #89b4fa); }
+          .code-copy-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            padding: 0;
+            background: transparent;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            color: var(--crepe-color-on-background, #666);
+            opacity: 0;
+            transition: opacity 0.15s ease-out, background 0.1s ease-out;
+          }
+          .tiptap pre:hover .code-copy-btn { opacity: 0.6; }
+          .code-copy-btn:hover { opacity: 1 !important; background: rgba(0, 0, 0, 0.06); }
+          body.dark-theme .code-copy-btn:hover { background: rgba(255, 255, 255, 0.1); }
+          .code-copy-btn.copied { opacity: 1; color: #22c55e; }
+
           .tiptap blockquote {
             border-left: 3px solid var(--crepe-color-primary, #2563eb);
             margin-left: 0;
@@ -1497,20 +1585,10 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           body.dark-theme .tiptap .alert-warning { background: rgba(210, 153, 34, 0.12); }
           body.dark-theme .tiptap .alert-caution { background: rgba(248, 81, 73, 0.12); }
 
-          .tiptap hr {
-            border: none;
-            border-top: 1px solid var(--crepe-color-outline, #a8a8a8);
-            margin: 32px 0;
-            opacity: 0.5;
-          }
           .tiptap a {
             color: var(--crepe-color-primary, #37618e);
             text-decoration: none;
             border-bottom: 1px solid transparent;
-            transition: border-color 0.15s ease-out;
-          }
-          .tiptap a:hover {
-            border-bottom-color: var(--crepe-color-primary, #37618e);
           }
           /* Placeholder styling */
           .tiptap p.is-editor-empty:first-child::before {
@@ -1727,12 +1805,17 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           #toc-sidebar {
             width: 220px;
             min-width: 220px;
-            border-right: 1px solid var(--vscode-panel-border);
+            border-right: 1px solid rgba(var(--border-rgb, 0, 0, 0), 0.08);
             overflow-y: auto;
-            background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+            background: rgba(var(--toolbar-bg-rgb, 255, 255, 255), 0.6);
+            color: var(--toolbar-fg, var(--vscode-editor-foreground));
             font-size: 13px;
             display: flex;
             flex-direction: column;
+          }
+          body.dark-theme #toc-sidebar {
+            background: rgba(var(--toolbar-bg-rgb, 30, 30, 30), 0.6);
+            border-right-color: rgba(255, 255, 255, 0.08);
           }
           #toc-sidebar.hidden { display: none; }
           .toc-header {
@@ -1741,40 +1824,18 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             align-items: center;
             gap: 6px;
             flex-wrap: wrap;
-            border-bottom: 1px solid var(--vscode-panel-border);
+            border-bottom: 1px solid rgba(var(--border-rgb, 0, 0, 0), 0.08);
+          }
+          body.dark-theme .toc-header {
+            border-bottom-color: rgba(255, 255, 255, 0.08);
           }
           .toc-title {
             font-size: 11px;
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.05em;
-            color: var(--vscode-sideBarSectionHeader-foreground, var(--vscode-editor-foreground));
+            color: var(--toolbar-fg, var(--vscode-editor-foreground));
             opacity: 0.7;
-          }
-          .toc-depth-filter {
-            display: flex;
-            gap: 2px;
-            margin-left: auto;
-          }
-          .toc-depth-btn {
-            width: 20px;
-            height: 20px;
-            padding: 0;
-            border: 1px solid var(--vscode-input-border, transparent);
-            border-radius: 3px;
-            font-size: 10px;
-            font-weight: 600;
-            cursor: pointer;
-            background: transparent;
-            color: var(--vscode-editor-foreground);
-            opacity: 0.4;
-            transition: opacity 0.1s ease-out, background 0.1s ease-out;
-          }
-          .toc-depth-btn:hover { opacity: 0.8; }
-          .toc-depth-btn.active {
-            opacity: 1;
-            background: var(--vscode-list-activeSelectionBackground);
-            color: var(--vscode-list-activeSelectionForeground);
           }
           #toc-entries {
             flex: 1;
@@ -1789,18 +1850,25 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             cursor: pointer;
             border-radius: 3px;
             margin: 0 4px;
-            color: var(--vscode-editor-foreground);
-            opacity: 0.75;
+            color: var(--toolbar-fg, var(--vscode-editor-foreground));
+            opacity: 0.55;
             transition: background 0.1s ease-out, opacity 0.1s ease-out;
           }
           .toc-entry:hover {
-            background: var(--vscode-list-hoverBackground);
-            opacity: 1;
+            background: rgba(var(--border-rgb, 0, 0, 0), 0.10);
+            opacity: 0.9;
+          }
+          body.dark-theme .toc-entry:hover {
+            background: rgba(255, 255, 255, 0.10);
           }
           .toc-entry.active {
-            background: var(--vscode-list-activeSelectionBackground);
-            color: var(--vscode-list-activeSelectionForeground);
+            background: rgba(0, 0, 0, 0.08);
+            box-shadow: inset 3px 0 0 var(--accent-primary, var(--vscode-focusBorder));
+            font-weight: 600;
             opacity: 1;
+          }
+          body.dark-theme .toc-entry.active {
+            background: rgba(255, 255, 255, 0.12);
           }
           .toc-label {
             white-space: nowrap;
@@ -1822,7 +1890,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .toc-empty {
             padding: 12px 10px;
             font-size: 12px;
-            color: var(--vscode-descriptionForeground, #888);
+            color: var(--toolbar-fg, var(--vscode-descriptionForeground, #888));
+            opacity: 0.5;
             font-style: italic;
           }
           /* Indent by heading level */
@@ -1834,23 +1903,105 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .toc-level-6 { padding-left: 62px; font-size: 12px; }
           /* TOC toggle button active state */
           .toolbar-btn#btn-toc.is-active {
-            background: var(--vscode-list-activeSelectionBackground);
-            color: var(--vscode-list-activeSelectionForeground);
+            background: rgba(var(--accent-rgb, 59, 130, 246), 0.2);
+            color: var(--accent-primary, var(--toolbar-fg));
             opacity: 1;
           }
           @media (max-width: 600px) {
             #toc-sidebar { width: 180px; min-width: 180px; }
           }
 
+          /* ─── Micro-Interactions Polish ─── */
+
+          /* Selection highlight uses theme accent */
+          .tiptap ::selection {
+            background: rgba(var(--accent-rgb, 59, 130, 246), 0.2);
+          }
+
+          /* Link hover: underline slide-in */
+          .tiptap a {
+            background-image: linear-gradient(currentColor, currentColor);
+            background-position: 0% 100%;
+            background-repeat: no-repeat;
+            background-size: 0% 1px;
+            transition: background-size 0.2s ease-out, color 0.15s ease-out;
+          }
+          .tiptap a:hover {
+            background-size: 100% 1px;
+            border-bottom-color: transparent;
+          }
+
+          /* Image hover: enhanced shadow + subtle scale */
+          .tiptap img:hover {
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            transform: scale(1.003);
+          }
+          body.dark-theme .tiptap img:hover {
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+          }
+
+          /* HR: gradient fade */
+          .tiptap hr {
+            background: linear-gradient(to right, transparent, var(--crepe-color-outline, #ddd), transparent);
+            border: none;
+            height: 1px;
+            margin: 2em 0;
+            opacity: 0.5;
+          }
+
+          /* Inline code: subtle bg */
+          .tiptap :not(pre) > code {
+            background: rgba(var(--border-rgb, 0, 0, 0), 0.05);
+          }
+          body.dark-theme .tiptap :not(pre) > code {
+            background: rgba(255, 255, 255, 0.08);
+          }
+
+          /* Custom scrollbar */
+          #editor-container::-webkit-scrollbar { width: 6px; height: 6px; }
+          #editor-container::-webkit-scrollbar-track { background: transparent; }
+          #editor-container::-webkit-scrollbar-thumb {
+            background: rgba(var(--border-rgb, 0, 0, 0), 0.12);
+            border-radius: 3px;
+          }
+          #editor-container::-webkit-scrollbar-thumb:hover {
+            background: rgba(var(--border-rgb, 0, 0, 0), 0.25);
+          }
+          #toc-sidebar::-webkit-scrollbar { width: 4px; }
+          #toc-sidebar::-webkit-scrollbar-track { background: transparent; }
+          #toc-sidebar::-webkit-scrollbar-thumb {
+            background: rgba(var(--border-rgb, 0, 0, 0), 0.1);
+            border-radius: 2px;
+          }
+
+          /* Table header subtle accent */
+          .tiptap table th {
+            background: rgba(var(--accent-rgb, 0, 0, 0), 0.04);
+          }
+          body.dark-theme .tiptap table th {
+            background: rgba(255, 255, 255, 0.06);
+          }
+
+          /* ─── Accessibility ─── */
+          @media (prefers-contrast: more) {
+            .tiptap { border: 1px solid var(--vscode-panel-border); }
+            .toolbar-btn { opacity: 0.9; }
+            .toolbar-separator { opacity: 0.3; }
+            .tiptap a { text-decoration: underline; }
+            .tiptap img { border: 1px solid var(--vscode-panel-border); }
+          }
+
           /* Reduced motion — respect OS accessibility setting */
           @media (prefers-reduced-motion: reduce) {
             .tiptap *, .tiptap *::before, .tiptap *::after,
-            .toolbar-btn, .view-source-btn, .mermaid-code-block,
-            .mermaid-preview, .image-edit-overlay,
-            .toc-entry, .toc-depth-btn {
+            .toolbar-btn, .view-source-btn, #heading-select, #theme-select,
+            .mermaid-code-block, .mermaid-preview, .image-edit-overlay,
+            .toc-entry, .code-copy-btn,
+            html, body, #toolbar {
               transition-duration: 0.01ms !important;
               animation-duration: 0.01ms !important;
             }
+            .toolbar-btn:active { transform: none !important; }
           }
 
         </style>
@@ -1860,19 +2011,19 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           <!-- Text formatting -->
           <div class="toolbar-group">
             <button class="toolbar-btn" data-command="bold" title="Bold (Ctrl+B)" aria-label="Bold">
-              <svg viewBox="0 0 24 24"><path d="M13.5 15.5H10V12.5H13.5A1.5 1.5 0 0 1 15 14A1.5 1.5 0 0 1 13.5 15.5M10 6.5H13A1.5 1.5 0 0 1 14.5 8A1.5 1.5 0 0 1 13 9.5H10M15.6 10.79C16.57 10.11 17.25 9 17.25 8A4 4 0 0 0 13 4H7V18H14.04A3.96 3.96 0 0 0 17.5 14C17.5 12.31 16.73 11.41 15.6 10.79Z"/></svg>
+              <svg viewBox="0 0 24 24"><path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/></svg>
             </button>
             <button class="toolbar-btn" data-command="italic" title="Italic (Ctrl+I)" aria-label="Italic">
-              <svg viewBox="0 0 24 24"><path d="M10 4V7H12.21L8.79 15H6V18H14V15H11.79L15.21 7H18V4H10Z"/></svg>
+              <svg viewBox="0 0 24 24"><line x1="19" y1="4" x2="10" y2="4"/><line x1="14" y1="20" x2="5" y2="20"/><line x1="15" y1="4" x2="9" y2="20"/></svg>
             </button>
             <button class="toolbar-btn" data-command="strike" title="Strikethrough" aria-label="Strikethrough">
-              <svg viewBox="0 0 24 24"><path d="M3 14H21V12H3M5 4V7H10V10H14V7H19V4M10 19H14V16H10V19Z"/></svg>
+              <svg viewBox="0 0 24 24"><path d="M16 4H9a3 3 0 0 0-2.83 4"/><path d="M14 12a4 4 0 0 1 0 8H6"/><line x1="4" y1="12" x2="20" y2="12"/></svg>
             </button>
             <button class="toolbar-btn" data-command="code" title="Inline Code (Ctrl+E)" aria-label="Inline Code">
-              <svg viewBox="0 0 24 24"><path d="M14.6 16.6L19.2 12L14.6 7.4L16 6L22 12L16 18L14.6 16.6M9.4 16.6L4.8 12L9.4 7.4L8 6L2 12L8 18L9.4 16.6Z"/></svg>
+              <svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
             </button>
             <button class="toolbar-btn" data-command="highlight" title="Highlight" aria-label="Highlight">
-              <svg viewBox="0 0 24 24"><path d="M15.24 2.86l5.9 5.78-8.22 8.56-1.4-.06-4.5 4.7-.84-5.3 8.22-8.56.84-5.12m-1-2.86L12.5 7.56 3.56 16.84 5 24l7.28-7.56L21.22 8l2.78-8h-9.76z"/></svg>
+              <svg viewBox="0 0 24 24"><path d="m9 11-6 6v3h9l3-3"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/></svg>
             </button>
           </div>
 
@@ -1896,13 +2047,13 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           <!-- Lists -->
           <div class="toolbar-group">
             <button class="toolbar-btn" data-command="bulletList" title="Bullet List" aria-label="Bullet List">
-              <svg viewBox="0 0 24 24"><path d="M7 5H21V7H7V5M7 13V11H21V13H7M4 4.5A1.5 1.5 0 0 1 5.5 6A1.5 1.5 0 0 1 4 7.5A1.5 1.5 0 0 1 2.5 6A1.5 1.5 0 0 1 4 4.5M4 10.5A1.5 1.5 0 0 1 5.5 12A1.5 1.5 0 0 1 4 13.5A1.5 1.5 0 0 1 2.5 12A1.5 1.5 0 0 1 4 10.5M7 19V17H21V19H7M4 16.5A1.5 1.5 0 0 1 5.5 18A1.5 1.5 0 0 1 4 19.5A1.5 1.5 0 0 1 2.5 18A1.5 1.5 0 0 1 4 16.5Z"/></svg>
+              <svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
             </button>
             <button class="toolbar-btn" data-command="orderedList" title="Ordered List" aria-label="Ordered List">
-              <svg viewBox="0 0 24 24"><path d="M7 13V11H21V13H7M7 19V17H21V19H7M7 7V5H21V7H7M3 8V5H2V4H4V8H3M2 17V16H5V20H2V19H4V18.5H3V17.5H4V17H2M4.25 10C4.44 9.81 4.55 9.55 4.5 9.27C4.45 9 4.22 8.79 3.95 8.76C3.67 8.72 3.42 8.88 3.31 9.13L2.31 8.87C2.56 8.21 3.22 7.76 3.96 7.8C4.71 7.84 5.34 8.38 5.45 9.12C5.56 9.86 5.13 10.55 4.45 10.78L2 11.5V12.5H5V11.5L4.25 10Z"/></svg>
+              <svg viewBox="0 0 24 24"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4"/><path d="M4 10h2"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/></svg>
             </button>
             <button class="toolbar-btn" data-command="taskList" title="Task List" aria-label="Task List">
-              <svg viewBox="0 0 24 24"><path d="M19 3H5C3.9 3 3 3.9 3 5V19C3 20.1 3.9 21 5 21H19C20.1 21 21 20.1 21 19V5C21 3.9 20.1 3 19 3M19 19H5V5H19V19M17.99 9L16.58 7.58L9.99 14.17L7.41 11.6L5.99 13.01L9.99 17L17.99 9Z"/></svg>
+              <svg viewBox="0 0 24 24"><rect x="3" y="5" width="6" height="6" rx="1"/><path d="m3 17 2 2 4-4"/><line x1="13" y1="6" x2="21" y2="6"/><line x1="13" y1="12" x2="21" y2="12"/><line x1="13" y1="18" x2="21" y2="18"/></svg>
             </button>
           </div>
 
@@ -1911,25 +2062,25 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           <!-- Block elements -->
           <div class="toolbar-group">
             <button class="toolbar-btn" data-command="blockquote" title="Blockquote" aria-label="Blockquote">
-              <svg viewBox="0 0 24 24"><path d="M14 17H17L19 13V7H13V13H16L14 17M6 17H9L11 13V7H5V13H8L6 17Z"/></svg>
+              <svg viewBox="0 0 24 24"><path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V20c0 1 0 1 1 1z"/><path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2h.75c0 2.25.25 4-2.75 4v3c0 1 0 1 1 1z"/></svg>
             </button>
             <button class="toolbar-btn" data-command="codeBlock" title="Code Block" aria-label="Code Block">
-              <svg viewBox="0 0 24 24"><path d="M19 3H5C3.89 3 3 3.89 3 5V19C3 20.11 3.89 21 5 21H19C20.11 21 21 20.11 21 19V5C21 3.89 20.11 3 19 3M19 19H5V5H19V19M11.5 16.5L6.5 12L11.5 7.5L12.91 8.91L9.33 12L12.91 15.09L11.5 16.5M17.5 12L12.5 16.5L11.09 15.09L14.67 12L11.09 8.91L12.5 7.5L17.5 12Z"/></svg>
+              <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m10 10-2 2 2 2"/><path d="m14 14 2-2-2-2"/></svg>
             </button>
             <button class="toolbar-btn" data-command="horizontalRule" title="Horizontal Rule" aria-label="Horizontal Rule">
-              <svg viewBox="0 0 24 24"><path d="M19 13H5V11H19V13Z"/></svg>
+              <svg viewBox="0 0 24 24"><line x1="2" y1="12" x2="22" y2="12"/></svg>
             </button>
           </div>
 
           <div class="toolbar-separator"></div>
 
-          <!-- Table & Image -->
+          <!-- Table & Link -->
           <div class="toolbar-group">
             <button class="toolbar-btn" data-command="insertTable" title="Insert Table" aria-label="Insert Table">
-              <svg viewBox="0 0 24 24"><path d="M5 4H19A2 2 0 0 1 21 6V18A2 2 0 0 1 19 20H5A2 2 0 0 1 3 18V6A2 2 0 0 1 5 4M5 8V12H11V8H5M13 8V12H19V8H13M5 14V18H11V14H5M13 14V18H19V14H13Z"/></svg>
+              <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
             </button>
             <button class="toolbar-btn" data-command="link" title="Insert Link (Ctrl+K)" aria-label="Insert Link">
-              <svg viewBox="0 0 24 24"><path d="M3.9 12C3.9 10.29 5.29 8.9 7 8.9H11V7H7A5 5 0 0 0 2 12A5 5 0 0 0 7 17H11V15.1H7C5.29 15.1 3.9 13.71 3.9 12M8 13H16V11H8V13M17 7H13V8.9H17C18.71 8.9 20.1 10.29 20.1 12C20.1 13.71 18.71 15.1 17 15.1H13V17H17A5 5 0 0 0 22 12A5 5 0 0 0 17 7Z"/></svg>
+              <svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
             </button>
           </div>
 
@@ -1937,31 +2088,31 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           <div id="table-context" class="toolbar-group hidden">
             <div class="toolbar-separator"></div>
             <button class="toolbar-btn" data-command="addColumnBefore" title="Add Column Before" aria-label="Add Column Before">
-              <svg viewBox="0 0 24 24"><path d="M13 2H21V22H13V20H19V4H13V2M11 8H9V11H6V13H9V16H11V13H14V11H11V8Z"/></svg>
+              <svg viewBox="0 0 24 24"><path d="M16 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><line x1="8" y1="12" x2="2" y2="12"/><line x1="5" y1="9" x2="5" y2="15"/></svg>
             </button>
             <button class="toolbar-btn" data-command="addColumnAfter" title="Add Column After" aria-label="Add Column After">
-              <svg viewBox="0 0 24 24"><path d="M11 2H3V22H11V20H5V4H11V2M15 8H13V11H10V13H13V16H15V13H18V11H15V8Z"/></svg>
+              <svg viewBox="0 0 24 24"><path d="M8 3H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h4"/><line x1="16" y1="12" x2="22" y2="12"/><line x1="19" y1="9" x2="19" y2="15"/></svg>
             </button>
             <button class="toolbar-btn" data-command="addRowAfter" title="Add Row Below" aria-label="Add Row Below">
-              <svg viewBox="0 0 24 24"><path d="M22 3H2V13H22V3M20 11H4V5H20V11M13 15H11V18H8V20H11V23H13V20H16V18H13V15Z"/></svg>
+              <svg viewBox="0 0 24 24"><path d="M3 8V4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4"/><line x1="12" y1="14" x2="12" y2="22"/><line x1="9" y1="19" x2="15" y2="19"/></svg>
             </button>
             <button class="toolbar-btn" data-command="deleteColumn" title="Delete Column" aria-label="Delete Column">
-              <svg viewBox="0 0 24 24"><path d="M4 2H10V4H4V20H10V22H4A2 2 0 0 1 2 20V4A2 2 0 0 1 4 2M20 2H14V4H20V20H14V22H20A2 2 0 0 0 22 20V4A2 2 0 0 0 20 2M14.59 8L12 10.59L9.41 8L8 9.41L10.59 12L8 14.59L9.41 16L12 13.41L14.59 16L16 14.59L13.41 12L16 9.41L14.59 8Z"/></svg>
+              <svg viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="2"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></svg>
             </button>
             <button class="toolbar-btn" data-command="deleteRow" title="Delete Row" aria-label="Delete Row">
-              <svg viewBox="0 0 24 24"><path d="M2 4H22V10H20V6H4V10H2V4M2 20H22V14H20V18H4V14H2V20M14.59 8L12 10.59L9.41 8L8 9.41L10.59 12L8 14.59L9.41 16L12 13.41L14.59 16L16 14.59L13.41 12L16 9.41L14.59 8Z"/></svg>
+              <svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></svg>
             </button>
             <button class="toolbar-btn" data-command="deleteTable" title="Delete Table" aria-label="Delete Table">
-              <svg viewBox="0 0 24 24"><path d="M15.46 15.12L16.88 16.54L19 14.41L21.12 16.54L22.54 15.12L20.41 13L22.54 10.88L21.12 9.46L19 11.59L16.88 9.46L15.46 10.88L17.59 13L15.46 15.12M4 3H18A2 2 0 0 1 20 5V8.17C19.5 8.06 19 8 18.5 8H14V5H10V8H4V12H10V14H4V18H13.08C13.2 18.72 13.45 19.39 13.82 20H4A2 2 0 0 1 2 18V5A2 2 0 0 1 4 3Z"/></svg>
+              <svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
             </button>
           </div>
 
           <div class="toolbar-spacer"></div>
 
           <!-- TOC toggle + Theme & View Source (right side) -->
-          <div class="toolbar-group">
+          <div class="toolbar-group" style="gap: 6px;">
             <button class="toolbar-btn" id="btn-toc" title="Table of Contents" aria-label="Toggle Table of Contents">
-              <svg viewBox="0 0 24 24"><path d="M3 9H17V7H3V9M3 13H17V11H3V13M3 17H17V15H3V17M19 17H21V15H19V17M19 7V9H21V7H19M19 13H21V11H19V13Z"/></svg>
+              <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="14" y1="9" x2="18" y2="9"/><line x1="14" y1="13" x2="18" y2="13"/><line x1="14" y1="17" x2="18" y2="17"/></svg>
             </button>
             <div class="toolbar-separator"></div>
             <select id="theme-select" aria-label="Editor theme">
@@ -2002,7 +2153,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           <aside id="toc-sidebar" class="hidden">
             <div class="toc-header">
               <span class="toc-title">Contents</span>
-              <div class="toc-depth-filter" id="toc-depth-filter"></div>
             </div>
             <div id="toc-entries"></div>
           </aside>
