@@ -44,6 +44,7 @@ import { MermaidDiagram, updateMermaidTheme, clearMermaidCache } from "./mermaid
 import { AlertNode, ALERT_REGEX, ALERT_TYPES, getFirstText, stripAlertPrefix } from "./alert-extension";
 import { TableContextMenu } from "./table-context-menu";
 import { Blockquote } from "@tiptap/extension-blockquote";
+import { setupTocSidebar, updateTocFromEditor, setTocDepthFilter, getTocDepthFilter } from "./toc-sidebar";
 
 // Fix: @tiptap/markdown v3.19.0 drops `escape` tokens from marked parser,
 // causing escaped characters like \_ to be silently lost during roundtrip.
@@ -126,10 +127,16 @@ const CodeExitHandler = Extension.create({
   },
 });
 
+interface WebviewState {
+  theme?: string;
+  tocVisible?: boolean;
+  tocDepthFilter?: number[];
+}
+
 declare function acquireVsCodeApi(): {
   postMessage(message: unknown): void;
-  getState(): { theme?: string } | null;
-  setState(state: unknown): void;
+  getState(): WebviewState | null;
+  setState(state: WebviewState): void;
 };
 
 type ThemeName =
@@ -901,9 +908,11 @@ function initEditor(initialContent: string = ""): Editor | null {
       },
       onSelectionUpdate: ({ editor: ed }) => {
         updateToolbarActiveState(ed);
+        updateTocFromEditor(ed, false);
       },
-      onTransaction: ({ editor: ed }) => {
+      onTransaction: ({ editor: ed, transaction: tr }) => {
         updateToolbarActiveState(ed);
+        updateTocFromEditor(ed, tr.docChanged);
       },
     });
 
@@ -1131,6 +1140,7 @@ window.addEventListener("message", async (event) => {
 
           if (!editor) {
             editor = initEditor(displayBody);
+            if (editor) initTocSidebar();
           } else {
             updateEditorContent(displayBody);
           }
@@ -1138,6 +1148,8 @@ window.addEventListener("message", async (event) => {
           if (editor) {
             // Transform table cells: convert text patterns (-, N., [x]) to proper list nodes
             transformTableCellsAfterParse(editor);
+            // Update TOC after content change
+            updateTocFromEditor(editor, true);
           }
         } catch (err) {
           console.error("[Tiptap] Update failed:", err);
@@ -1214,6 +1226,61 @@ window.addEventListener("message", async (event) => {
   }
 });
 
+// TOC sidebar setup
+function setupTocHandlers(): void {
+  const tocSidebar = document.getElementById("toc-sidebar");
+  const tocBtn = document.getElementById("btn-toc");
+  const depthFilterContainer = document.getElementById("toc-depth-filter");
+
+  // Restore TOC state
+  const savedState = vscode.getState();
+  if (savedState?.tocVisible) {
+    tocSidebar?.classList.remove("hidden");
+    tocBtn?.classList.add("is-active");
+  }
+
+  // Restore depth filter
+  const savedFilter = savedState?.tocDepthFilter || [1, 2, 3, 4, 5, 6];
+  setTocDepthFilter(savedFilter);
+
+  // Render depth filter buttons
+  if (depthFilterContainer) {
+    for (let level = 1; level <= 6; level++) {
+      const btn = document.createElement("button");
+      btn.className = `toc-depth-btn${savedFilter.includes(level) ? " active" : ""}`;
+      btn.textContent = String(level);
+      btn.title = `Toggle H${level}`;
+      btn.addEventListener("click", () => {
+        btn.classList.toggle("active");
+        const activeLevels: number[] = [];
+        depthFilterContainer.querySelectorAll(".toc-depth-btn.active").forEach((b) => {
+          activeLevels.push(parseInt(b.textContent || "0", 10));
+        });
+        setTocDepthFilter(activeLevels);
+        vscode.setState({ ...vscode.getState(), tocDepthFilter: activeLevels });
+      });
+      depthFilterContainer.appendChild(btn);
+    }
+  }
+
+  // Toggle handler
+  tocBtn?.addEventListener("click", () => {
+    const isHidden = tocSidebar?.classList.toggle("hidden");
+    tocBtn.classList.toggle("is-active", !isHidden);
+    vscode.setState({ ...vscode.getState(), tocVisible: !isHidden });
+  });
+}
+
+// Initialize TOC after editor is created
+function initTocSidebar(): void {
+  if (!editor) return;
+  const tocContainer = document.getElementById("toc-entries");
+  if (!tocContainer) return;
+
+  const savedFilter = vscode.getState()?.tocDepthFilter || [1, 2, 3, 4, 5, 6];
+  setupTocSidebar(editor, tocContainer, savedFilter);
+}
+
 function init() {
   console.log("[Tiptap] init() called");
 
@@ -1228,6 +1295,7 @@ function init() {
 
   setupToolbarHandlers();
   setupMetadataHandlers();
+  setupTocHandlers();
 
   const editorEl = document.getElementById("editor");
   if (editorEl) {
