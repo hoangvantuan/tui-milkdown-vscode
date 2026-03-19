@@ -1019,7 +1019,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           }
 
           #editor-container {
-            height: calc(100vh - 40px);
+            flex: 1;
+            min-width: 0;
             overflow-x: hidden;
             overflow-y: auto;
             position: relative;
@@ -1646,11 +1647,132 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             color: rgba(255,255,255,0.7);
           }
 
+          /* ─── TOC Sidebar ─── */
+          #main-layout {
+            display: flex;
+            height: calc(100vh - 40px);
+          }
+          #toc-sidebar {
+            width: 220px;
+            min-width: 220px;
+            border-right: 1px solid var(--vscode-panel-border);
+            overflow-y: auto;
+            background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+            font-size: 13px;
+            display: flex;
+            flex-direction: column;
+          }
+          #toc-sidebar.hidden { display: none; }
+          .toc-header {
+            padding: 8px 10px 4px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+            border-bottom: 1px solid var(--vscode-panel-border);
+          }
+          .toc-title {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--vscode-sideBarSectionHeader-foreground, var(--vscode-editor-foreground));
+            opacity: 0.7;
+          }
+          .toc-depth-filter {
+            display: flex;
+            gap: 2px;
+            margin-left: auto;
+          }
+          .toc-depth-btn {
+            width: 20px;
+            height: 20px;
+            padding: 0;
+            border: 1px solid var(--vscode-input-border, transparent);
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            background: transparent;
+            color: var(--vscode-editor-foreground);
+            opacity: 0.4;
+            transition: opacity 0.1s ease-out, background 0.1s ease-out;
+          }
+          .toc-depth-btn:hover { opacity: 0.8; }
+          .toc-depth-btn.active {
+            opacity: 1;
+            background: var(--vscode-list-activeSelectionBackground);
+            color: var(--vscode-list-activeSelectionForeground);
+          }
+          #toc-entries {
+            flex: 1;
+            overflow-y: auto;
+            padding: 4px 0;
+          }
+          .toc-entry {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 10px;
+            cursor: pointer;
+            border-radius: 3px;
+            margin: 0 4px;
+            color: var(--vscode-editor-foreground);
+            opacity: 0.75;
+            transition: background 0.1s ease-out, opacity 0.1s ease-out;
+          }
+          .toc-entry:hover {
+            background: var(--vscode-list-hoverBackground);
+            opacity: 1;
+          }
+          .toc-entry.active {
+            background: var(--vscode-list-activeSelectionBackground);
+            color: var(--vscode-list-activeSelectionForeground);
+            opacity: 1;
+          }
+          .toc-label {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            flex: 1;
+          }
+          .toc-arrow {
+            font-size: 8px;
+            width: 12px;
+            flex-shrink: 0;
+            text-align: center;
+            cursor: pointer;
+            user-select: none;
+            opacity: 0.6;
+          }
+          .toc-arrow:hover { opacity: 1; }
+          .toc-children.collapsed { display: none; }
+          .toc-empty {
+            padding: 12px 10px;
+            font-size: 12px;
+            color: var(--vscode-descriptionForeground, #888);
+            font-style: italic;
+          }
+          /* Indent by heading level */
+          .toc-level-1 { padding-left: 10px; font-weight: 600; }
+          .toc-level-2 { padding-left: 22px; }
+          .toc-level-3 { padding-left: 34px; }
+          .toc-level-4 { padding-left: 46px; }
+          .toc-level-5 { padding-left: 54px; font-size: 12px; }
+          .toc-level-6 { padding-left: 62px; font-size: 12px; }
+          /* TOC toggle button active state */
+          .toolbar-btn#btn-toc.is-active {
+            background: var(--vscode-list-activeSelectionBackground);
+            color: var(--vscode-list-activeSelectionForeground);
+            opacity: 1;
+          }
+
           /* Reduced motion — respect OS accessibility setting */
           @media (prefers-reduced-motion: reduce) {
             .tiptap *, .tiptap *::before, .tiptap *::after,
             .toolbar-btn, .view-source-btn, .mermaid-code-block,
-            .mermaid-preview, .image-edit-overlay {
+            .mermaid-preview, .image-edit-overlay,
+            .toc-entry, .toc-depth-btn {
               transition-duration: 0.01ms !important;
               animation-duration: 0.01ms !important;
             }
@@ -1759,6 +1881,15 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             </button>
           </div>
 
+          <div class="toolbar-separator"></div>
+
+          <!-- TOC toggle -->
+          <div class="toolbar-group">
+            <button class="toolbar-btn" id="btn-toc" title="Table of Contents" aria-label="Toggle Table of Contents">
+              <svg viewBox="0 0 24 24"><path d="M3 9H17V7H3V9M3 13H17V11H3V13M3 17H17V15H3V17M19 17H21V15H19V17M19 7V9H21V7H19M19 13H21V11H19V13Z"/></svg>
+            </button>
+          </div>
+
           <div class="toolbar-spacer"></div>
 
           <!-- Theme & View Source (right side) -->
@@ -1797,12 +1928,21 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             + Add Metadata
           </button>
         </div>
-        <div id="editor-container">
-          <div id="loading-indicator">
-            <div class="loading-spinner"></div>
-            <span class="loading-text">Loading editor...</span>
+        <div id="main-layout">
+          <aside id="toc-sidebar" class="hidden">
+            <div class="toc-header">
+              <span class="toc-title">Contents</span>
+              <div class="toc-depth-filter" id="toc-depth-filter"></div>
+            </div>
+            <div id="toc-entries"></div>
+          </aside>
+          <div id="editor-container">
+            <div id="loading-indicator">
+              <div class="loading-spinner"></div>
+              <span class="loading-text">Loading editor...</span>
+            </div>
+            <div id="editor"></div>
           </div>
-          <div id="editor"></div>
         </div>
         <script nonce="${nonce}" src="${scriptUri}"></script>
       </body>
