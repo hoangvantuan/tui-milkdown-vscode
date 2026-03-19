@@ -2,6 +2,12 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## \[2.2.0] - 2026-03-19
+
+### Added
+
+* **Table of Contents Sidebar**: Toggleable TOC panel inside the editor with click-to-scroll navigation, active heading highlight, H1-H6 depth filter, collapse/expand sections, and state persistence
+
 ## \[2.0.9] - 2026-03-19
 
 ### Changed
