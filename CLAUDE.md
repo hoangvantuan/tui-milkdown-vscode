@@ -44,7 +44,7 @@ npm run package    # Package extension as .vsix
 
 * `pendingEdit` flag prevents edit loops between extension and webview
 
-* Webview persists theme selection in `vscode.setState()`
+* Webview persists theme selection and TOC state in `vscode.setState()` (use spread pattern: `{ ...getState(), key: value }`)
 
 * Large files (>500KB) show warning dialog
 
@@ -67,6 +67,7 @@ src/
     ├── image-edit-plugin.ts  # Double-click image URL editing
     ├── table-markdown-serializer.ts # Custom GFM table serializer (multi-line cells)
     ├── table-cell-content-parser.ts # Post-parse transformer for table cell lists/breaks
+    ├── toc-sidebar.ts        # Table of Contents sidebar (extract, tree, render, active tracking)
     └── themes/               # Theme CSS files (scoped by body class)
         ├── index.css              # Imports all theme CSS
         ├── frame.css              # Frame light theme
@@ -345,6 +346,46 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 * Light themes: `rgba(0, 0, 0, 0.6)` (default)
 
 * Dark themes: `rgba(255, 255, 255, 0.5)` via `body.dark-theme` selector
+
+## TOC Sidebar
+
+**Module** (`src/webview/toc-sidebar.ts`):
+
+* Standalone module: extract headings, build nested tree, render DOM, active tracking
+
+* `extractHeadings(doc)`: Traverses `doc.descendants()` for heading nodes (same pattern as heading-level-plugin)
+
+* `buildTocTree(flat)`: Stack-based nesting algorithm converting flat heading list to tree
+
+* `updateTocFromEditor(editor, docChanged)`: Debounced rebuild (200ms) on doc changes, immediate active heading update on selection
+
+* `setTocDepthFilter(levels)`: H1-H6 toggle filter, re-renders tree
+
+**Layout** (in `src/markdownEditorProvider.ts`):
+
+* `#main-layout` flexbox wrapper: sidebar (220px fixed) + editor container (flex: 1)
+
+* Sidebar hidden by default (`.hidden` class), toggle via toolbar button
+
+* Responsive: 180px width on viewports < 600px
+
+**Integration** (in `src/webview/main.ts`):
+
+* `setupTocHandlers()`: Registers toolbar toggle, depth filter buttons
+
+* `initTocSidebar()`: Called after editor init, restores visibility state AFTER content populated
+
+* State persisted in `vscode.setState()`: `tocVisible`, `tocDepthFilter`
+
+* Hooked into `onTransaction` (not `onSelectionUpdate` — onTransaction covers both)
+
+**Key patterns:**
+
+* DOM scroll: `el.scrollIntoView({ block: "start", behavior: "smooth" })` for click-to-scroll
+
+* XSS safe: Uses `textContent` (not `innerHTML`) for heading text
+
+* `vscode.setState()` must use spread pattern: `{ ...getState(), key: value }` to preserve other state (theme, TOC)
 
 ## Table Serializer
 

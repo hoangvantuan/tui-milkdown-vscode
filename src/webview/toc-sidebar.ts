@@ -116,18 +116,21 @@ let currentDepthFilter = new Set([1, 2, 3, 4, 5, 6]);
 let tocContainer: HTMLElement | null = null;
 let tocEditor: Editor | null = null;
 
-// Click handler: focus editor at heading position
+// Click handler: focus editor at heading position, scroll to top of viewport
 function scrollToHeading(pos: number): void {
   if (!tocEditor) return;
   try {
     const docSize = tocEditor.state.doc.content.size;
     const safePos = Math.min(pos + 1, docSize);
     tocEditor.commands.focus(safePos);
-    tocEditor.view.dispatch(
-      tocEditor.state.tr.setSelection(
-        tocEditor.state.selection,
-      ).scrollIntoView(),
-    );
+
+    // Use DOM scrollIntoView for reliable "scroll to top" behavior
+    const domAtPos = tocEditor.view.domAtPos(safePos);
+    const node = domAtPos.node;
+    const el = node instanceof HTMLElement ? node : node.parentElement;
+    if (el) {
+      el.scrollIntoView({ block: "start", behavior: "smooth" });
+    }
   } catch {
     // Position may be invalid after doc change
   }
@@ -189,15 +192,24 @@ export function setupTocSidebar(
   renderFullToc();
 }
 
-// Called from onTransaction — lightweight update
+// Debounce TOC rebuild to avoid full DOM rebuild on every keystroke
+let tocRebuildTimer: ReturnType<typeof setTimeout> | null = null;
+const TOC_REBUILD_DEBOUNCE = 200;
+
+// Called from onTransaction — debounces rebuild, updates active immediately
 export function updateTocFromEditor(editor: Editor, docChanged: boolean): void {
   tocEditor = editor;
   if (!tocContainer) return;
 
   if (docChanged) {
-    cachedHeadings = extractHeadings(editor.state.doc);
-    cachedTree = buildTocTree(cachedHeadings);
-    renderFullToc();
+    if (tocRebuildTimer) clearTimeout(tocRebuildTimer);
+    tocRebuildTimer = setTimeout(() => {
+      cachedHeadings = extractHeadings(editor.state.doc);
+      cachedTree = buildTocTree(cachedHeadings);
+      renderFullToc();
+      updateActive(editor.state.selection.from);
+      tocRebuildTimer = null;
+    }, TOC_REBUILD_DEBOUNCE);
   }
 
   const { from } = editor.state.selection;

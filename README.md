@@ -13,6 +13,7 @@ A beautiful WYSIWYG Markdown editor for VS Code powered by Tiptap.
 - **Theme Selection**: 10 editor themes including Catppuccin palette (4 variants)
 - **View Source**: Toggle between WYSIWYG and source view (Ctrl/Cmd+Shift+M)
 - **Cursor Line Highlight**: Visual highlight of current block/paragraph
+- **Table of Contents**: Sidebar with click-to-scroll, active heading tracking, depth filter, and collapse/expand
 - **Heading Level Badges**: H1-H6 indicators next to headings
 - **Metadata Panel**: Collapsible YAML frontmatter editor with validation
 - **Image Upload**: Paste images from clipboard or drag-and-drop into editor

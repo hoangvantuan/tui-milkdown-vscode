@@ -2,6 +2,22 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## \[2.3.0] - 2026-03-19
+
+### Added
+
+* **Table of Contents Sidebar**: Toggleable TOC panel inside the editor with click-to-scroll navigation, active heading highlight, H1-H6 depth filter, collapse/expand sections, and state persistence
+
+### Fixed
+
+* TOC button moved to right side of toolbar for better visibility
+* Sidebar visibility deferred until content populated (no empty box flash)
+* Click-to-scroll now scrolls heading to top of viewport
+* `setTheme()` no longer overwrites TOC state in `vscode.setState()`
+* Debounced TOC rebuild (200ms) to avoid DOM rebuild on every keystroke
+* Removed duplicate heading extraction on selection change and initial load
+* Responsive sidebar width (180px) on narrow viewports
+
 ## \[2.0.9] - 2026-03-19
 
 ### Changed
