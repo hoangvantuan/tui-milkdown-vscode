@@ -804,7 +804,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             --heading-h4-margin-bottom: 8px;
             --heading-h5-margin-bottom: 6px;
             --heading-h6-margin-bottom: 6px;
-            --content-max-width: 760px;
+            --content-max-width: 100%;
           }
           * { box-sizing: border-box; }
           html, body {
@@ -1141,22 +1141,16 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           #metadata-details.hidden { display: none; }
           #table-context.hidden { display: none; }
 
-          /* Responsive editor content — adaptive width */
+          /* Full-width editor with comfortable padding */
           .tiptap {
-            max-width: var(--content-max-width, 760px);
-            margin-left: auto;
-            margin-right: auto;
+            max-width: 100%;
+            padding-left: 64px;
+            padding-right: 64px;
           }
           @media (max-width: 900px) {
             .tiptap {
-              max-width: 100%;
               padding-left: 24px;
               padding-right: 24px;
-            }
-          }
-          @media (min-width: 901px) and (max-width: 1200px) {
-            .tiptap {
-              max-width: min(85vw, 760px);
             }
           }
           /* Tables can overflow content width */
