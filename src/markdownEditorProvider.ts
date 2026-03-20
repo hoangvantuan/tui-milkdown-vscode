@@ -1901,11 +1901,32 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .toc-level-4 { padding-left: 46px; }
           .toc-level-5 { padding-left: 54px; font-size: 12px; }
           .toc-level-6 { padding-left: 62px; font-size: 12px; }
-          /* TOC toggle button active state */
-          .toolbar-btn#btn-toc.is-active {
-            background: rgba(var(--accent-rgb, 59, 130, 246), 0.2);
-            color: var(--accent-primary, var(--toolbar-fg));
+          /* TOC toggle button — flex item in main-layout, between sidebar and editor */
+          .toc-toggle-btn {
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            width: 24px;
+            min-width: 24px;
+            padding-top: 8px;
+            border: none;
+            background: transparent;
+            color: var(--toolbar-fg, var(--vscode-editor-foreground));
+            cursor: pointer;
+            opacity: 0.45;
+            transition: opacity 0.15s ease-out, background 0.15s ease-out;
+          }
+          .toc-toggle-btn svg { width: 14px; height: 14px; }
+          .toc-toggle-btn:hover {
             opacity: 1;
+            background: rgba(var(--border-rgb, 0, 0, 0), 0.05);
+          }
+          .toc-toggle-btn.is-active {
+            opacity: 0.85;
+            color: var(--accent-primary, var(--toolbar-fg));
+          }
+          body.dark-theme .toc-toggle-btn:hover {
+            background: rgba(255, 255, 255, 0.05);
           }
           @media (max-width: 600px) {
             #toc-sidebar { width: 180px; min-width: 180px; }
@@ -2109,12 +2130,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
           <div class="toolbar-spacer"></div>
 
-          <!-- TOC toggle + Theme & View Source (right side) -->
+          <!-- Theme & View Source (right side) -->
           <div class="toolbar-group" style="gap: 6px;">
-            <button class="toolbar-btn" id="btn-toc" title="Table of Contents" aria-label="Toggle Table of Contents">
-              <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="14" y1="9" x2="18" y2="9"/><line x1="14" y1="13" x2="18" y2="13"/><line x1="14" y1="17" x2="18" y2="17"/></svg>
-            </button>
-            <div class="toolbar-separator"></div>
             <select id="theme-select" aria-label="Editor theme">
               <option value="frame">Frame</option>
               <option value="frame-dark">Frame Dark</option>
@@ -2150,6 +2167,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           </button>
         </div>
         <div id="main-layout">
+          <button id="btn-toc" class="toc-toggle-btn" title="Table of Contents" aria-label="Toggle Table of Contents">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="14" y1="9" x2="18" y2="9"/><line x1="14" y1="13" x2="18" y2="13"/><line x1="14" y1="17" x2="18" y2="17"/></svg>
+          </button>
           <aside id="toc-sidebar" class="hidden">
             <div class="toc-header">
               <span class="toc-title">Contents</span>

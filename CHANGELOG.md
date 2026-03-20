@@ -2,6 +2,12 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## \[2.5.0] - 2026-03-20
+
+### Changed
+
+* **TOC Toggle Button**: Moved from toolbar right side to inline flex item in main layout — sits between sidebar and editor, no longer overlaps content
+
 ## \[2.4.0] - 2026-03-19
 
 ### Added
