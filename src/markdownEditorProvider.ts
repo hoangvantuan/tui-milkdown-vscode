@@ -818,7 +818,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .tiptap {
             padding: 32px 48px 40vh 48px;
             caret-color: var(--crepe-color-primary);
-            -webkit-font-smoothing: antialiased;
             font-optical-sizing: auto;
             transition: background-color 0.3s ease, color 0.3s ease;
           }
