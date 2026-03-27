@@ -75,6 +75,7 @@ src/
     ├── table-markdown-serializer.ts # Custom GFM table serializer (multi-line cells)
     ├── table-cell-content-parser.ts # Post-parse transformer for table cell lists/breaks
     ├── table-context-menu.ts # Right-click context menu for table operations
+    ├── search-plugin.ts      # Cmd+F search via prosemirror-search (highlight, next/prev, match count)
     ├── toc-sidebar.ts        # Table of Contents sidebar (extract, tree, render, active tracking)
     └── themes/               # Theme CSS files (scoped by body class)
         ├── index.css              # Imports all theme CSS
@@ -108,7 +109,7 @@ Extension provides these settings via `tuiMarkdown.*` namespace:
 
 Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for markdown roundtrip.
 
-**Extensions:** StarterKit (includes Link with `autolink: true, linkOnPaste: true`), Image, Highlight, Table (resizable + custom `renderMarkdown` hook), CodeBlockLowlight (syntax highlighting via lowlight/highlight.js), TaskList + TaskItem, Placeholder, Markdown (GFM + configurable indentation), AlertNode (GitHub-style alerts), MermaidDiagram (SVG preview), TableContextMenu (right-click menu), CodeBlockEnhancement (language badge + copy button).
+**Extensions:** StarterKit (includes Link with `autolink: true, linkOnPaste: true`), Image, Highlight, Table (resizable + custom `renderMarkdown` hook), CodeBlockLowlight (syntax highlighting via lowlight/highlight.js), TaskList + TaskItem, Placeholder, Markdown (GFM + configurable indentation), AlertNode (GitHub-style alerts), MermaidDiagram (SVG preview), TableContextMenu (right-click menu), CodeBlockEnhancement (language badge + copy button), SearchPlugin (Cmd+F via prosemirror-search).
 
 **Markdown API:**
 
@@ -448,6 +449,48 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 * XSS safe: Uses `textContent` (not `innerHTML`) for heading text
 
 * `vscode.setState()` must use spread pattern: `{ ...getState(), key: value }` to preserve other state (theme, TOC)
+
+## Search (Cmd+F)
+
+**Plugin** (`src/webview/search-plugin.ts`):
+
+* Tiptap Extension wrapping `prosemirror-search` package
+* `search()` ProseMirror plugin provides decoration-based match highlighting
+* `SearchQuery({ search, caseSensitive })` configures the search
+* `setSearchState(tr, query)` sets query via transaction meta
+* `findNext(state, dispatch)` / `findPrev(state, dispatch)` — standard ProseMirror commands
+* `getMatchHighlights(state)` returns DecorationSet; `.find()` gives match count
+* `Mod-f` intercepted via `addKeyboardShortcuts()`, dispatches `CustomEvent("toggle-search-bar")`
+
+**Search Bar UI** (in `src/markdownEditorProvider.ts` HTML + CSS):
+
+* Positioned between `#toolbar` and `#metadata-panel` in DOM
+* Glassmorphic style matching toolbar (`backdrop-filter: blur(12px)`, CSS variables)
+* Slide-down animation: `max-height: 0` → `40px` with `0.15s ease-out` transition
+* `.hidden` class controls visibility (same pattern as TOC sidebar)
+* Input debounced at 150ms, "no-results" red border on 0 matches
+
+**Keyboard shortcuts**: `Mod-f` toggle, `Enter` next, `Shift+Enter` prev, `Escape` close
+
+**CSS classes**: `.ProseMirror-search-match` (all matches, `rgba(--accent-rgb, 0.2)`), `.ProseMirror-active-search-match` (active, `0.45`). Dark theme uses higher opacity (`0.25`/`0.5`).
+
+**Dependencies**: `prosemirror-search@^1.1.0`
+
+## Link Click Navigation
+
+**Behavior** (in `src/webview/main.ts` + `src/markdownEditorProvider.ts`):
+
+* **Ctrl+Click** (`Cmd+Click` on macOS) triggers link navigation; regular click places cursor normally
+
+* **Anchor links** (`#heading-slug`): `scrollToHeading()` traverses `doc.descendants()`, generates GitHub-style slug (lowercase, special chars removed, spaces→hyphens), scrolls matching heading into view via `scrollIntoView({ behavior: "smooth" })`
+
+* **Relative file links** (`./file.md`, `../docs/readme.md`): Webview sends `openLink` message → Extension resolves path against `document.uri.fsPath` → `vscode.workspace.openTextDocument()` + `showTextDocument()`
+
+* **External URLs** (`https://...`): Extension calls `vscode.env.openExternal()`
+
+* **Cursor style**: `body.ctrl-held` class toggled via keydown/keyup listeners; CSS shows pointer cursor + underline on `.tiptap a`
+
+**Message type**: `openLink` (webview → extension, payload: `{ href: string }`)
 
 ## Code Block Enhancement
 

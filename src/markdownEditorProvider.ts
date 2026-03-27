@@ -537,6 +537,30 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
               });
             break;
           }
+          case "openLink": {
+            const linkHref = (msg as { href?: string }).href;
+            if (!linkHref) break;
+
+            if (/^https?:\/\//.test(linkHref)) {
+              // External URL → open in default browser
+              vscode.env.openExternal(vscode.Uri.parse(linkHref));
+            } else {
+              // Relative file path → resolve against document location
+              const docDir = path.dirname(document.uri.fsPath);
+              // Separate file path and anchor fragment
+              const hashIndex = linkHref.indexOf("#");
+              const filePart = hashIndex !== -1 ? linkHref.slice(0, hashIndex) : linkHref;
+              const targetPath = filePart
+                ? path.resolve(docDir, filePart)
+                : document.uri.fsPath;
+              const targetUri = vscode.Uri.file(targetPath);
+              vscode.workspace.openTextDocument(targetUri).then(
+                (doc) => vscode.window.showTextDocument(doc),
+                () => vscode.window.showWarningMessage(`Cannot open file: ${linkHref}`)
+              );
+            }
+            break;
+          }
           case "requestLinkEdit": {
             const linkMsg = msg as { editId?: string; currentUrl?: string };
             if (!linkMsg.editId) break;
@@ -1589,6 +1613,11 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             text-decoration: none;
             border-bottom: 1px solid transparent;
           }
+          /* Ctrl/Cmd held: pointer cursor + underline on links */
+          body.ctrl-held .tiptap a {
+            cursor: pointer;
+            text-decoration: underline;
+          }
           /* Placeholder styling */
           .tiptap p.is-editor-empty:first-child::before {
             content: attr(data-placeholder);
@@ -2011,17 +2040,126 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             .tiptap img { border: 1px solid var(--vscode-panel-border); }
           }
 
+          /* Search bar */
+          #search-bar {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            background: rgba(var(--toolbar-bg-rgb), 0.85);
+            border-bottom: 1px solid rgba(var(--border-rgb), 0.15);
+            max-height: 40px;
+            overflow: hidden;
+            transition: max-height 0.15s ease-out, padding 0.15s ease-out;
+          }
+          @supports (backdrop-filter: blur(12px)) {
+            #search-bar {
+              backdrop-filter: blur(12px);
+              -webkit-backdrop-filter: blur(12px);
+              background: rgba(var(--toolbar-bg-rgb), 0.7);
+            }
+          }
+          #search-bar.hidden {
+            max-height: 0;
+            padding-top: 0;
+            padding-bottom: 0;
+            border-bottom-color: transparent;
+          }
+          .search-icon {
+            width: 14px;
+            height: 14px;
+            fill: none;
+            stroke: var(--toolbar-fg);
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            opacity: 0.5;
+            flex-shrink: 0;
+          }
+          #search-input {
+            flex: 1;
+            max-width: 300px;
+            background: rgba(var(--border-rgb), 0.1);
+            border: 1px solid rgba(var(--border-rgb), 0.2);
+            border-radius: 4px;
+            padding: 3px 8px;
+            font-size: 13px;
+            font-family: inherit;
+            color: var(--toolbar-fg);
+            outline: none;
+            transition: border-color 0.15s ease;
+          }
+          #search-input:focus {
+            border-color: rgba(var(--accent-rgb, 59, 130, 246), 0.5);
+          }
+          #search-input.no-results {
+            border-color: rgba(220, 38, 38, 0.6);
+          }
+          #search-count {
+            font-size: 12px;
+            color: var(--toolbar-fg);
+            opacity: 0.6;
+            min-width: 36px;
+            text-align: center;
+            white-space: nowrap;
+          }
+          .search-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 22px;
+            height: 22px;
+            border: none;
+            background: transparent;
+            border-radius: 4px;
+            cursor: pointer;
+            color: var(--toolbar-fg);
+            padding: 0;
+            transition: background-color 0.1s ease;
+          }
+          .search-btn:hover {
+            background: rgba(var(--border-rgb), 0.15);
+          }
+          .search-btn:active {
+            transform: scale(0.93);
+          }
+          .search-btn svg {
+            width: 14px;
+            height: 14px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+          }
+
+          /* Search match highlights (prosemirror-search) */
+          .ProseMirror-search-match {
+            background: rgba(var(--accent-rgb, 59, 130, 246), 0.2);
+            border-radius: 2px;
+          }
+          .ProseMirror-active-search-match {
+            background: rgba(var(--accent-rgb, 59, 130, 246), 0.45);
+            border-radius: 2px;
+          }
+          body.dark-theme .ProseMirror-search-match {
+            background: rgba(var(--accent-rgb, 59, 130, 246), 0.25);
+          }
+          body.dark-theme .ProseMirror-active-search-match {
+            background: rgba(var(--accent-rgb, 59, 130, 246), 0.5);
+          }
+
           /* Reduced motion — respect OS accessibility setting */
           @media (prefers-reduced-motion: reduce) {
             .tiptap *, .tiptap *::before, .tiptap *::after,
             .toolbar-btn, .view-source-btn, #heading-select, #theme-select,
             .mermaid-code-block, .mermaid-preview, .image-edit-overlay,
-            .toc-entry, .code-copy-btn,
+            .toc-entry, .code-copy-btn, #search-bar, #search-input,
             html, body, #toolbar {
               transition-duration: 0.01ms !important;
               animation-duration: 0.01ms !important;
             }
-            .toolbar-btn:active { transform: none !important; }
+            .toolbar-btn:active, .search-btn:active { transform: none !important; }
           }
 
         </style>
@@ -2145,6 +2283,20 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             </select>
             <button id="btn-source" class="view-source-btn" aria-label="View source in text editor">Source</button>
           </div>
+        </div>
+        <div id="search-bar" class="hidden">
+          <svg class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input id="search-input" type="text" placeholder="Search..." spellcheck="false" autocomplete="off" maxlength="500" />
+          <span id="search-count"></span>
+          <button id="search-prev" class="search-btn" title="Previous (Shift+Enter)" aria-label="Previous match">
+            <svg viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>
+          </button>
+          <button id="search-next" class="search-btn" title="Next (Enter)" aria-label="Next match">
+            <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <button id="search-close" class="search-btn" title="Close (Escape)" aria-label="Close search">
+            <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
         </div>
         <div id="metadata-panel">
           <details id="metadata-details" class="hidden">
