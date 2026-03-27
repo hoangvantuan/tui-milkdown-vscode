@@ -2,6 +2,12 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## \[2.5.1] - 2026-03-27
+
+### Fixed
+
+* **Font Rendering**: Removed `-webkit-font-smoothing: antialiased` — text now renders thicker and more legible using default subpixel antialiasing
+
 ## \[2.5.0] - 2026-03-20
 
 ### Changed
