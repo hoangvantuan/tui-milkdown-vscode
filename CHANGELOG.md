@@ -2,6 +2,13 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## \[2.6.0] - 2026-03-27
+
+### Added
+
+* **Search (Cmd+F)**: Find text in editor with `Cmd+F`/`Ctrl+F` — highlights all matches, navigate with Enter/Shift+Enter, match counter, glassmorphic search bar with slide-down animation. Powered by `prosemirror-search`.
+* **Link Click Navigation**: `Ctrl+Click` (`Cmd+Click` on macOS) on links — anchor links (`#heading`) scroll to heading, relative file links open in VSCode, external URLs open in browser. Pointer cursor shown when modifier key held.
+
 ## \[2.5.1] - 2026-03-27
 
 ### Fixed

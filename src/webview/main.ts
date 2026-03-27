@@ -47,6 +47,7 @@ import { Blockquote } from "@tiptap/extension-blockquote";
 import { setupTocSidebar, updateTocFromEditor } from "./toc-sidebar";
 import { HeadingCollapse, collapsePluginKey, getCollapsedHeadings, setCollapsedHeadings } from "./heading-collapse-plugin";
 import { CodeBlockEnhancement } from "./code-block-plugin";
+import { SearchPlugin, performSearch, clearSearch, searchNext, searchPrev, getMatchInfo } from "./search-plugin";
 
 // Fix: @tiptap/markdown v3.19.0 drops `escape` tokens from marked parser,
 // causing escaped characters like \_ to be silently lost during roundtrip.
@@ -802,6 +803,7 @@ function initEditor(initialContent: string = ""): Editor | null {
         CodeExitHandler,
         MermaidDiagram,
         TableContextMenu,
+        SearchPlugin,
         ...conditionalExtensions,
       ],
       content: initialContent,
@@ -1071,6 +1073,99 @@ function updateToolbarActiveState(ed: Editor): void {
   }
 }
 
+// Search bar handlers
+function setupSearchBar(): void {
+  const searchBar = document.getElementById("search-bar");
+  const searchInput = document.getElementById("search-input") as HTMLInputElement | null;
+  const searchCount = document.getElementById("search-count");
+  const searchPrevBtn = document.getElementById("search-prev");
+  const searchNextBtn = document.getElementById("search-next");
+  const searchCloseBtn = document.getElementById("search-close");
+  if (!searchBar || !searchInput) return;
+
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function updateCount(): void {
+    if (!searchCount || !editor) return;
+    const info = getMatchInfo(editor);
+    if (info.count > 0) {
+      searchCount.textContent = `${info.activeIndex}/${info.count}`;
+      searchInput?.classList.remove("no-results");
+    } else if (searchInput && searchInput.value.length > 0) {
+      searchCount.textContent = "0";
+      searchInput.classList.add("no-results");
+    } else {
+      searchCount.textContent = "";
+      searchInput?.classList.remove("no-results");
+    }
+  }
+
+  function openSearchBar(): void {
+    searchBar!.classList.remove("hidden");
+    searchInput!.focus();
+    searchInput!.select();
+  }
+
+  function closeSearchBar(): void {
+    if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
+    searchBar!.classList.add("hidden");
+    searchInput!.value = "";
+    searchCount!.textContent = "";
+    searchInput!.classList.remove("no-results");
+    if (editor) {
+      clearSearch(editor);
+      editor.commands.focus();
+    }
+  }
+
+  function toggleSearchBar(): void {
+    if (searchBar!.classList.contains("hidden")) {
+      openSearchBar();
+    } else {
+      closeSearchBar();
+    }
+  }
+
+  // Listen for Mod-f from search-plugin.ts
+  document.addEventListener("toggle-search-bar", toggleSearchBar);
+
+  // Input → debounced search
+  searchInput.addEventListener("input", () => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      if (!editor) return;
+      performSearch(editor, searchInput.value);
+      // After setting query, navigate to first match
+      if (searchInput.value.length > 0) {
+        searchNext(editor);
+      }
+      updateCount();
+    }, 150);
+  });
+
+  // Keyboard shortcuts in search input
+  searchInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      if (editor) { searchNext(editor); updateCount(); }
+    } else if (e.key === "Enter" && e.shiftKey) {
+      e.preventDefault();
+      if (editor) { searchPrev(editor); updateCount(); }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      closeSearchBar();
+    }
+  });
+
+  searchNextBtn?.addEventListener("click", () => {
+    if (editor) { searchNext(editor); updateCount(); }
+  });
+  searchPrevBtn?.addEventListener("click", () => {
+    if (editor) { searchPrev(editor); updateCount(); }
+  });
+  searchCloseBtn?.addEventListener("click", closeSearchBar);
+}
+
 // Toolbar event handlers
 function setupToolbarHandlers(): void {
   const themeSelect = getThemeSelect();
@@ -1110,6 +1205,63 @@ function setupToolbarHandlers(): void {
     if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "m") {
       e.preventDefault();
       viewSource();
+    }
+  });
+
+  // Link click navigation: Ctrl/Cmd+Click opens links
+  document.addEventListener("click", (e) => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    const anchor = (e.target as HTMLElement).closest<HTMLAnchorElement>("a[href]");
+    if (!anchor || !editor) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const href = anchor.getAttribute("href") || "";
+    if (href.startsWith("#")) {
+      scrollToHeading(href.slice(1));
+    } else {
+      vscode.postMessage({ type: "openLink", href });
+    }
+  });
+
+  // Ctrl/Cmd held → pointer cursor on links
+  document.addEventListener("keydown", (e) => {
+    if (e.ctrlKey || e.metaKey) document.body.classList.add("ctrl-held");
+  });
+  document.addEventListener("keyup", (e) => {
+    if (!e.ctrlKey && !e.metaKey) document.body.classList.remove("ctrl-held");
+  });
+  window.addEventListener("blur", () => document.body.classList.remove("ctrl-held"));
+}
+
+/** Scroll editor to heading matching GitHub-style slug */
+function scrollToHeading(slug: string): void {
+  if (!editor) return;
+  const { doc } = editor.state;
+  doc.descendants((node, pos) => {
+    if (node.type.name !== "heading") return;
+    const text = node.textContent;
+    // GitHub-style slug: lowercase, keep Unicode letters/digits, each space→one hyphen (no collapse)
+    const nodeSlug = text
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s-]/gu, "")
+      .replace(/\s/g, "-");
+    if (nodeSlug === slug) {
+      editor!.commands.setTextSelection(pos + 1);
+      const dom = editor!.view.nodeDOM(pos);
+      if (dom instanceof HTMLElement) {
+        const scroller = document.getElementById("editor-container");
+        if (scroller) {
+          const elRect = dom.getBoundingClientRect();
+          const scrollerRect = scroller.getBoundingClientRect();
+          const targetTop = elRect.top - scrollerRect.top + scroller.scrollTop - 60;
+          scroller.scrollTo({ top: Math.max(0, targetTop), behavior: "smooth" });
+        } else {
+          dom.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }
+      return false;
     }
   });
 }
@@ -1285,6 +1437,7 @@ function init() {
   });
 
   setupToolbarHandlers();
+  setupSearchBar();
   setupMetadataHandlers();
   setupTocHandlers();
 
