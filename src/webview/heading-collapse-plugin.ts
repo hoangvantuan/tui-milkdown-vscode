@@ -16,23 +16,6 @@ type CollapseMeta =
   | { type: "toggle"; key: string }
   | { type: "restore"; keys: string[] };
 
-/** Compute stable keys for headings: "H{level}:{text}:{occurrenceIndex}" */
-function computeHeadingKeys(doc: Node): Map<number, string> {
-  const posToKey = new Map<number, string>();
-  const seen = new Map<string, number>();
-  doc.descendants((node, pos) => {
-    if (node.type.name === "heading") {
-      const level = node.attrs.level as number;
-      const text = node.textContent || "(empty)";
-      const base = `H${level}:${text}`;
-      const idx = seen.get(base) || 0;
-      seen.set(base, idx + 1);
-      posToKey.set(pos, `${base}:${idx}`);
-    }
-  });
-  return posToKey;
-}
-
 /** Find the range of top-level nodes belonging to a heading's section. */
 function getSectionRange(
   doc: Node,
@@ -62,18 +45,28 @@ function getSectionRange(
   return { from: sectionStart, to: doc.content.size };
 }
 
-/** Build decorations: toggle widget per heading + hiding class on collapsed content. */
-function computeDecorations(doc: Node, state: Pick<CollapsePluginState, "collapsed" | "headingKeys">): DecorationSet {
+/** Single-pass: compute heading keys AND decorations together. */
+function computeKeysAndDecorations(
+  doc: Node,
+  collapsed: Set<string>,
+): { headingKeys: Map<number, string>; decorations: DecorationSet } {
+  const headingKeys = new Map<number, string>();
   const decorations: Decoration[] = [];
-  const { collapsed, headingKeys } = state;
+  const seen = new Map<string, number>();
 
   doc.forEach((node, offset) => {
     if (node.type.name !== "heading") return;
 
-    const key = headingKeys.get(offset);
-    if (!key) return;
-    const isCollapsed = collapsed.has(key);
+    // Compute stable key
     const level = node.attrs.level as number;
+    const text = node.textContent || "(empty)";
+    const base = `H${level}:${text}`;
+    const idx = seen.get(base) || 0;
+    seen.set(base, idx + 1);
+    const key = `${base}:${idx}`;
+    headingKeys.set(offset, key);
+
+    const isCollapsed = collapsed.has(key);
 
     // Toggle arrow widget (inside heading, before text)
     decorations.push(
@@ -91,7 +84,7 @@ function computeDecorations(doc: Node, state: Pick<CollapsePluginState, "collaps
       ),
     );
 
-    // Indicator on collapsed heading itself
+    // Indicator on collapsed heading itself + hide section content
     if (isCollapsed) {
       decorations.push(
         Decoration.node(offset, offset + node.nodeSize, {
@@ -99,7 +92,6 @@ function computeDecorations(doc: Node, state: Pick<CollapsePluginState, "collaps
         }),
       );
 
-      // Hide section content nodes
       const range = getSectionRange(doc, offset, level);
       if (range) {
         doc.nodesBetween(range.from, range.to, (child, childPos) => {
@@ -115,7 +107,7 @@ function computeDecorations(doc: Node, state: Pick<CollapsePluginState, "collaps
     }
   });
 
-  return DecorationSet.create(doc, decorations);
+  return { headingKeys, decorations: DecorationSet.create(doc, decorations) };
 }
 
 export const HeadingCollapse = Extension.create({
@@ -128,8 +120,7 @@ export const HeadingCollapse = Extension.create({
         state: {
           init(_, editorState: EditorState): CollapsePluginState {
             const collapsed = new Set<string>();
-            const headingKeys = computeHeadingKeys(editorState.doc);
-            const decorations = computeDecorations(editorState.doc, { collapsed, headingKeys });
+            const { headingKeys, decorations } = computeKeysAndDecorations(editorState.doc, collapsed);
             return { collapsed, headingKeys, decorations };
           },
           apply(tr: Transaction, value: CollapsePluginState): CollapsePluginState {
@@ -139,21 +130,18 @@ export const HeadingCollapse = Extension.create({
               const next = new Set(value.collapsed);
               if (next.has(meta.key)) next.delete(meta.key);
               else next.add(meta.key);
-              const keys = tr.docChanged ? computeHeadingKeys(tr.doc) : value.headingKeys;
-              const decorations = computeDecorations(tr.doc, { collapsed: next, headingKeys: keys });
-              return { collapsed: next, headingKeys: keys, decorations };
+              const { headingKeys, decorations } = computeKeysAndDecorations(tr.doc, next);
+              return { collapsed: next, headingKeys, decorations };
             }
 
             if (meta?.type === "restore") {
-              const keys = computeHeadingKeys(tr.doc);
               const collapsed = new Set(meta.keys);
-              const decorations = computeDecorations(tr.doc, { collapsed, headingKeys: keys });
-              return { collapsed, headingKeys: keys, decorations };
+              const { headingKeys, decorations } = computeKeysAndDecorations(tr.doc, collapsed);
+              return { collapsed, headingKeys, decorations };
             }
 
             if (!tr.docChanged) return value;
-            const headingKeys = computeHeadingKeys(tr.doc);
-            const decorations = computeDecorations(tr.doc, { collapsed: value.collapsed, headingKeys });
+            const { headingKeys, decorations } = computeKeysAndDecorations(tr.doc, value.collapsed);
             return { collapsed: value.collapsed, headingKeys, decorations };
           },
         },

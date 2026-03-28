@@ -212,16 +212,16 @@ function showContextMenu(editor: any, event: MouseEvent) {
     container.appendChild(menu);
     activeMenu = menu;
 
-    // Adjust position if menu overflows container
+    // Adjust position if menu overflows container (clamp to 0 to prevent off-screen)
     requestAnimationFrame(() => {
         if (!activeMenu) return;
         const menuRect = activeMenu.getBoundingClientRect();
 
         if (menuRect.right > containerRect.right) {
-            activeMenu.style.left = `${x - menuRect.width}px`;
+            activeMenu.style.left = `${Math.max(0, x - menuRect.width)}px`;
         }
         if (menuRect.bottom > containerRect.bottom) {
-            activeMenu.style.top = `${y - menuRect.height}px`;
+            activeMenu.style.top = `${Math.max(0, y - menuRect.height)}px`;
         }
     });
 }
@@ -229,6 +229,7 @@ function showContextMenu(editor: any, event: MouseEvent) {
 // Store cleanup references
 let _onKeyDown: ((e: KeyboardEvent) => void) | null = null;
 let _onScroll: (() => void) | null = null;
+let _onClickOutside: ((e: MouseEvent) => void) | null = null;
 
 export const TableContextMenu = Extension.create({
     name: "tableContextMenu",
@@ -248,6 +249,14 @@ export const TableContextMenu = Extension.create({
         if (editorContainer) {
             editorContainer.addEventListener("scroll", _onScroll, { passive: true });
         }
+
+        // Document-level mousedown: close menu when clicking outside (toolbar, TOC sidebar, etc.)
+        _onClickOutside = (e: MouseEvent) => {
+            if (activeMenu && !(e.target as HTMLElement).closest(".table-context-menu")) {
+                removeMenu();
+            }
+        };
+        document.addEventListener("mousedown", _onClickOutside);
     },
 
     addProseMirrorPlugins() {
@@ -296,6 +305,10 @@ export const TableContextMenu = Extension.create({
                 editorContainer.removeEventListener("scroll", _onScroll);
             }
             _onScroll = null;
+        }
+        if (_onClickOutside) {
+            document.removeEventListener("mousedown", _onClickOutside);
+            _onClickOutside = null;
         }
     },
 });

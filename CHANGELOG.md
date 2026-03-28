@@ -2,6 +2,23 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## \[2.6.1] - 2026-03-28
+
+### Improved
+
+* **Keystroke Performance**: Deferred markdown serialization into debounce callback — reduces per-keystroke cost by ~50% (serialize once per 300ms instead of every keypress)
+* **Heading Collapse Plugin**: Merged double doc traversal into single pass — halves node visits per keystroke
+* **Mermaid Plugin**: Skip full document scan when no mermaid blocks exist; added LRU cache eviction (max 30 entries) to prevent unbounded memory growth
+* **Image Map Caching**: Cached reverse image map to avoid rebuilding on every save cycle; replaced JSON.stringify echo check with lightweight version counter
+
+### Fixed
+
+* **Link Navigation Security**: Added workspace boundary check to prevent opening files outside workspace via path traversal (e.g., `../../../../etc/passwd`)
+* **Image Edit Race Condition**: Verify image node identity (`src` attribute) before applying async rename update — prevents updating wrong node if document changed during rename
+* **TOC Stale Position**: Validate heading node type before scroll to prevent navigating to wrong node during debounce window
+* **Table Context Menu**: Added bounds clamping to prevent off-screen positioning; added document-level click-outside listener so clicking toolbar/TOC closes menu
+* **Pending Link Edit Cleanup**: Added 60s timeout to prevent memory leak if extension never responds
+
 ## \[2.6.0] - 2026-03-27
 
 ### Added
