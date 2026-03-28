@@ -40,10 +40,17 @@ function isPathWithinDir(resolvedPath: string, allowedDir: string): boolean {
  * Note: Uses segment-aware ".." check to avoid false positives like "image..png"
  */
 export function hasPathTraversal(p: string): boolean {
+  // Decode URL-encoded characters before checking (prevents %2e%2e bypass)
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(p);
+  } catch {
+    return true; // Malformed encoding = suspicious
+  }
   // Block absolute paths (Unix and Windows)
-  if (p.startsWith("/") || /^[a-zA-Z]:/.test(p)) return true;
+  if (decoded.startsWith("/") || /^[a-zA-Z]:/.test(decoded)) return true;
   // Block ".." only as standalone path segment (not in filenames like "image..png")
-  const segments = p.split(/[\\/]/);
+  const segments = decoded.split(/[\\/]/);
   return segments.some(seg => seg === "..");
 }
 
@@ -227,13 +234,34 @@ export async function updateWorkspaceReferences(
         const newRef = rename.newRelative;
 
         if (text.includes(oldRef)) {
-          // Context-aware replacement: only in image/link references
+          // Context-aware replacement: only in image/link references, skip fenced code blocks
           const escapedOld = oldRef.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
           const contextRegex = new RegExp(
             `(\\]\\(|src=["'])${escapedOld}([)"'])`,
             "g"
           );
-          const newText = text.replace(contextRegex, `$1${newRef}$2`);
+
+          // Split text by fenced code blocks, only replace in non-code sections
+          const fenceRegex = /^(`{3,}|~{3,})[^\n]*\n[\s\S]*?\n\1/gm;
+          const parts: Array<{ text: string; isCode: boolean }> = [];
+          let lastIndex = 0;
+          let fenceMatch: RegExpExecArray | null;
+          fenceRegex.lastIndex = 0;
+          while ((fenceMatch = fenceRegex.exec(text)) !== null) {
+            if (fenceMatch.index > lastIndex) {
+              parts.push({ text: text.slice(lastIndex, fenceMatch.index), isCode: false });
+            }
+            parts.push({ text: fenceMatch[0], isCode: true });
+            lastIndex = fenceMatch.index + fenceMatch[0].length;
+          }
+          if (lastIndex < text.length) {
+            parts.push({ text: text.slice(lastIndex), isCode: false });
+          }
+
+          const newText = parts
+            .map(part => part.isCode ? part.text : part.text.replace(contextRegex, `$1${newRef}$2`))
+            .join("");
+
           if (newText !== text) {
             text = newText;
             modified = true;
@@ -283,9 +311,9 @@ export function detectImageDeletes(
     const normalizedCurrentPaths = new Set(
       currentPaths.map((p) => normalizePath(p)),
     );
-    // Build set of current filenames for "move" detection
+    // Build set of current filenames for "move" detection (case-sensitive for Linux FS correctness)
     const currentFilenames = new Set(
-      currentPaths.map((p) => path.basename(p).toLowerCase()),
+      currentPaths.map((p) => path.basename(p)),
     );
 
     for (const [origRelative, origAbsolute] of originalPaths) {
@@ -293,7 +321,7 @@ export function detectImageDeletes(
 
       // If original path not in current paths → potentially deleted
       if (!normalizedCurrentPaths.has(normalizedOrig)) {
-        const origFilename = path.basename(origRelative).toLowerCase();
+        const origFilename = path.basename(origRelative);
 
         // Check if same filename exists in different folder (move operation)
         if (currentFilenames.has(origFilename)) {

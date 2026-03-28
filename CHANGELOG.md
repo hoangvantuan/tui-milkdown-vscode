@@ -2,6 +2,17 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## \[2.6.2] - 2026-03-28
+
+### Fixed
+
+* **Image Path Regex**: Support nested parentheses in image paths (e.g., `path(1).png`) and angle-bracket syntax (`<path>`) in `extractImagePaths()`
+* **Code Block Protection**: Skip fenced code blocks when updating image references across workspace — prevents accidental code modification
+* **Path Traversal Hardening**: Decode URL-encoded characters (`%2e%2e`) before path traversal check in `hasPathTraversal()`
+* **Case-Sensitive Image Delete**: Remove `toLowerCase()` from filename comparison in `detectImageDeletes()` — fixes false positives on case-sensitive file systems (Linux)
+* **Search Count Stale**: Update search match count when content changes externally (e.g., another editor modifies the file)
+* **Heading Collapse Persistence**: Migrate collapsed heading state when heading text is edited — headings no longer unexpectedly uncollapse on text changes
+
 ## \[2.6.1] - 2026-03-28
 
 ### Improved

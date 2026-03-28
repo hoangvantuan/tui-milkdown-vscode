@@ -27,10 +27,12 @@ function extractImagePaths(content: string): string[] {
   const paths: string[] = [];
 
   // Markdown: ![alt](path) or ![alt](path "title") or ![alt](<path> "title")
-  const mdRegex = /!\[[^\]]*\]\(([^)]+)\)/g;
+  // Supports angle-bracket paths and paths with parentheses like path(1).png
+  const mdRegex = /!\[[^\]]*\]\((?:<([^>]+)>|([^)\s]+(?:\([^)]*\)[^)\s]*)*))\s*(?:["'][^"']*["'])?\)/g;
   let match;
   while ((match = mdRegex.exec(content)) !== null) {
-    const cleanPath = cleanImagePath(match[1]);
+    const rawPath = match[1] ?? match[2]; // match[1] = angle-bracket path, match[2] = normal path
+    const cleanPath = cleanImagePath(rawPath);
     if (cleanPath) {
       paths.push(cleanPath);
     }

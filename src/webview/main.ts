@@ -1344,6 +1344,25 @@ window.addEventListener("message", async (event) => {
             }
             // Update TOC after content change (skip if just initialized — initTocSidebar already did it)
             if (!justInitialized) updateTocFromEditor(editor, true);
+            // Cập nhật số lượng kết quả tìm kiếm nếu search bar đang hiển thị
+            const searchBar = document.getElementById("search-bar");
+            if (searchBar && !searchBar.classList.contains("hidden")) {
+              const searchCount = document.getElementById("search-count");
+              const searchInput = document.getElementById("search-input") as HTMLInputElement | null;
+              if (searchCount) {
+                const info = getMatchInfo(editor);
+                if (info.count > 0) {
+                  searchCount.textContent = `${info.activeIndex}/${info.count}`;
+                  searchInput?.classList.remove("no-results");
+                } else if (searchInput && searchInput.value.length > 0) {
+                  searchCount.textContent = "0";
+                  searchInput.classList.add("no-results");
+                } else {
+                  searchCount.textContent = "";
+                  searchInput?.classList.remove("no-results");
+                }
+              }
+            }
           }
         } catch (err) {
           console.error("[Tiptap] Update failed:", err);
