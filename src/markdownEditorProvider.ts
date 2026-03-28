@@ -553,6 +553,15 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
               const targetPath = filePart
                 ? path.resolve(docDir, filePart)
                 : document.uri.fsPath;
+
+              // Security: Validate target is within workspace or document directory
+              const wsFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+              const allowedRoot = wsFolder?.uri.fsPath || docDir;
+              if (!targetPath.startsWith(allowedRoot + path.sep) && targetPath !== allowedRoot) {
+                vscode.window.showWarningMessage(`Cannot open file outside workspace: ${filePart}`);
+                break;
+              }
+
               const targetUri = vscode.Uri.file(targetPath);
               vscode.workspace.openTextDocument(targetUri).then(
                 (doc) => vscode.window.showTextDocument(doc),

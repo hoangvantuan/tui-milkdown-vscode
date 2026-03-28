@@ -21,6 +21,7 @@ const RENDER_DEBOUNCE_MS = 500;
 
 let mermaidInitialized = false;
 let renderCounter = 0;
+let mermaidBlockCount = 0;
 
 function ensureMermaidInit(isDark: boolean): void {
     mermaid.initialize({
@@ -75,6 +76,7 @@ async function renderToEl(container: HTMLElement, code: string): Promise<void> {
 
 // Cache: code → rendered HTML to avoid re-rendering identical diagrams
 const renderCache = new Map<string, string>();
+const MAX_RENDER_CACHE = 30;
 
 async function renderMermaid(container: HTMLElement, code: string): Promise<void> {
     const cached = renderCache.get(code);
@@ -87,6 +89,10 @@ async function renderMermaid(container: HTMLElement, code: string): Promise<void
     const id = `mermaid-render-${++renderCounter}`;
     try {
         const { svg } = await mermaid.render(id, code);
+        if (renderCache.size >= MAX_RENDER_CACHE) {
+            const oldest = renderCache.keys().next().value;
+            if (oldest !== undefined) renderCache.delete(oldest);
+        }
         renderCache.set(code, svg);
         container.innerHTML = svg;
         container.classList.remove("mermaid-error");
@@ -218,6 +224,9 @@ export const MermaidDiagram = Extension.create({
                             const isDark = document.body.classList.contains("dark-theme");
                             if (!mermaidInitialized) ensureMermaidInit(isDark);
 
+                            // Skip expensive scan when no mermaid blocks exist
+                            if (mermaidBlockCount === 0) return;
+
                             // After decorations are applied, find preview containers and render
                             requestAnimationFrame(() => {
                                 const doc = view.state.doc;
@@ -272,9 +281,11 @@ export const MermaidDiagram = Extension.create({
  */
 function buildDecorations(doc: any, activeMermaidPos: number): DecorationSet {
     const decorations: Decoration[] = [];
+    let blockCount = 0;
 
     doc.descendants((node: any, pos: number) => {
         if (node.type.name !== "codeBlock" || node.attrs.language !== "mermaid") return;
+        blockCount++;
 
         const isEditing = pos === activeMermaidPos;
         const endPos = pos + node.nodeSize;
@@ -306,6 +317,7 @@ function buildDecorations(doc: any, activeMermaidPos: number): DecorationSet {
         decorations.push(widget);
     });
 
+    mermaidBlockCount = blockCount;
     return DecorationSet.create(doc, decorations);
 }
 

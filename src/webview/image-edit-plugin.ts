@@ -19,6 +19,7 @@ interface PendingRename {
   nodePos: number;
   nodeAttrs: Record<string, unknown>;
   oldPath: string; // Track old path to remove from imageMap after rename
+  originalSrc: string; // Snapshot of node src at time of rename request for identity check
 }
 const pendingRenames = new Map<string, PendingRename>();
 
@@ -296,7 +297,7 @@ function triggerImageEdit(imgEl: HTMLImageElement): void {
       if (isLocalRename && storedPostMessage) {
         // Request rename FIRST, then update editor after file is renamed
         const renameId = `rename-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        pendingRenames.set(renameId, { nodePos, nodeAttrs: { ...node.attrs }, oldPath: originalPath });
+        pendingRenames.set(renameId, { nodePos, nodeAttrs: { ...node.attrs }, oldPath: originalPath, originalSrc: currentSrc });
 
         storedPostMessage({
           type: "requestImageRename",
@@ -327,7 +328,7 @@ function getFolder(p: string): string {
 }
 
 /** Update ProseMirror node with new src */
-function updateEditorNode(nodePos: number, attrs: Record<string, unknown>, newSrc: string): void {
+function updateEditorNode(nodePos: number, attrs: Record<string, unknown>, newSrc: string, expectedSrc?: string): void {
   const freshView = storedGetView?.();
   if (!freshView) return;
 
@@ -337,6 +338,12 @@ function updateEditorNode(nodePos: number, attrs: Record<string, unknown>, newSr
   const nodeAtPos = state.doc.nodeAt(nodePos);
   if (!nodeAtPos || !IMAGE_NODE_TYPES.includes(nodeAtPos.type.name)) {
     console.warn("[ImageEdit] Node moved or missing; skipping update");
+    return;
+  }
+
+  // Verify node identity if expectedSrc provided — doc may have been edited during async rename
+  if (expectedSrc && nodeAtPos.attrs.src !== expectedSrc) {
+    console.warn("[ImageEdit] Node src changed during async operation; skipping");
     return;
   }
 
@@ -472,15 +479,15 @@ export function handleImageRenameResponse(
     // This ensures webviewUri gets converted back to relative path when saving
     currentImageMap[newPath] = webviewUri;
 
-    // Now update editor with webviewUri for display
-    updateEditorNode(pending.nodePos, pending.nodeAttrs, webviewUri);
+    // Now update editor with webviewUri for display; pass originalSrc to verify identity
+    updateEditorNode(pending.nodePos, pending.nodeAttrs, webviewUri, pending.originalSrc);
   } else if (success) {
     // Remove old imageMap entry
     if (pending.oldPath) {
       delete currentImageMap[pending.oldPath];
     }
-    // No webviewUri - use newPath directly
-    updateEditorNode(pending.nodePos, pending.nodeAttrs, newPath);
+    // No webviewUri - use newPath directly; pass originalSrc to verify identity
+    updateEditorNode(pending.nodePos, pending.nodeAttrs, newPath, pending.originalSrc);
   }
   // If failed, don't update editor (keep old path)
 }

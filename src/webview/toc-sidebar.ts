@@ -102,7 +102,14 @@ let tocEditor: Editor | null = null;
 function scrollToHeading(pos: number): void {
   if (!tocEditor) return;
   try {
-    const docSize = tocEditor.state.doc.content.size;
+    const doc = tocEditor.state.doc;
+    const docSize = doc.content.size;
+    if (pos < 0 || pos >= docSize) return;
+
+    // Verify target is still a heading node — positions may be stale after debounce window
+    const node = doc.nodeAt(pos);
+    if (!node || node.type.name !== "heading") return;
+
     const safePos = Math.min(pos + 1, docSize);
     tocEditor.commands.focus(safePos);
 

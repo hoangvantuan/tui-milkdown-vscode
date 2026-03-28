@@ -188,6 +188,14 @@ let lastSentState: string | null = null;
 let highlightCurrentLine = true;
 let currentImageMap: Record<string, string> = {};
 
+// Perf: version counter for imageMap — incremented whenever currentImageMap changes.
+// Used to invalidate cached reverse map (Fix 2) and replace JSON.stringify in echo check (Fix 3).
+let imageMapVersion = 0;
+
+// Perf (Fix 2): Cached reverse map (uri → orig path) to avoid rebuilding on every save.
+let cachedReverseImageMap: Map<string, string> | null = null;
+let cachedReverseImageMapVersion = -1;
+
 // Node types that represent images in Tiptap
 export const IMAGE_NODE_TYPES = ["image"];
 
@@ -235,7 +243,12 @@ function transformForSave(
 ): string {
   const entries = Object.entries(imageMap);
   if (entries.length === 0) return content;
-  return replaceImagePaths(content, new Map(entries.map(([orig, uri]) => [uri, orig])));
+  // Perf (Fix 2): Rebuild reverse map only when imageMap version changes.
+  if (cachedReverseImageMapVersion !== imageMapVersion || cachedReverseImageMap === null) {
+    cachedReverseImageMap = new Map(entries.map(([orig, uri]) => [uri, orig]));
+    cachedReverseImageMapVersion = imageMapVersion;
+  }
+  return replaceImagePaths(content, cachedReverseImageMap);
 }
 
 // Inline image handling
@@ -389,6 +402,7 @@ function replaceInlineImage(
 
   if (webviewUri) {
     currentImageMap[savedPath] = webviewUri;
+    imageMapVersion++;
     setImageMap(currentImageMap);
   }
 
@@ -401,17 +415,26 @@ function replaceInlineImage(
   }
 }
 
-function serializeStateForEcho(content: string, imageMap: Record<string, string>): string {
-  const sortedKeys = Object.keys(imageMap).sort();
-  return JSON.stringify({ content, imageMapKeys: sortedKeys });
+// Perf (Fix 3): Avoid JSON.stringify + Object.keys().sort() on every edit.
+// imageMapVersion tracks mutations to currentImageMap — cheaper than key enumeration.
+function serializeStateForEcho(content: string, _imageMap: Record<string, string>): string {
+  return content + '\0' + imageMapVersion;
 }
 
 const MAX_BLOB_RETRIES = 5;
 let blobRetryCount = 0;
 
-function debouncedPostEdit(content: string): void {
+// Perf (Fix 1): Serialization (getMarkdown + transformForSave) happens inside the
+// debounce callback, not on every keystroke. onUpdate just schedules this.
+function debouncedPostEdit(): void {
   if (debounceTimer !== null) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(async () => {
+    if (!editor) { debounceTimer = null; return; }
+    // Serialize only once per debounce window (300ms after last keystroke)
+    const markdown = editor.getMarkdown();
+    currentBody = transformForSave(markdown, currentImageMap);
+    const content = reconstructContent(currentFrontmatter, currentBody);
+
     const hasPendingBlobs = await processInlineImages(content);
     if (hasPendingBlobs) {
       if (blobRetryCount < MAX_BLOB_RETRIES) {
@@ -420,7 +443,7 @@ function debouncedPostEdit(content: string): void {
         blobRetryCount++;
         debounceTimer = setTimeout(() => {
           debounceTimer = null;
-          debouncedPostEdit(content);
+          debouncedPostEdit();
         }, backoff);
       } else {
         // Max retries reached - send edit anyway to avoid stuck state
@@ -905,12 +928,10 @@ function initEditor(initialContent: string = ""): Editor | null {
           return true;
         },
       },
-      onUpdate: ({ editor: ed }) => {
+      onUpdate: () => {
         if (isUpdatingFromExtension) return;
-        // Get markdown from @tiptap/markdown
-        const markdown = ed.getMarkdown();
-        currentBody = transformForSave(markdown, currentImageMap);
-        debouncedPostEdit(reconstructContent(currentFrontmatter, currentBody));
+        // Perf (Fix 1): Serialization moved inside debouncedPostEdit — runs only once per 300ms window.
+        debouncedPostEdit();
       },
       onSelectionUpdate: ({ editor: ed }) => {
         updateToolbarActiveState(ed);
@@ -1016,6 +1037,8 @@ const TOOLBAR_COMMANDS: Record<string, (ed: Editor) => void> = {
     const previousUrl = ed.getAttributes('link').href as string || '';
     const editId = `link-${Date.now()}`;
     pendingLinkEdits.set(editId, ed);
+    // Fix 4: cleanup stale pending entry after 60s (matches image-edit-plugin pattern)
+    setTimeout(() => pendingLinkEdits.delete(editId), 60_000);
     vscode.postMessage({
       type: 'requestLinkEdit',
       editId,
@@ -1280,12 +1303,14 @@ window.addEventListener("message", async (event) => {
         if (incomingState === lastSentState) {
           lastSentState = null;
           currentImageMap = newImageMap;
+          imageMapVersion++;
           setImageMap(newImageMap);
           break;
         }
         lastSentState = null;
 
         currentImageMap = newImageMap;
+        imageMapVersion++;
         setImageMap(newImageMap);
 
         try {
@@ -1365,6 +1390,7 @@ window.addEventListener("message", async (event) => {
       ) {
         if (typeof message.webviewUri === "string") {
           currentImageMap[message.savedPath] = message.webviewUri;
+          imageMapVersion++;
           setImageMap(currentImageMap);
         }
 
