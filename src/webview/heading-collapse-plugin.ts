@@ -141,8 +141,51 @@ export const HeadingCollapse = Extension.create({
             }
 
             if (!tr.docChanged) return value;
-            const { headingKeys, decorations } = computeKeysAndDecorations(tr.doc, value.collapsed);
-            return { collapsed: value.collapsed, headingKeys, decorations };
+
+            // Compute new keys from updated doc
+            const { headingKeys: newKeys, decorations } = computeKeysAndDecorations(tr.doc, value.collapsed);
+
+            // Migrate collapsed keys that changed due to heading text edits
+            // Key format: "H{level}:{text}:{idx}" — idx is after the last colon
+            const newKeySet = new Set(newKeys.values());
+            const migratedCollapsed = new Set<string>();
+            let needsMigration = false;
+
+            for (const oldKey of value.collapsed) {
+              if (newKeySet.has(oldKey)) {
+                migratedCollapsed.add(oldKey);
+              } else {
+                // Key disappeared — find replacement by same level + same occurrence index
+                // Use first colon for level prefix (handles text with colons like "Chapter 1: Details")
+                const lastColon = oldKey.lastIndexOf(":");
+                const firstColon = oldKey.indexOf(":");
+                if (lastColon > firstColon && firstColon !== -1) {
+                  const levelPrefix = oldKey.slice(0, firstColon + 1); // "H{level}:"
+                  const idx = oldKey.slice(lastColon); // ":{idx}"
+                  for (const nk of newKeySet) {
+                    const nkLastColon = nk.lastIndexOf(":");
+                    const nkFirstColon = nk.indexOf(":");
+                    if (
+                      nkLastColon > nkFirstColon &&
+                      nk.slice(0, nkFirstColon + 1) === levelPrefix &&
+                      nk.slice(nkLastColon) === idx &&
+                      !migratedCollapsed.has(nk)
+                    ) {
+                      migratedCollapsed.add(nk);
+                      needsMigration = true;
+                      break;
+                    }
+                  }
+                }
+              }
+            }
+
+            if (needsMigration) {
+              const recomputed = computeKeysAndDecorations(tr.doc, migratedCollapsed);
+              return { collapsed: migratedCollapsed, headingKeys: recomputed.headingKeys, decorations: recomputed.decorations };
+            }
+
+            return { collapsed: value.collapsed, headingKeys: newKeys, decorations };
           },
         },
         props: {
