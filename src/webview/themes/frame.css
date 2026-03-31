@@ -6,6 +6,7 @@
   --toolbar-bg-rgb: 255, 255, 255;
   --border-rgb: 0, 0, 0;
   --toolbar-fg: #1a1b1e;
+  --canvas-bg: #f0f1f4;
 }
 .theme-frame .tiptap {
   --crepe-color-background: #ffffff;

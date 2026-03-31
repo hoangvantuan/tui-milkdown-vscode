@@ -8,6 +8,14 @@ All notable changes to "TUI Markdown Editor" extension.
 
 * **Page Break Visual**: `---` horizontal rule now renders as a modern page break separator with dashed line, `✦ PAGE BREAK ✦` label, and accent color hover effect — clearly separates content into distinct sections
 * **Page Break Toolbar**: Updated toolbar button icon and label from "Horizontal Rule" to "Page Break"
+* **Floating Editor Canvas**: Editor now floats on a subtle gradient canvas background with layered shadow elevation — creates a refined "paper on desk" aesthetic inspired by premium writing apps
+  * Per-theme `--canvas-bg` surface delta (4-5 lightness steps darker than editor background)
+  * Ambient radial glow using theme accent color at 4% opacity
+  * 4-layer progressive box-shadow (Josh Comeau technique) for natural elevation
+  * Responsive padding on all 4 sides via `clamp(6px, 1.5vw, 24px)`
+  * Editor max-width capped at 1280px with auto centering
+  * All 10 themes supported with hand-tuned canvas colors
+* **Responsive TOC Sidebar**: Sidebar width now scales with viewport — `clamp(180px, 15vw, 300px)` — wider on large screens, compact on small
 
 ## \[2.6.2] - 2026-03-28
 
