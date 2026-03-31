@@ -2,6 +2,13 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## \[2.6.3] - 2026-03-31
+
+### Added
+
+* **Page Break Visual**: `---` horizontal rule now renders as a modern page break separator with dashed line, `✦ PAGE BREAK ✦` label, and accent color hover effect — clearly separates content into distinct sections
+* **Page Break Toolbar**: Updated toolbar button icon and label from "Horizontal Rule" to "Page Break"
+
 ## \[2.6.2] - 2026-03-28
 
 ### Fixed
