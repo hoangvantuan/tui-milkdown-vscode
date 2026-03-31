@@ -6,6 +6,7 @@
   --toolbar-bg-rgb: 36, 39, 58;
   --border-rgb: 255, 255, 255;
   --toolbar-fg: #cad3f5;
+  --canvas-bg: #1c1f31;
 }
 .theme-catppuccin-macchiato .tiptap {
   --crepe-color-background: #24273a;

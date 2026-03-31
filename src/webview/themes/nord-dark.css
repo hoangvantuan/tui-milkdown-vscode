@@ -9,6 +9,7 @@
   --toolbar-bg-rgb: 46, 52, 64;
   --border-rgb: 255, 255, 255;
   --toolbar-fg: #eceff4;
+  --canvas-bg: #242933;
 }
 .theme-nord-dark .tiptap {
   --crepe-color-background: #2e3440; /* Polar Night 1 */

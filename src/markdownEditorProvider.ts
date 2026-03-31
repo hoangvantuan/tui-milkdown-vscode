@@ -851,6 +851,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             transition: background-color 0.3s ease, color 0.3s ease;
           }
           .tiptap {
+            min-height: 100%;
             padding: 32px 48px 40vh 48px;
             caret-color: var(--crepe-color-primary);
             font-optical-sizing: auto;
@@ -961,6 +962,14 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             transition: background 0.1s ease-out;
           }
           /* Dark themes override (body.dark-theme set by applyTheme) */
+          body.dark-theme .tiptap {
+            box-shadow:
+              0 0 0 1px rgba(var(--border-rgb, 255, 255, 255), 0.05),
+              0 1px 2px rgba(0, 0, 0, 0.12),
+              0 2px 4px rgba(0, 0, 0, 0.10),
+              0 4px 8px rgba(0, 0, 0, 0.08),
+              0 8px 16px rgba(0, 0, 0, 0.06);
+          }
           body.dark-theme .tiptap .line-highlight::after {
             background: rgba(255, 255, 255, 0.05);
           }
@@ -1092,8 +1101,12 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             overflow-x: hidden;
             overflow-y: auto;
             position: relative;
+            padding: clamp(6px, 1.5vw, 24px);
+            background:
+              radial-gradient(ellipse 120% 50% at 50% 0%, rgba(var(--accent-rgb, 59, 130, 246), 0.04), transparent),
+              var(--canvas-bg, var(--vscode-editor-background, #1e1e1e));
           }
-          #editor { width: 100%; min-height: 100%; }
+          #editor { min-height: 100%; }
           #editor.hidden { display: none; }
 
           /* Loading state */
@@ -1212,7 +1225,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
           /* Full-width editor with fluid padding */
           .tiptap {
-            max-width: 100%;
+            max-width: 1280px;
+            margin-left: auto;
+            margin-right: auto;
             padding-left: clamp(24px, 5vw, 80px);
             padding-right: clamp(24px, 5vw, 80px);
           }
@@ -1377,6 +1392,13 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             font-family: var(--crepe-font-default, "Inter", Arial, Helvetica, sans-serif);
             color: var(--crepe-color-on-background, inherit);
             background: var(--crepe-color-background, transparent);
+            border-radius: 6px;
+            box-shadow:
+              0 0 0 1px rgba(var(--border-rgb, 0, 0, 0), 0.03),
+              0 1px 2px rgba(0, 0, 0, 0.04),
+              0 2px 4px rgba(0, 0, 0, 0.04),
+              0 4px 8px rgba(0, 0, 0, 0.03),
+              0 8px 16px rgba(0, 0, 0, 0.02);
           }
           .tiptap img {
             max-width: 100%;
@@ -1842,8 +1864,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             height: calc(100vh - 40px);
           }
           #toc-sidebar {
-            width: 220px;
-            min-width: 220px;
+            width: clamp(180px, 15vw, 300px);
+            min-width: 180px;
             border-right: 1px solid rgba(var(--border-rgb, 0, 0, 0), 0.08);
             overflow-y: auto;
             background: rgba(var(--toolbar-bg-rgb, 255, 255, 255), 0.6);
@@ -1968,7 +1990,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             background: rgba(255, 255, 255, 0.05);
           }
           @media (max-width: 600px) {
-            #toc-sidebar { width: 180px; min-width: 180px; }
+            #toc-sidebar { width: 160px; min-width: 160px; }
           }
 
           /* ─── Micro-Interactions Polish ─── */
@@ -2000,13 +2022,48 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
           }
 
-          /* HR: gradient fade */
+          /* Page Break: modern dashed separator */
           .tiptap hr {
-            background: linear-gradient(to right, transparent, var(--crepe-color-outline, #ddd), transparent);
             border: none;
-            height: 1px;
-            margin: 2em 0;
+            background: none;
+            height: 52px;
+            margin: 4px 0;
+            position: relative;
+          }
+          .tiptap hr::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 50%;
+            border-top: 1.5px dashed var(--crepe-color-outline, #c8c8c8);
             opacity: 0.5;
+          }
+          .tiptap hr::after {
+            content: '✦  PAGE BREAK  ✦';
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            font-family: var(--crepe-font-code, monospace);
+            font-size: 9px;
+            font-weight: 600;
+            letter-spacing: 0.18em;
+            color: var(--crepe-color-outline, #b0b0b0);
+            background: var(--vscode-editor-background, #fff);
+            padding: 1px 16px;
+            white-space: nowrap;
+            transition: color 0.15s ease-out, letter-spacing 0.15s ease-out;
+          }
+          .tiptap hr:hover::after {
+            color: #4a9eff;
+            letter-spacing: 0.22em;
+          }
+          body.dark-theme .tiptap hr::after {
+            color: rgba(255, 255, 255, 0.35);
+          }
+          body.dark-theme .tiptap hr:hover::after {
+            color: rgba(var(--accent-rgb, 0, 120, 212), 0.7);
           }
 
           /* Inline code: subtle bg */
@@ -2236,8 +2293,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             <button class="toolbar-btn" data-command="codeBlock" title="Code Block" aria-label="Code Block">
               <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m10 10-2 2 2 2"/><path d="m14 14 2-2-2-2"/></svg>
             </button>
-            <button class="toolbar-btn" data-command="horizontalRule" title="Horizontal Rule" aria-label="Horizontal Rule">
-              <svg viewBox="0 0 24 24"><line x1="2" y1="12" x2="22" y2="12"/></svg>
+            <button class="toolbar-btn" data-command="horizontalRule" title="Page Break" aria-label="Page Break">
+              <svg viewBox="0 0 24 24"><path d="M7 15l5 5 5-5"/><path d="M7 9l5-5 5 5"/><line x1="4" y1="12" x2="9" y2="12"/><line x1="15" y1="12" x2="20" y2="12"/></svg>
             </button>
           </div>
 

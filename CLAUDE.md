@@ -338,6 +338,26 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 
 * `showWarning`: Webview → Extension (message title and warning text for VSCode dialog)
 
+## Page Break
+
+**Styling** (in `src/markdownEditorProvider.ts`):
+
+* `---` renders as a visual page break separator instead of a thin horizontal rule
+
+* Dashed line (`border-top: 1.5px dashed`) using `--crepe-color-outline` for theme adaptation
+
+* `::after` label `✦ PAGE BREAK ✦` — monospace, uppercase, letter-spacing `0.18em`
+
+* Label background matches editor background (`--vscode-editor-background`) to "cut" the dashed line
+
+* Hover: accent color (`--accent-rgb`) + subtle letter-spacing expansion (`0.18em` → `0.22em`)
+
+* Dark theme override: label uses `rgba(255, 255, 255, 0.35)` for visibility
+
+* Toolbar button: "Page Break" label with split-arrows icon
+
+* Markdown syntax unchanged: `---` (parsed/serialized by `@tiptap/markdown` default HorizontalRule)
+
 ## Heading Level Indicator
 
 **Plugin** (`src/webview/heading-level-plugin.ts`):

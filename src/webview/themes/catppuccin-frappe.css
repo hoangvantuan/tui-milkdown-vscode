@@ -6,6 +6,7 @@
   --toolbar-bg-rgb: 48, 52, 70;
   --border-rgb: 255, 255, 255;
   --toolbar-fg: #c6d0f5;
+  --canvas-bg: #272b3d;
 }
 .theme-catppuccin-frappe .tiptap {
   --crepe-color-background: #303446;
