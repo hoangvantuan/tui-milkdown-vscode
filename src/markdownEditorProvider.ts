@@ -1,4 +1,5 @@
 import * as path from "path";
+import { exec } from "child_process";
 import * as vscode from "vscode";
 import { MAX_FILE_SIZE } from "./constants";
 import { getNonce } from "./utils/getNonce";
@@ -138,7 +139,58 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
    */
   private originalImagePaths: Map<string, Map<string, string>> = new Map();
 
+  /** Cached system font list — enumerated once, shared across all editors */
+  private static cachedFonts: string[] | null = null;
+
   constructor(private readonly context: vscode.ExtensionContext) { }
+
+  /** Enumerate system font families (cached after first call) */
+  private async getSystemFonts(): Promise<string[]> {
+    if (MarkdownEditorProvider.cachedFonts) {
+      return MarkdownEditorProvider.cachedFonts;
+    }
+
+    const fonts = await new Promise<string[]>((resolve) => {
+      const platform = process.platform;
+      let cmd: string;
+
+      if (platform === "darwin") {
+        // macOS: use NSFontManager via JXA (fast, reliable, no dependencies)
+        cmd = `osascript -l JavaScript -e 'ObjC.import("AppKit"); var fm = $.NSFontManager.sharedFontManager; var f = fm.availableFontFamilies; var r = []; for (var i = 0; i < f.count; i++) r.push(f.objectAtIndex(i).js); JSON.stringify(r);'`;
+      } else if (platform === "win32") {
+        cmd = `powershell -NoProfile -Command "[Console]::OutputEncoding = [Text.Encoding]::UTF8; [System.Reflection.Assembly]::LoadWithPartialName('System.Drawing') | Out-Null; (New-Object System.Drawing.Text.InstalledFontCollection).Families | ForEach-Object { $_.Name }"`;
+      } else {
+        cmd = `fc-list : family`;
+      }
+
+      exec(cmd, { timeout: 15000 }, (err, stdout) => {
+        if (err) {
+          resolve([]);
+          return;
+        }
+
+        let result: string[];
+        if (platform === "darwin") {
+          try {
+            result = JSON.parse(stdout.trim());
+          } catch {
+            result = [];
+          }
+        } else {
+          // fc-list may return comma-separated families per line
+          result = stdout
+            .split(/[\n,]/)
+            .map((f) => f.trim())
+            .filter((f) => f.length > 0);
+        }
+
+        resolve([...new Set(result)].sort((a, b) => a.localeCompare(b)));
+      });
+    });
+
+    MarkdownEditorProvider.cachedFonts = fonts;
+    return fonts;
+  }
 
   async resolveCustomTextEditor(
     document: vscode.TextDocument,
@@ -373,9 +425,28 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
                 theme: savedTheme,
               });
             }
+            // Send saved font
+            const savedFont = this.context.globalState.get<string>(
+              "markdownEditorFont",
+            );
+            if (savedFont) {
+              webviewPanel.webview.postMessage({
+                type: "savedFont",
+                font: savedFont,
+              });
+            }
             sendTheme();
             sendConfig();
             updateWebview();
+            // Send system fonts asynchronously (non-blocking)
+            this.getSystemFonts().then((fonts) => {
+              try {
+                webviewPanel.webview.postMessage({
+                  type: "systemFonts",
+                  fonts,
+                });
+              } catch { /* webview disposed */ }
+            });
             break;
           }
           case "edit":
@@ -399,6 +470,16 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
               await this.context.globalState.update(
                 "markdownEditorTheme",
                 theme,
+              );
+            }
+            break;
+          }
+          case "fontChange": {
+            const font = (msg as { font?: string }).font;
+            if (typeof font === "string") {
+              await this.context.globalState.update(
+                "markdownEditorFont",
+                font || undefined, // Remove key when "Default"
               );
             }
             break;
@@ -1077,6 +1158,85 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           #theme-select:hover {
             background-color: rgba(var(--border-rgb, 0, 0, 0), 0.1);
             border-color: rgba(var(--border-rgb, 0, 0, 0), 0.15);
+          }
+          /* Font selector combobox */
+          .font-selector {
+            position: relative;
+          }
+          .font-selector-input {
+            -webkit-appearance: none;
+            appearance: none;
+            background-color: rgba(var(--border-rgb, 0, 0, 0), 0.05);
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 6px center;
+            padding: 4px 24px 4px 8px;
+            border: 1px solid rgba(var(--border-rgb, 0, 0, 0), 0.08);
+            border-radius: 6px;
+            height: 30px;
+            width: 120px;
+            color: inherit;
+            cursor: pointer;
+            font-size: 11px;
+            transition: background-color 0.15s ease-out, border-color 0.15s ease-out;
+            box-sizing: border-box;
+          }
+          .font-selector-input::placeholder {
+            color: var(--toolbar-fg, inherit);
+            opacity: 0.7;
+          }
+          .font-selector-input:hover {
+            background-color: rgba(var(--border-rgb, 0, 0, 0), 0.1);
+            border-color: rgba(var(--border-rgb, 0, 0, 0), 0.15);
+          }
+          .font-selector-input:focus {
+            outline: none;
+            border-color: rgba(var(--accent-rgb, 100, 100, 255), 0.5);
+            background-image: none;
+            cursor: text;
+            width: 160px;
+          }
+          .font-selector-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            margin-top: 4px;
+            width: 220px;
+            max-height: 256px;
+            overflow-y: auto;
+            background: var(--vscode-editor-background, #fff);
+            color: var(--vscode-editor-foreground, #333);
+            border: 1px solid rgba(var(--border-rgb, 0, 0, 0), 0.15);
+            border-radius: 8px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+            z-index: 1000;
+            overscroll-behavior: contain;
+          }
+          .font-selector-item {
+            padding: 6px 12px;
+            cursor: pointer;
+            font-size: 13px;
+            line-height: 20px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: var(--vscode-editor-foreground, #333);
+            transition: background-color 0.1s ease;
+          }
+          .font-selector-item:hover,
+          .font-selector-item.highlighted {
+            background-color: rgba(var(--accent-rgb, 100, 100, 255), 0.15);
+          }
+          .font-selector-item.selected {
+            color: rgba(var(--accent-rgb, 100, 100, 255), 1);
+            font-weight: 600;
+          }
+          .font-selector-empty {
+            padding: 8px 12px;
+            font-size: 12px;
+            color: var(--vscode-editor-foreground, #333);
+            opacity: 0.5;
+            font-style: italic;
           }
           .toolbar-spacer { flex: 1; }
           .view-source-btn {
@@ -2335,8 +2495,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
           <div class="toolbar-spacer"></div>
 
-          <!-- Theme & View Source (right side) -->
+          <!-- Font, Theme & View Source (right side) -->
           <div class="toolbar-group" style="gap: 6px;">
+            <div id="font-selector-container"></div>
             <select id="theme-select" aria-label="Editor theme">
               <option value="frame">Frame</option>
               <option value="frame-dark">Frame Dark</option>

@@ -48,6 +48,7 @@ import { setupTocSidebar, updateTocFromEditor } from "./toc-sidebar";
 import { HeadingCollapse, collapsePluginKey, getCollapsedHeadings, setCollapsedHeadings } from "./heading-collapse-plugin";
 import { CodeBlockEnhancement } from "./code-block-plugin";
 import { SearchPlugin, performSearch, clearSearch, searchNext, searchPrev, getMatchInfo } from "./search-plugin";
+import { initFontSelector, type FontSelectorAPI, sanitizeFontName } from "./font-selector";
 
 // Fix: @tiptap/markdown v3.19.0 drops `escape` tokens from marked parser,
 // causing escaped characters like \_ to be silently lost during roundtrip.
@@ -132,6 +133,7 @@ const CodeExitHandler = Extension.create({
 
 interface WebviewState {
   theme?: string;
+  fontFamily?: string;
   tocVisible?: boolean;
   collapsedHeadings?: string[];
 }
@@ -687,6 +689,21 @@ function viewSource(): void {
   vscode.postMessage({ type: "viewSource" });
 }
 
+// Font selector instance
+let fontSelector: FontSelectorAPI | null = null;
+
+/** Apply font family override on editor content (empty = use theme default) */
+function applyFontFamily(fontFamily: string): void {
+  const tiptapEl = document.querySelector(".tiptap") as HTMLElement | null;
+  if (tiptapEl) {
+    if (fontFamily) {
+      tiptapEl.style.setProperty("--crepe-font-default", `"${sanitizeFontName(fontFamily)}", sans-serif`);
+    } else {
+      tiptapEl.style.removeProperty("--crepe-font-default");
+    }
+  }
+}
+
 function applyFontSize(size: number): void {
   if (!Number.isFinite(size) || size < 8 || size > 32) return;
   const scaleFactor = size / 16;
@@ -1201,6 +1218,17 @@ function setupToolbarHandlers(): void {
 
   getSourceBtn()?.addEventListener("click", viewSource);
 
+  // Font selector
+  const fontContainer = document.getElementById("font-selector-container");
+  if (fontContainer) {
+    fontSelector?.destroy();
+    fontSelector = initFontSelector(fontContainer, (fontFamily) => {
+      applyFontFamily(fontFamily);
+      vscode.setState({ ...vscode.getState(), fontFamily });
+      vscode.postMessage({ type: "fontChange", font: fontFamily });
+    });
+  }
+
   // Formatting buttons
   document.addEventListener("click", (e) => {
     const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('.toolbar-btn[data-command]');
@@ -1327,7 +1355,13 @@ window.addEventListener("message", async (event) => {
           let justInitialized = false;
           if (!editor) {
             editor = initEditor(displayBody);
-            if (editor) { initTocSidebar(); justInitialized = true; }
+            if (editor) {
+              initTocSidebar();
+              justInitialized = true;
+              // Re-apply font after .tiptap element is created
+              const savedFont = vscode.getState()?.fontFamily;
+              if (savedFont) applyFontFamily(savedFont);
+            }
           } else {
             updateEditorContent(displayBody);
           }
@@ -1400,6 +1434,17 @@ window.addEventListener("message", async (event) => {
       ) {
         globalThemeReceived = message.theme as ThemeName;
         setTheme(globalThemeReceived, false);
+      }
+      break;
+    case "savedFont":
+      if (typeof message.font === "string" && fontSelector) {
+        fontSelector.setSelected(message.font);
+        applyFontFamily(message.font);
+      }
+      break;
+    case "systemFonts":
+      if (Array.isArray(message.fonts) && fontSelector) {
+        fontSelector.setFonts(message.fonts);
       }
       break;
     case "imageSaved":
@@ -1475,6 +1520,10 @@ function init() {
   const savedState = vscode.getState();
   if (savedState?.theme && THEMES.includes(savedState.theme as ThemeName)) {
     setTheme(savedState.theme as ThemeName, false);
+  }
+  // Restore font from webview state (applies immediately, before extension sends savedFont)
+  if (savedState?.fontFamily && typeof savedState.fontFamily === "string") {
+    applyFontFamily(savedState.fontFamily);
   }
 
   window.addEventListener("beforeunload", () => {
