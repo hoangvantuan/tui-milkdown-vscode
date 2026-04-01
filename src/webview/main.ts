@@ -1439,6 +1439,7 @@ window.addEventListener("message", async (event) => {
     case "savedFont":
       if (typeof message.font === "string" && fontSelector) {
         fontSelector.setSelected(message.font);
+        vscode.setState({ ...vscode.getState(), fontFamily: message.font });
         applyFontFamily(message.font);
       }
       break;

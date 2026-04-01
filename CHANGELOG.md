@@ -2,6 +2,12 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## \[2.7.1] - 2026-04-01
+
+### Fixed
+
+* **Font Selector Persistence**: Font selection no longer resets when switching between files — saved font now correctly persists to webview state on restore
+
 ## \[2.7.0] - 2026-04-01
 
 ### Added
