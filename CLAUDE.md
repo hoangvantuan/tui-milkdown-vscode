@@ -76,6 +76,7 @@ src/
     ├── table-cell-content-parser.ts # Post-parse transformer for table cell lists/breaks
     ├── table-context-menu.ts # Right-click context menu for table operations
     ├── search-plugin.ts      # Cmd+F search via prosemirror-search (highlight, next/prev, match count)
+    ├── font-selector.ts      # Searchable font combobox (system font enumeration, live preview, CSS sanitization)
     ├── toc-sidebar.ts        # Table of Contents sidebar (extract, tree, render, active tracking)
     └── themes/               # Theme CSS files (scoped by body class)
         ├── index.css              # Imports all theme CSS
@@ -495,6 +496,38 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 **CSS classes**: `.ProseMirror-search-match` (all matches, `rgba(--accent-rgb, 0.2)`), `.ProseMirror-active-search-match` (active, `0.45`). Dark theme uses higher opacity (`0.25`/`0.5`).
 
 **Dependencies**: `prosemirror-search@^1.1.0`
+
+## Font Selector
+
+**Module** (`src/webview/font-selector.ts`):
+
+* Searchable combobox component: text input + dropdown with all system fonts
+* `sanitizeFontName()`: Strips `";\{}` characters to prevent CSS injection
+* Search ranking: prefix matches first, then contains matches, max 80 displayed
+* Each dropdown item previewed in its own font face
+* Keyboard: Arrow keys navigate, Enter selects, Escape closes
+* API: `setFonts()`, `setSelected()`, `getSelected()`, `destroy()`
+
+**System Font Enumeration** (`src/markdownEditorProvider.ts`):
+
+* macOS: `NSFontManager` via JXA (`osascript -l JavaScript`)
+* Windows: PowerShell `InstalledFontCollection` with UTF-8 encoding
+* Linux: `fc-list : family`
+* Cached as `static cachedFonts` — enumerated once per VSCode session
+
+**Data Flow**:
+
+1. Webview `ready` → Extension sends `savedFont` (from `globalState`) + async `systemFonts`
+2. User selects font → Webview overrides `--crepe-font-default` CSS var on `.tiptap` element
+3. Webview persists via `vscode.setState({ fontFamily })` + sends `fontChange` message
+4. Extension saves to `context.globalState` key `"markdownEditorFont"`
+5. "Default" option removes CSS override, restoring theme's built-in font
+
+**Key details**:
+
+* Only overrides `--crepe-font-default` — never touches `--crepe-font-code`
+* Font override survives theme changes (inline style > CSS class)
+* `try/catch` around async `postMessage` to handle webview disposed during font enum
 
 ## Link Click Navigation
 

@@ -32,6 +32,7 @@ A beautiful WYSIWYG Markdown editor for VS Code powered by Tiptap.
 - **Local Image Display**: Renders local images from document folder and workspace
 - **Tab Indentation**: Tab key inserts 2-space indentation inside code blocks
 - **Large File Warning**: Protection for files >500KB
+- **Font Selector**: Searchable font picker on toolbar — browse all system fonts with live preview
 - **Configurable Font Size**: Adjust editor font size (8-32px)
 - **Configurable Heading Sizes**: Customize font sizes for H1-H6 headings (12-72px)
 

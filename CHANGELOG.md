@@ -2,6 +2,12 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## \[2.7.0] - 2026-04-01
+
+### Added
+
+* **Font Selector**: Searchable font picker on toolbar — browse and search all system fonts with live preview, persisted across sessions (does not affect code font)
+
 ## \[2.6.3] - 2026-03-31
 
 ### Added
