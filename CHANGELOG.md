@@ -2,6 +2,30 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## \[2.8.0] - 2026-04-02
+
+### Added
+
+* **Paper Theme**: Warm white, serif font, book-like reading experience (light)
+* **Midnight Theme**: Deep navy (#0d1117) for comfortable night writing (dark)
+* **Image Lightbox**: Fullscreen overlay with zoom controls (0.5x–4x via buttons, scroll, keyboard), expand button on image hover, caption from alt text
+* **Toolbar Auto-hide**: Opt-in setting `tuiMarkdown.autoHideToolbar` — hides toolbar after 3s of inactivity, reveals on hover or keyboard focus
+* **Reading Progress Bar**: Fixed top bar tracking scroll position in editor
+* **Word Count**: Subtle indicator in bottom-right corner, updates on content change
+* **Paper Texture & Visual Depth**: CSS-only noise grain overlay + vignette radial gradient on editor background
+* **Code Block Premium Styling**: Gradient accent bar at top, enhanced header with accent tint, font ligatures (`liga`, `calt`)
+* **Premium Alert Blocks**: SVG icons replacing emoji, theme-aware colors, rounded borders with hover lift effect
+* **Micro-interactions**: Task checkbox draw-in animation, H1/H2 gradient underline, enhanced blockquote hover, smooth table row highlight
+* **Clipboard Image Fallback**: Triple-fallback strategy for image paste in VSCode webview (ProseMirror → Clipboard API → extension-side native read)
+* **Accessibility**: `prefers-reduced-motion` support, high contrast mode, print stylesheet, visible focus indicators
+
+### Changed
+
+* Theme selection dropdown now includes Paper and Midnight (total: 12 themes)
+* Link click navigation: platform-correct modifier key (Cmd on macOS, Ctrl on Windows/Linux)
+* Image paste/drop logic extracted into reusable `processImagePaste()` / `getImageFromClipboard()` helpers
+* All animations and transitions respect user motion preferences
+
 ## \[2.7.1] - 2026-04-01
 
 ### Fixed

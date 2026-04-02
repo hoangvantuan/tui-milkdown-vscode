@@ -71,7 +71,8 @@ src/
     ├── heading-level-plugin.ts # ProseMirror plugin for H1-H6 level badges
     ├── heading-collapse-plugin.ts # ProseMirror plugin for heading collapse/expand toggles
     ├── code-block-plugin.ts  # Code block header: language badge dropdown + copy button
-    ├── image-edit-plugin.ts  # Double-click image URL editing
+    ├── image-edit-plugin.ts  # Double-click image URL editing + expand button
+    ├── image-lightbox-plugin.ts # Fullscreen image viewer with zoom controls (0.5x-4x)
     ├── table-markdown-serializer.ts # Custom GFM table serializer (multi-line cells)
     ├── table-cell-content-parser.ts # Post-parse transformer for table cell lists/breaks
     ├── table-context-menu.ts # Right-click context menu for table operations
@@ -89,7 +90,9 @@ src/
         ├── catppuccin-latte.css   # Catppuccin Latte (light)
         ├── catppuccin-frappe.css  # Catppuccin Frappé (dark)
         ├── catppuccin-macchiato.css # Catppuccin Macchiato (dark)
-        └── catppuccin-mocha.css   # Catppuccin Mocha (dark)
+        ├── catppuccin-mocha.css   # Catppuccin Mocha (dark)
+        ├── paper.css              # Paper (light, warm serif)
+        └── midnight.css           # Midnight (dark, deep navy)
 ```
 
 ## Configuration Settings
@@ -105,6 +108,8 @@ Extension provides these settings via `tuiMarkdown.*` namespace:
 * `autoRenameImages` (boolean, default: true) - Automatically rename image files when you change the image <path> in Markdown (only when folder stays the same)
 
 * `autoDeleteImages` (boolean, default: true) - Automatically delete image files when removed from Markdown (moves to Trash, warns if used elsewhere)
+
+* `autoHideToolbar` (boolean, default: false) - Auto-hide toolbar when typing (show on hover)
 
 ## Tiptap Integration
 
@@ -339,6 +344,51 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 
 * `showWarning`: Webview → Extension (message title and warning text for VSCode dialog)
 
+* `readClipboardImage`: Webview → Extension (request native clipboard read as fallback)
+
+* `clipboardImage`: Extension → Webview (base64 PNG from system clipboard)
+
+**Clipboard Image Fallback** (triple strategy in `src/webview/main.ts`):
+
+1. ProseMirror `handlePaste` (editorProps) — standard `clipboardData.items`/`files`
+2. `navigator.clipboard.read()` — async Clipboard API (may need permission)
+3. Extension-side native read — `osascript` (macOS), PowerShell (Windows), `xclip` (Linux)
+
+## Image Lightbox
+
+**Plugin** (`src/webview/image-lightbox-plugin.ts`):
+
+* Fullscreen overlay with dark backdrop, zoom controls (0.5x–4x)
+* Expand button added to image hover overlay (alongside edit button) in `image-edit-plugin.ts`
+* Zoom via buttons (+/−), mouse wheel, or keyboard (+/−/0 for reset)
+* Caption from image alt text
+* Close via Escape, backdrop click, or close button
+* `openLightbox(src, alt)` / `closeLightbox()` exported API
+* `initLightbox()` called once in `init()`
+
+## Toolbar Auto-hide
+
+**Feature** (in `src/webview/main.ts`):
+
+* `setupToolbarAutoHide(autoHide: boolean)` — controlled by `tuiMarkdown.autoHideToolbar` setting
+* Typing in `.tiptap` triggers 3s hide timeout
+* `#toolbar-hover-zone` (top 8px) reveals toolbar on mouseenter
+* Toolbar mouseenter/focus also reveals
+* CSS: `.toolbar-hidden` class with opacity/transform transition
+
+## Reading Progress & Word Count
+
+**Reading Progress** (in `src/webview/main.ts`):
+
+* `setupReadingProgress()` — listens to `#editor-container` scroll event (passive)
+* `#reading-progress` fixed bar at top, width tracks scroll percentage
+* CSS gradient using `--accent-rgb`
+
+**Word Count** (in `src/webview/main.ts`):
+
+* `updateWordCount(editor)` — debounced 500ms, triggered on `tr.docChanged`
+* `#word-count` element displays word count via `textContent.split(/\s+/).length`
+
 ## Page Break
 
 **Styling** (in `src/markdownEditorProvider.ts`):
@@ -571,7 +621,7 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 
 * Theme-aware via CSS custom properties: `--toolbar-bg-rgb`, `--border-rgb`, `--toolbar-fg`
 
-* All 10 themes expose body-level variables for toolbar and UI elements outside `.tiptap`
+* All 12 themes expose body-level variables for toolbar and UI elements outside `.tiptap`
 
 * Icons: Stroke-based Lucide SVGs (`fill: none; stroke: currentColor; stroke-width: 2`)
 

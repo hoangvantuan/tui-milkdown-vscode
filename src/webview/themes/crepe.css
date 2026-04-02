@@ -6,6 +6,9 @@
   --border-rgb: 0, 0, 0;
   --toolbar-fg: #1f1b16;
   --canvas-bg: #f2ede8;
+  --noise-opacity: 0.7;
+  --vignette-opacity: 0.06;
+  --selection-bg: rgba(212, 149, 106, 0.25);
 }
 .theme-crepe .tiptap {
   --crepe-color-background: #fffdfb;

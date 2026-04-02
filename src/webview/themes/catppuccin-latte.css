@@ -7,6 +7,9 @@
   --border-rgb: 0, 0, 0;
   --toolbar-fg: #4c4f69;
   --canvas-bg: #e1e3e9;
+  --noise-opacity: 0.6;
+  --vignette-opacity: 0.05;
+  --selection-bg: rgba(114, 135, 253, 0.2);
 }
 .theme-catppuccin-latte .tiptap {
   --crepe-color-background: #eff1f5;

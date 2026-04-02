@@ -1,0 +1,23 @@
+/* Paper Theme — Warm, book-like reading experience */
+.theme-paper {
+  --accent-primary: #8B6914;
+  --accent-rgb: 139, 105, 20;
+  --toolbar-bg-rgb: 250, 248, 245;
+  --border-rgb: 100, 80, 40;
+  --toolbar-fg: #3d3929;
+  --canvas-bg: #f2efe8;
+  --noise-opacity: 0.75;
+  --vignette-opacity: 0.07;
+  --selection-bg: rgba(139, 105, 20, 0.2);
+}
+.theme-paper .tiptap {
+  --crepe-color-background: #faf8f5;
+  --crepe-color-on-background: #2d2a23;
+  --crepe-color-surface: #f0ece4;
+  --crepe-color-outline: #c4b99a;
+  --crepe-color-primary: #8B6914;
+  --crepe-color-inline-code: #915930;
+  --crepe-color-highlight: #f5ecd0;
+  --crepe-font-default: ui-serif, "Source Serif 4", "Newsreader", Georgia, "Times New Roman", serif;
+  --crepe-font-code: "Cascadia Code", "JetBrains Mono", Menlo, Monaco, monospace;
+}

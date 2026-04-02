@@ -1,0 +1,23 @@
+/* Midnight Theme — Deep navy, comfortable for night writing */
+.theme-midnight {
+  --accent-primary: #58A6FF;
+  --accent-rgb: 88, 166, 255;
+  --toolbar-bg-rgb: 13, 17, 23;
+  --border-rgb: 255, 255, 255;
+  --toolbar-fg: #c9d1d9;
+  --canvas-bg: #010409;
+  --noise-opacity: 0.4;
+  --vignette-opacity: 0.1;
+  --selection-bg: rgba(88, 166, 255, 0.25);
+}
+.theme-midnight .tiptap {
+  --crepe-color-background: #0d1117;
+  --crepe-color-on-background: #c9d1d9;
+  --crepe-color-surface: #161b22;
+  --crepe-color-outline: #30363d;
+  --crepe-color-primary: #58A6FF;
+  --crepe-color-inline-code: #ffa657;
+  --crepe-color-highlight: #1c2d41;
+  --crepe-font-default: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  --crepe-font-code: "Cascadia Code", "Fira Code", "JetBrains Mono", Menlo, monospace;
+}

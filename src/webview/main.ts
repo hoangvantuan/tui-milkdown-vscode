@@ -49,6 +49,7 @@ import { HeadingCollapse, collapsePluginKey, getCollapsedHeadings, setCollapsedH
 import { CodeBlockEnhancement } from "./code-block-plugin";
 import { SearchPlugin, performSearch, clearSearch, searchNext, searchPrev, getMatchInfo } from "./search-plugin";
 import { initFontSelector, type FontSelectorAPI, sanitizeFontName } from "./font-selector";
+import { initLightbox } from "./image-lightbox-plugin";
 
 // Fix: @tiptap/markdown v3.19.0 drops `escape` tokens from marked parser,
 // causing escaped characters like \_ to be silently lost during roundtrip.
@@ -154,7 +155,9 @@ type ThemeName =
   | "catppuccin-latte"
   | "catppuccin-frappe"
   | "catppuccin-macchiato"
-  | "catppuccin-mocha";
+  | "catppuccin-mocha"
+  | "paper"
+  | "midnight";
 
 const THEMES: ThemeName[] = [
   "frame",
@@ -167,9 +170,14 @@ const THEMES: ThemeName[] = [
   "catppuccin-frappe",
   "catppuccin-macchiato",
   "catppuccin-mocha",
+  "paper",
+  "midnight",
 ];
 const DEBOUNCE_MS = 300;
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
+
+// Platform detection: macOS uses Cmd (metaKey) for link-click, Windows/Linux uses Ctrl
+const isMac = /Mac|iPhone|iPod|iPad/.test(navigator.userAgent);
 
 const vscode = acquireVsCodeApi();
 
@@ -332,6 +340,85 @@ function generateImageFilename(mimeType: string): string {
   const timestamp = Date.now();
   const random = Math.random().toString(36).substring(2, 8);
   return `image-${timestamp}-${random}.${ext}`;
+}
+
+/**
+ * Extract image file from clipboard data.
+ * Checks both DataTransferItemList (items) and FileList (files) for robustness.
+ */
+function getImageFromClipboard(clipboardData: DataTransfer | null): File | null {
+  if (!clipboardData) return null;
+
+  // Primary: check items (DataTransferItemList)
+  const items = Array.from(clipboardData.items || []);
+  const imageItem = items.find(i => i.type.startsWith("image/"));
+  if (imageItem) {
+    const file = imageItem.getAsFile();
+    if (file) return file;
+  }
+
+  // Fallback: check files (FileList) — some environments only populate files
+  const files = Array.from(clipboardData.files || []);
+  return files.find(f => f.type.startsWith("image/")) || null;
+}
+
+/**
+ * Process an image file from paste/drop: read as base64, send to extension, insert placeholder.
+ */
+/** Convert a data URL to a File object */
+function dataUrlToFile(dataUrl: string, filename: string): File | null {
+  try {
+    const match = dataUrl.match(/^data:(image\/[^;]+);base64,(.+)$/);
+    if (!match) return null;
+    const byteString = atob(match[2]);
+    const ab = new ArrayBuffer(byteString.length);
+    const ia = new Uint8Array(ab);
+    for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+    return new File([ab], filename, { type: match[1] });
+  } catch {
+    return null;
+  }
+}
+
+// Dedup guard: prevent double-insert from overlapping clipboard fallback paths
+let lastPasteTimestamp = 0;
+const PASTE_DEDUP_MS = 500;
+
+function processImagePaste(view: import("@tiptap/pm/view").EditorView, file: File): void {
+  const now = Date.now();
+  if (now - lastPasteTimestamp < PASTE_DEDUP_MS) return;
+  lastPasteTimestamp = now;
+
+  if (file.size > MAX_IMAGE_SIZE) {
+    vscode.postMessage({
+      type: "showWarning",
+      message: `Image too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum is 10MB.`,
+    });
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onloadend = () => {
+    const base64 = reader.result as string;
+    const filename = generateImageFilename(file.type);
+
+    vscode.postMessage({
+      type: "saveImage",
+      data: base64,
+      filename,
+      blobUrl: base64,
+    });
+
+    // Insert placeholder image with base64 src (will be replaced by imageSaved)
+    const { state, dispatch } = view;
+    const imageNode = state.schema.nodes.image;
+    if (imageNode) {
+      const node = imageNode.create({ src: base64, alt: "" });
+      const tr = state.tr.replaceSelectionWith(node);
+      dispatch(tr);
+    }
+  };
+  reader.readAsDataURL(file);
 }
 
 async function processInlineImages(content: string): Promise<boolean> {
@@ -648,6 +735,7 @@ function showError(message: string): void {
 const DARK_THEMES: ReadonlySet<ThemeName> = new Set([
   "frame-dark", "nord-dark", "crepe-dark",
   "catppuccin-frappe", "catppuccin-macchiato", "catppuccin-mocha",
+  "midnight",
 ]);
 
 function setTheme(themeName: ThemeName, saveGlobal = true): void {
@@ -850,46 +938,11 @@ function initEditor(initialContent: string = ""): Editor | null {
       contentType: 'markdown',
       editorProps: {
         handlePaste(view, event) {
-          const items = Array.from(event.clipboardData?.items || []);
-          const imageItem = items.find(i => i.type.startsWith("image/"));
-          if (imageItem) {
-            event.preventDefault();
-            const file = imageItem.getAsFile();
-            if (!file) return false;
-
-            if (file.size > MAX_IMAGE_SIZE) {
-              vscode.postMessage({
-                type: "showWarning",
-                message: `Image too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum is 10MB.`,
-              });
-              return true;
-            }
-
-            const reader = new FileReader();
-            reader.onloadend = () => {
-              const base64 = reader.result as string;
-              const filename = generateImageFilename(file.type);
-
-              vscode.postMessage({
-                type: "saveImage",
-                data: base64,
-                filename,
-                blobUrl: base64,
-              });
-
-              // Insert placeholder image with base64 src (will be replaced by imageSaved)
-              const { state, dispatch } = view;
-              const imageNode = state.schema.nodes.image;
-              if (imageNode) {
-                const node = imageNode.create({ src: base64, alt: "" });
-                const tr = state.tr.replaceSelectionWith(node);
-                dispatch(tr);
-              }
-            };
-            reader.readAsDataURL(file);
-            return true;
-          }
-          return false;
+          const file = getImageFromClipboard(event.clipboardData);
+          if (!file) return false;
+          event.preventDefault();
+          processImagePaste(view, file);
+          return true;
         },
         handleDrop(view, event) {
           const files = event.dataTransfer?.files;
@@ -956,6 +1009,7 @@ function initEditor(initialContent: string = ""): Editor | null {
       onTransaction: ({ editor: ed, transaction: tr }) => {
         updateToolbarActiveState(ed);
         updateTocFromEditor(ed, tr.docChanged);
+        if (tr.docChanged) updateWordCount(ed);
         // Persist collapsed heading state on toggle only
         const collapseMeta = tr.getMeta(collapsePluginKey);
         if (collapseMeta?.type === "toggle") {
@@ -1206,6 +1260,79 @@ function setupSearchBar(): void {
   searchCloseBtn?.addEventListener("click", closeSearchBar);
 }
 
+// Toolbar auto-hide — typing hides after 3s, hover/mousemove reveals
+let toolbarAutoHideController: AbortController | null = null;
+
+function setupToolbarAutoHide(autoHide: boolean): void {
+  // Cleanup previous listeners to prevent accumulation on config changes
+  if (toolbarAutoHideController) {
+    toolbarAutoHideController.abort();
+    toolbarAutoHideController = null;
+  }
+
+  const toolbar = document.getElementById("toolbar");
+  const hoverZone = document.getElementById("toolbar-hover-zone");
+  if (!toolbar || !hoverZone) return;
+
+  if (!autoHide) {
+    toolbar.classList.remove("toolbar-hidden");
+    hoverZone.classList.remove("active");
+    return;
+  }
+
+  toolbarAutoHideController = new AbortController();
+  const { signal } = toolbarAutoHideController;
+
+  hoverZone.classList.add("active");
+  let hideTimeout: ReturnType<typeof setTimeout> | null = null;
+  let isHovering = false;
+
+  const show = () => {
+    toolbar.classList.remove("toolbar-hidden");
+    if (hideTimeout) clearTimeout(hideTimeout);
+  };
+
+  const scheduleHide = () => {
+    if (isHovering) return;
+    if (hideTimeout) clearTimeout(hideTimeout);
+    hideTimeout = setTimeout(() => {
+      if (!isHovering) toolbar.classList.add("toolbar-hidden");
+    }, 3000);
+  };
+
+  document.querySelector(".tiptap")?.addEventListener("input", scheduleHide, { signal });
+  hoverZone.addEventListener("mouseenter", () => { isHovering = true; show(); }, { signal });
+  toolbar.addEventListener("mouseenter", () => { isHovering = true; show(); }, { signal });
+  toolbar.addEventListener("mouseleave", () => { isHovering = false; scheduleHide(); }, { signal });
+  hoverZone.addEventListener("mouseleave", () => { isHovering = false; }, { signal });
+  toolbar.addEventListener("focusin", show, { signal });
+}
+
+// Reading progress bar
+function setupReadingProgress(): void {
+  const progressBar = document.getElementById("reading-progress");
+  const editorContainer = document.getElementById("editor-container");
+  if (!progressBar || !editorContainer) return;
+  editorContainer.addEventListener("scroll", () => {
+    const { scrollTop, scrollHeight, clientHeight } = editorContainer;
+    const percent = scrollHeight <= clientHeight ? 0 : (scrollTop / (scrollHeight - clientHeight)) * 100;
+    progressBar.style.width = `${percent}%`;
+  }, { passive: true });
+}
+
+// Word count indicator (debounced)
+let wordCountTimer: ReturnType<typeof setTimeout> | null = null;
+function updateWordCount(ed: Editor): void {
+  if (wordCountTimer) clearTimeout(wordCountTimer);
+  wordCountTimer = setTimeout(() => {
+    const el = document.getElementById("word-count");
+    if (!el) return;
+    const text = ed.state.doc.textContent;
+    const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+    el.textContent = `${words.toLocaleString()} words`;
+  }, 500);
+}
+
 // Toolbar event handlers
 function setupToolbarHandlers(): void {
   const themeSelect = getThemeSelect();
@@ -1259,9 +1386,10 @@ function setupToolbarHandlers(): void {
     }
   });
 
-  // Link click navigation: Ctrl/Cmd+Click opens links
+  // Link click navigation: Cmd+Click (macOS) or Ctrl+Click (Windows/Linux) opens links
   document.addEventListener("click", (e) => {
-    if (!e.ctrlKey && !e.metaKey) return;
+    const isModHeld = isMac ? e.metaKey : e.ctrlKey;
+    if (!isModHeld) return;
     const anchor = (e.target as HTMLElement).closest<HTMLAnchorElement>("a[href]");
     if (!anchor || !editor) return;
 
@@ -1276,12 +1404,12 @@ function setupToolbarHandlers(): void {
     }
   });
 
-  // Ctrl/Cmd held → pointer cursor on links
+  // Mod key held → pointer cursor on links (Cmd on macOS, Ctrl on Windows/Linux)
   document.addEventListener("keydown", (e) => {
-    if (e.ctrlKey || e.metaKey) document.body.classList.add("ctrl-held");
+    if (isMac ? e.metaKey : e.ctrlKey) document.body.classList.add("ctrl-held");
   });
   document.addEventListener("keyup", (e) => {
-    if (!e.ctrlKey && !e.metaKey) document.body.classList.remove("ctrl-held");
+    if (isMac ? !e.metaKey : !e.ctrlKey) document.body.classList.remove("ctrl-held");
   });
   window.addEventListener("blur", () => document.body.classList.remove("ctrl-held"));
 }
@@ -1426,6 +1554,9 @@ window.addEventListener("message", async (event) => {
       if (typeof message.highlightCurrentLine === "boolean") {
         highlightCurrentLine = message.highlightCurrentLine;
       }
+      if (typeof message.autoHideToolbar === "boolean") {
+        setupToolbarAutoHide(message.autoHideToolbar);
+      }
       break;
     case "savedTheme":
       if (
@@ -1446,6 +1577,13 @@ window.addEventListener("message", async (event) => {
     case "systemFonts":
       if (Array.isArray(message.fonts) && fontSelector) {
         fontSelector.setFonts(message.fonts);
+      }
+      break;
+    case "clipboardImage":
+      // Extension-side clipboard read returned an image (base64 PNG)
+      if (typeof message.data === "string" && editor?.view) {
+        const file = dataUrlToFile(message.data, "clipboard-image.png");
+        if (file) processImagePaste(editor.view, file);
       }
       break;
     case "imageSaved":
@@ -1544,6 +1682,24 @@ function init() {
       (msg) => vscode.postMessage(msg)
     );
   }
+
+  initLightbox();
+  setupReadingProgress();
+
+  // Image paste: VSCode webview does NOT fire paste events for image clipboard data.
+  // The paste event only fires for text content. For images, we must intercept Cmd+V
+  // at keydown and request the extension to read the system clipboard natively.
+  // Dedup guard in processImagePaste() prevents double-insert.
+  document.addEventListener("keydown", (e) => {
+    if (!editor?.view) return;
+    // Detect Cmd+V (macOS) or Ctrl+V (Windows/Linux), excluding Shift+Cmd+V (paste-as-text)
+    const isPaste = (isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey)
+      && !e.shiftKey && e.key === "v";
+    if (!isPaste) return;
+    // Request extension-side clipboard read. Extension checks if clipboard has image,
+    // responds with clipboardImage message only if it does. Text paste continues normally.
+    vscode.postMessage({ type: "readClipboardImage" });
+  }, { capture: true });
 
   console.log("[Tiptap] init() complete, sending ready signal");
   vscode.postMessage({ type: "ready" });

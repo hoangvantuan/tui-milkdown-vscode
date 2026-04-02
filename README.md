@@ -15,9 +15,10 @@ A beautiful WYSIWYG Markdown editor for VS Code powered by Tiptap.
 - **Table Editing**: Resizable tables with multi-line cell content (lists, breaks) preserved in markdown
 - **Table Context Menu**: Right-click on table cells for select/add/delete row/column/table actions
 - **Cell Selection Highlight**: Drag-selecting across table cells shows visual highlight overlay
-- **Theme Selection**: 10 editor themes including Catppuccin palette (4 variants)
+- **Theme Selection**: 12 editor themes including Catppuccin (4 variants), Paper (warm serif), Midnight (deep navy)
+- **Image Lightbox**: Fullscreen image viewer with zoom controls (0.5x–4x), expand button on hover
 - **Search (Cmd+F)**: Find text in editor with match highlighting, next/prev navigation, and match counter
-- **Link Navigation**: Ctrl/Cmd+Click to follow links — scroll to headings, open files, or launch URLs in browser
+- **Link Navigation**: Cmd+Click (macOS) / Ctrl+Click (Windows/Linux) to follow links — scroll to headings, open files, or launch URLs
 - **View Source**: Toggle between WYSIWYG and source view (Ctrl/Cmd+Shift+M)
 - **Cursor Line Highlight**: Visual highlight of current block/paragraph
 - **Table of Contents**: Sidebar with click-to-scroll, active heading tracking, and collapse/expand
@@ -33,6 +34,9 @@ A beautiful WYSIWYG Markdown editor for VS Code powered by Tiptap.
 - **Tab Indentation**: Tab key inserts 2-space indentation inside code blocks
 - **Large File Warning**: Protection for files >500KB
 - **Font Selector**: Searchable font picker on toolbar — browse all system fonts with live preview
+- **Reading Progress Bar**: Fixed top bar tracking scroll position
+- **Word Count**: Subtle indicator in bottom-right corner
+- **Toolbar Auto-hide**: Opt-in auto-hide after 3s of inactivity, reveal on hover
 - **Configurable Font Size**: Adjust editor font size (8-32px)
 - **Configurable Heading Sizes**: Customize font sizes for H1-H6 headings (12-72px)
 
@@ -52,6 +56,7 @@ A beautiful WYSIWYG Markdown editor for VS Code powered by Tiptap.
 | `tuiMarkdown.imageSaveFolder` | `images` | Folder to save pasted images (relative to document) |
 | `tuiMarkdown.autoRenameImages` | true | Auto rename image files when path changes in markdown |
 | `tuiMarkdown.autoDeleteImages` | true | Auto delete image files when removed from markdown (moves to Trash) |
+| `tuiMarkdown.autoHideToolbar` | false | Auto-hide toolbar when typing (show on hover) |
 | `tuiMarkdown.headingSizes.h1` | 32 | H1 heading font size (12-72px) |
 | `tuiMarkdown.headingSizes.h2` | 28 | H2 heading font size (12-72px) |
 | `tuiMarkdown.headingSizes.h3` | 24 | H3 heading font size (12-72px) |
@@ -73,6 +78,8 @@ A beautiful WYSIWYG Markdown editor for VS Code powered by Tiptap.
 | Catppuccin Frappé | Dark |
 | Catppuccin Macchiato | Dark |
 | Catppuccin Mocha | Dark |
+| Paper | Light |
+| Midnight | Dark |
 
 ## Requirements
 

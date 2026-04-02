@@ -7,6 +7,9 @@
   --border-rgb: 255, 255, 255;
   --toolbar-fg: #c6d0f5;
   --canvas-bg: #272b3d;
+  --noise-opacity: 0.5;
+  --vignette-opacity: 0.07;
+  --selection-bg: rgba(186, 187, 241, 0.25);
 }
 .theme-catppuccin-frappe .tiptap {
   --crepe-color-background: #303446;
