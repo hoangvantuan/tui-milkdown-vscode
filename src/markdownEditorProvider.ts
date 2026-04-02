@@ -302,12 +302,18 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       return config.get<boolean>("highlightCurrentLine", true);
     };
 
+    const getAutoHideToolbar = (): boolean => {
+      const config = vscode.workspace.getConfiguration("tuiMarkdown");
+      return config.get<boolean>("autoHideToolbar", false);
+    };
+
     const sendConfig = () => {
       webviewPanel.webview.postMessage({
         type: "config",
         fontSize: getFontSize(),
         headingSizes: getHeadingSizes(),
         highlightCurrentLine: getHighlightCurrentLine(),
+        autoHideToolbar: getAutoHideToolbar(),
       });
     };
 
@@ -584,6 +590,108 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             const warnMsg = (msg as { message?: string }).message;
             if (typeof warnMsg === "string") {
               vscode.window.showWarningMessage(warnMsg);
+            }
+            break;
+          }
+          case "readClipboardImage": {
+            // Read image from system clipboard via native command (fallback for webviews
+            // where paste event clipboardData doesn't contain image items).
+            try {
+              const { execFile } = require("child_process") as typeof import("child_process");
+              const os = require("os") as typeof import("os");
+              const fs = require("fs") as typeof import("fs");
+              const id = `clipboard-${Date.now()}`;
+              const tmpPng = path.join(os.tmpdir(), `${id}.png`);
+              const tmpTiff = path.join(os.tmpdir(), `${id}.tiff`);
+              const cleanup = () => {
+                try { fs.unlinkSync(tmpPng); } catch { /* ok */ }
+                try { fs.unlinkSync(tmpTiff); } catch { /* ok */ }
+              };
+
+              if (process.platform === "darwin") {
+                // macOS: try PNG first via osascript, fall back to TIFF + sips convert
+                const script = `
+                  try
+                    set theImage to the clipboard as «class PNGf»
+                    set theFile to open for access POSIX file "${tmpPng}" with write permission
+                    write theImage to theFile
+                    close access theFile
+                    return "png"
+                  on error
+                    try
+                      set theImage to the clipboard as «class TIFF»
+                      set theFile to open for access POSIX file "${tmpTiff}" with write permission
+                      write theImage to theFile
+                      close access theFile
+                      return "tiff"
+                    on error
+                      return "none"
+                    end try
+                  end try
+                `;
+                execFile("osascript", ["-e", script], { timeout: 5000 }, (err, stdout) => {
+                  const fmt = (stdout || "").trim();
+                  if (err || fmt === "none") { cleanup(); return; }
+
+                  const finalize = () => {
+                    try {
+                      const buffer = fs.readFileSync(tmpPng);
+                      webviewPanel.webview.postMessage({
+                        type: "clipboardImage",
+                        data: `data:image/png;base64,${buffer.toString("base64")}`,
+                      });
+                    } catch { /* read failed */ }
+                    cleanup();
+                  };
+
+                  if (fmt === "tiff") {
+                    // Convert TIFF → PNG via sips
+                    execFile("sips", ["-s", "format", "png", tmpTiff, "--out", tmpPng],
+                      { timeout: 5000 }, () => finalize());
+                  } else {
+                    finalize();
+                  }
+                });
+              } else if (process.platform === "win32") {
+                const psCmd = `$img = Get-Clipboard -Format Image; if ($img) { $img.Save('${tmpPng.replace(/'/g, "''")}', [System.Drawing.Imaging.ImageFormat]::Png); Write-Output 'ok' }`;
+                execFile("powershell", ["-NoProfile", "-Command", psCmd],
+                  { timeout: 5000 }, (err, stdout) => {
+                    if (!err && (stdout || "").includes("ok")) {
+                      try {
+                        const buffer = fs.readFileSync(tmpPng);
+                        webviewPanel.webview.postMessage({
+                          type: "clipboardImage",
+                          data: `data:image/png;base64,${buffer.toString("base64")}`,
+                        });
+                      } catch { /* read failed */ }
+                    }
+                    cleanup();
+                  });
+              } else {
+                // Linux: try xclip (X11), fall back to wl-paste (Wayland)
+                const tryCmd = (prog: string, args: string[]) => {
+                  execFile(prog, args, { timeout: 5000 }, (err) => {
+                    if (!err) {
+                      try {
+                        const buffer = fs.readFileSync(tmpPng);
+                        webviewPanel.webview.postMessage({
+                          type: "clipboardImage",
+                          data: `data:image/png;base64,${buffer.toString("base64")}`,
+                        });
+                      } catch { /* read failed */ }
+                      cleanup();
+                    } else if (prog === "xclip") {
+                      // Fallback to wl-paste for Wayland
+                      tryCmd("sh", ["-c", `wl-paste --type image/png > "${tmpPng}"`]);
+                    } else {
+                      cleanup();
+                    }
+                  });
+                };
+                tryCmd("sh", ["-c", `xclip -selection clipboard -t image/png -o > "${tmpPng}"`]);
+              }
+            } catch {
+              // Native clipboard read not available — ignore
             }
             break;
           }
@@ -1266,7 +1374,57 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
               radial-gradient(ellipse 120% 50% at 50% 0%, rgba(var(--accent-rgb, 59, 130, 246), 0.04), transparent),
               var(--canvas-bg, var(--vscode-editor-background, #1e1e1e));
           }
-          #editor { min-height: 100%; }
+          /* Phase 1: Paper grain texture — pure CSS noise (CSP-safe, fixed overlay) */
+          #editor-container::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image:
+              repeating-radial-gradient(circle at 17% 32%, rgba(0,0,0,0.06) 0px, transparent 1px),
+              repeating-radial-gradient(circle at 62% 15%, rgba(0,0,0,0.05) 0px, transparent 1px),
+              repeating-radial-gradient(circle at 83% 67%, rgba(0,0,0,0.06) 0px, transparent 1px),
+              repeating-radial-gradient(circle at 41% 88%, rgba(0,0,0,0.05) 0px, transparent 1px),
+              repeating-radial-gradient(circle at 9% 71%, rgba(0,0,0,0.06) 0px, transparent 1px),
+              repeating-radial-gradient(circle at 53% 44%, rgba(0,0,0,0.04) 0px, transparent 1px),
+              repeating-radial-gradient(circle at 28% 76%, rgba(0,0,0,0.05) 0px, transparent 1px);
+            background-size: 3px 3px, 4px 4px, 3px 3px, 5px 5px, 4px 4px, 2px 2px, 3px 3px;
+            opacity: var(--noise-opacity, 0.6);
+            pointer-events: none;
+            z-index: 1;
+          }
+          body.dark-theme #editor-container::before {
+            background-image:
+              repeating-radial-gradient(circle at 17% 32%, rgba(255,255,255,0.05) 0px, transparent 1px),
+              repeating-radial-gradient(circle at 62% 15%, rgba(255,255,255,0.04) 0px, transparent 1px),
+              repeating-radial-gradient(circle at 83% 67%, rgba(255,255,255,0.05) 0px, transparent 1px),
+              repeating-radial-gradient(circle at 41% 88%, rgba(255,255,255,0.04) 0px, transparent 1px),
+              repeating-radial-gradient(circle at 9% 71%, rgba(255,255,255,0.05) 0px, transparent 1px),
+              repeating-radial-gradient(circle at 53% 44%, rgba(255,255,255,0.03) 0px, transparent 1px),
+              repeating-radial-gradient(circle at 28% 76%, rgba(255,255,255,0.04) 0px, transparent 1px);
+          }
+          /* Phase 1: Vignette effect */
+          #editor-container::after {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: radial-gradient(ellipse at center, transparent 50%, rgba(0, 0, 0, var(--vignette-opacity, 0.06)));
+            pointer-events: none;
+            z-index: 1;
+          }
+          /* Ensure editor content sits above noise/vignette overlays */
+          /* Phase 1: Reading progress bar */
+          #reading-progress {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 2px;
+            background: linear-gradient(90deg, rgba(var(--accent-rgb, 59, 130, 246), 0.6), rgba(var(--accent-rgb, 59, 130, 246), 0.9));
+            width: 0%;
+            z-index: 200;
+            transition: width 0.1s linear;
+            pointer-events: none;
+          }
+          #editor { min-height: 100%; position: relative; z-index: 2; }
           #editor.hidden { display: none; }
 
           /* Loading state */
@@ -1531,11 +1689,12 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .collapsed-content {
             display: none !important;
           }
-          /* Dashed border on collapsed headings */
+          /* Dashed border on collapsed headings — hide gradient underline */
           .heading-collapsed-indicator {
             border-bottom: 1px dashed rgba(0, 0, 0, 0.15);
             padding-bottom: 4px;
             margin-bottom: 8px;
+            background-image: none !important;
           }
           body.dark-theme .heading-collapsed-indicator {
             border-bottom-color: rgba(255, 255, 255, 0.15);
@@ -1581,15 +1740,35 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             border-radius: 2px;
           }
           .tiptap pre {
+            position: relative;
             background: var(--crepe-color-surface, #f7f7f7);
             border-radius: 8px;
             padding: 16px 20px;
             overflow-x: auto;
             border: 1px solid transparent;
-            transition: border-color 0.2s ease-out;
+            transition: border-color 0.2s ease-out, box-shadow 0.2s ease-out;
+          }
+          /* Gradient accent bar at top via ::after (preserves border-radius) */
+          .tiptap pre::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            border-radius: 8px 8px 0 0;
+            background: linear-gradient(90deg, rgba(var(--accent-rgb, 59, 130, 246), 0.7), rgba(var(--accent-rgb, 59, 130, 246), 0.2) 70%, transparent);
+            pointer-events: none;
+            transition: opacity 0.2s ease-out;
+          }
+          .tiptap pre:hover::after {
+            background: linear-gradient(90deg, rgba(var(--accent-rgb, 59, 130, 246), 0.9), rgba(var(--accent-rgb, 59, 130, 246), 0.4) 70%, transparent);
           }
           .tiptap pre:hover {
-            border-color: var(--crepe-color-outline);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+          }
+          body.dark-theme .tiptap pre:hover {
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
           }
           .tiptap pre:focus-within {
             border-color: var(--crepe-color-primary);
@@ -1599,6 +1778,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             color: inherit;
             background: none;
             padding: 0;
+            font-feature-settings: "calt" 1;
           }
           /* Syntax highlighting (lowlight/highlight.js) - Light themes */
           .tiptap pre code .hljs-comment,
@@ -1659,16 +1839,16 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 6px 12px;
-            background: rgba(0, 0, 0, 0.03);
-            border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+            padding: 8px 12px;
+            background: rgba(var(--accent-rgb, 59, 130, 246), 0.04);
+            border-bottom: 1px solid rgba(var(--border-rgb, 0, 0, 0), 0.06);
             border-radius: 8px 8px 0 0;
             margin: -16px -20px 12px -20px;
             user-select: none;
           }
           body.dark-theme .code-block-header {
-            background: rgba(255, 255, 255, 0.04);
-            border-bottom-color: rgba(255, 255, 255, 0.08);
+            background: rgba(var(--accent-rgb, 59, 130, 246), 0.06);
+            border-bottom-color: rgba(255, 255, 255, 0.06);
           }
           .code-lang-badge {
             font-size: 11px;
@@ -1741,65 +1921,94 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             border-left: 3px solid var(--crepe-color-primary, #2563eb);
             margin-left: 0;
             padding: 4px 20px;
+            transition: border-left-width 0.15s ease-out, border-color 0.2s ease-out;
+          }
+          .tiptap blockquote:hover {
+            border-left-width: 4px;
           }
 
-          /* GitHub-style Alerts / Admonitions */
+          /* ─── Premium Alert Blocks ─── */
           .tiptap .alert {
-            border-left: 4px solid;
-            border-radius: 6px;
-            padding: 12px 16px;
-            margin: 12px 0;
+            position: relative;
+            border: 1px solid rgba(var(--alert-rgb, 0, 0, 0), 0.15);
+            border-left: 4px solid var(--alert-color, #888);
+            border-radius: 8px;
+            padding: 14px 16px 12px 16px;
+            margin: 16px 0;
+            background: rgba(var(--alert-rgb, 0, 0, 0), 0.04);
+            transition: border-color 0.2s ease-out, box-shadow 0.2s ease-out;
+          }
+          .tiptap .alert:hover {
+            border-left-width: 5px;
+            box-shadow: 0 2px 8px rgba(var(--alert-rgb, 0, 0, 0), 0.08);
           }
           .tiptap .alert p:first-child { margin-top: 0; }
           .tiptap .alert p:last-child { margin-bottom: 0; }
           .tiptap .alert::before {
             display: block;
             font-weight: 600;
-            font-size: calc(14px * var(--editor-font-scale, 1));
-            margin-bottom: 6px;
+            font-size: calc(13px * var(--editor-font-scale, 1));
+            letter-spacing: 0.02em;
+            line-height: 16px;
+            margin-bottom: 8px;
+            padding-bottom: 6px;
+            padding-left: 22px;
+            border-bottom: 1px solid rgba(var(--alert-rgb, 0, 0, 0), 0.1);
+            color: var(--alert-color, #888);
+            background-repeat: no-repeat;
+            background-position: 0 0;
+            background-size: 16px 16px;
           }
-
-          /* NOTE - Blue */
           .tiptap .alert-note {
-            border-color: #2f81f7;
-            background: rgba(47, 129, 247, 0.08);
+            --alert-color: #2f81f7;
+            --alert-rgb: 47, 129, 247;
           }
-          .tiptap .alert-note::before { content: "📝 Note"; color: #2f81f7; }
-
-          /* TIP - Green */
+          .tiptap .alert-note::before {
+            content: "Note";
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%232f81f7' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cline x1='12' y1='16' x2='12' y2='12'/%3E%3Cline x1='12' y1='8' x2='12.01' y2='8'/%3E%3C/svg%3E");
+          }
           .tiptap .alert-tip {
-            border-color: #3fb950;
-            background: rgba(63, 185, 80, 0.08);
+            --alert-color: #3fb950;
+            --alert-rgb: 63, 185, 80;
           }
-          .tiptap .alert-tip::before { content: "💡 Tip"; color: #3fb950; }
-
-          /* IMPORTANT - Purple */
+          .tiptap .alert-tip::before {
+            content: "Tip";
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%233fb950' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18h6'/%3E%3Cpath d='M10 22h4'/%3E%3Cpath d='M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14'/%3E%3C/svg%3E");
+          }
           .tiptap .alert-important {
-            border-color: #a371f7;
-            background: rgba(163, 113, 247, 0.08);
+            --alert-color: #a371f7;
+            --alert-rgb: 163, 113, 247;
           }
-          .tiptap .alert-important::before { content: "❗ Important"; color: #a371f7; }
-
-          /* WARNING - Yellow/Orange */
+          .tiptap .alert-important::before {
+            content: "Important";
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23a371f7' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z'/%3E%3Cline x1='12' y1='9' x2='12' y2='13'/%3E%3Cline x1='12' y1='17' x2='12.01' y2='17'/%3E%3C/svg%3E");
+          }
           .tiptap .alert-warning {
-            border-color: #d29922;
-            background: rgba(210, 153, 34, 0.08);
+            --alert-color: #d29922;
+            --alert-rgb: 210, 153, 34;
           }
-          .tiptap .alert-warning::before { content: "⚠️ Warning"; color: #d29922; }
-
-          /* CAUTION - Red */
+          .tiptap .alert-warning::before {
+            content: "Warning";
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23d29922' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'/%3E%3Cline x1='12' y1='8' x2='12' y2='12'/%3E%3Cline x1='12' y1='16' x2='12.01' y2='16'/%3E%3C/svg%3E");
+          }
           .tiptap .alert-caution {
-            border-color: #f85149;
-            background: rgba(248, 81, 73, 0.08);
+            --alert-color: #f85149;
+            --alert-rgb: 248, 81, 73;
           }
-          .tiptap .alert-caution::before { content: "🔴 Caution"; color: #f85149; }
-
-          /* Dark theme overrides for alerts */
-          body.dark-theme .tiptap .alert-note { background: rgba(47, 129, 247, 0.12); }
-          body.dark-theme .tiptap .alert-tip { background: rgba(63, 185, 80, 0.12); }
-          body.dark-theme .tiptap .alert-important { background: rgba(163, 113, 247, 0.12); }
-          body.dark-theme .tiptap .alert-warning { background: rgba(210, 153, 34, 0.12); }
-          body.dark-theme .tiptap .alert-caution { background: rgba(248, 81, 73, 0.12); }
+          .tiptap .alert-caution::before {
+            content: "Caution";
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23f85149' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86'/%3E%3Cline x1='12' y1='8' x2='12' y2='12'/%3E%3Cline x1='12' y1='16' x2='12.01' y2='16'/%3E%3C/svg%3E");
+          }
+          body.dark-theme .tiptap .alert {
+            background: rgba(var(--alert-rgb, 0, 0, 0), 0.08);
+            border-color: rgba(var(--alert-rgb, 0, 0, 0), 0.2);
+          }
+          body.dark-theme .tiptap .alert::before {
+            border-bottom-color: rgba(var(--alert-rgb, 0, 0, 0), 0.15);
+          }
+          body.dark-theme .tiptap .alert:hover {
+            box-shadow: 0 2px 12px rgba(var(--alert-rgb, 0, 0, 0), 0.15);
+          }
 
           .tiptap a {
             color: var(--crepe-color-primary, #37618e);
@@ -2157,19 +2366,19 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
           /* Selection highlight uses theme accent */
           .tiptap ::selection {
-            background: rgba(var(--accent-rgb, 59, 130, 246), 0.2);
+            background: var(--selection-bg, rgba(var(--accent-rgb, 59, 130, 246), 0.2));
           }
 
-          /* Link hover: underline slide-in */
+          /* Link hover: accent underline slide-in */
           .tiptap a {
-            background-image: linear-gradient(currentColor, currentColor);
+            background-image: linear-gradient(rgba(var(--accent-rgb, 59, 130, 246), 0.3), rgba(var(--accent-rgb, 59, 130, 246), 0.3));
             background-position: 0% 100%;
             background-repeat: no-repeat;
-            background-size: 0% 1px;
-            transition: background-size 0.2s ease-out, color 0.15s ease-out;
+            background-size: 0% 1.5px;
+            transition: background-size 0.25s ease-out, color 0.15s ease-out;
           }
           .tiptap a:hover {
-            background-size: 100% 1px;
+            background-size: 100% 1.5px;
             border-bottom-color: transparent;
           }
 
@@ -2180,6 +2389,12 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           }
           body.dark-theme .tiptap img:hover {
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+          }
+
+          /* Image selected: accent border for visibility */
+          .tiptap img.ProseMirror-selectednode {
+            outline: 2.5px solid rgba(var(--accent-rgb, 100, 149, 237), 0.7);
+            outline-offset: 2px;
           }
 
           /* Page Break: modern dashed separator */
@@ -2377,17 +2592,246 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             background: rgba(var(--accent-rgb, 59, 130, 246), 0.5);
           }
 
-          /* Reduced motion — respect OS accessibility setting */
-          @media (prefers-reduced-motion: reduce) {
-            .tiptap *, .tiptap *::before, .tiptap *::after,
-            .toolbar-btn, .view-source-btn, #heading-select, #theme-select,
-            .mermaid-code-block, .mermaid-preview, .image-edit-overlay,
-            .toc-entry, .code-copy-btn, #search-bar, #search-input,
-            html, body, #toolbar {
-              transition-duration: 0.01ms !important;
-              animation-duration: 0.01ms !important;
+          /* ─── Phase 3: Image Lightbox ─── */
+          .image-expand-btn {
+            width: 32px;
+            height: 32px;
+            padding: 6px;
+            border: none;
+            border-radius: 50%;
+            background: var(--overlay-bg);
+            color: var(--overlay-fg);
+            opacity: 0.6;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.15s ease-out;
+          }
+          .image-expand-btn:hover { opacity: 1; }
+          .image-expand-btn svg { width: 16px; height: 16px; }
+          #lightbox-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 12px;
+          }
+          #lightbox-overlay.active { display: flex; }
+          .lightbox-backdrop {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(8px);
+          }
+          .lightbox-content {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+          }
+          #lightbox-image {
+            max-width: 90vw;
+            max-height: 80vh;
+            object-fit: contain;
+            border-radius: 8px;
+            transition: transform 0.15s ease-out;
+            user-select: none;
+          }
+          #lightbox-caption {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 13px;
+            font-style: italic;
+            text-align: center;
+            max-width: 600px;
+          }
+          #lightbox-caption.hidden { display: none; }
+          .lightbox-controls {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 8px;
+            padding: 6px 12px;
+            backdrop-filter: blur(8px);
+          }
+          .lightbox-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: white;
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.15s ease-out;
+          }
+          .lightbox-btn:hover { background: rgba(255, 255, 255, 0.2); }
+          #lightbox-zoom-level {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 12px;
+            min-width: 40px;
+            text-align: center;
+          }
+
+          /* ─── Phase 4: Toolbar Auto-hide ─── */
+          #toolbar {
+            transition: transform 0.2s ease-out, opacity 0.2s ease-out;
+          }
+          #toolbar.toolbar-hidden {
+            transform: translateY(-100%);
+            opacity: 0;
+            pointer-events: none;
+          }
+          #toolbar-hover-zone {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 8px;
+            z-index: 99;
+            display: none;
+          }
+          #toolbar-hover-zone.active { display: block; }
+          #toolbar.toolbar-hidden ~ #search-bar {
+            transform: translateY(-100%);
+            opacity: 0;
+            pointer-events: none;
+          }
+          #search-bar {
+            transition: transform 0.2s ease-out, opacity 0.2s ease-out;
+          }
+          @media (hover: none) {
+            #toolbar.toolbar-hidden {
+              transform: none !important;
+              opacity: 1 !important;
+              pointer-events: auto !important;
             }
-            .toolbar-btn:active, .search-btn:active { transform: none !important; }
+          }
+
+          /* ─── Phase 5: Micro-interactions ─── */
+          @keyframes checkmark-draw {
+            from { clip-path: inset(0 100% 0 0); }
+            to { clip-path: inset(0 0 0 0); }
+          }
+          @keyframes strikethrough-sweep {
+            from { text-decoration-color: transparent; }
+            to { text-decoration-color: currentColor; }
+          }
+          .tiptap ul[data-type="taskList"] > li[data-checked="true"] > label input[type="checkbox"] {
+            animation: checkmark-draw 0.25s ease-out;
+          }
+          .tiptap ul[data-type="taskList"] > li[data-checked="true"] > div p {
+            text-decoration: line-through;
+            animation: strikethrough-sweep 0.3s ease-out;
+          }
+          .tiptap h1,
+          .tiptap h2 {
+            background-image: linear-gradient(90deg, rgba(var(--accent-rgb, 59, 130, 246), 0.15), rgba(var(--accent-rgb, 59, 130, 246), 0.05) 60%, transparent);
+            background-position: 0 100%;
+            background-size: 100% 2px;
+            background-repeat: no-repeat;
+            padding-bottom: 8px;
+          }
+          .tiptap tr {
+            transition: background-color 0.15s ease-out;
+          }
+          .tiptap tr:hover {
+            background-color: rgba(var(--accent-rgb, 59, 130, 246), 0.04);
+          }
+          .tiptap tbody tr:nth-child(even) {
+            background-color: rgba(0, 0, 0, 0.015);
+          }
+          body.dark-theme .tiptap tbody tr:nth-child(even) {
+            background-color: rgba(255, 255, 255, 0.02);
+          }
+
+          /* ─── Phase 6: New Theme Overlay Vars ─── */
+          body.theme-paper { --overlay-bg: #3d3929; --overlay-fg: #faf8f5; }
+          body.theme-midnight { --overlay-bg: #c9d1d9; --overlay-fg: #0d1117; }
+
+          /* ─── Phase 7: Accessibility & Polish ─── */
+          /* Word count indicator */
+          #word-count {
+            position: fixed;
+            bottom: 8px;
+            right: 12px;
+            font-size: 11px;
+            color: var(--vscode-descriptionForeground, #888);
+            opacity: 0;
+            transition: opacity 0.2s ease-out;
+            pointer-events: none;
+            z-index: 50;
+          }
+          #editor-container:hover #word-count { opacity: 0.6; }
+          /* Focus indicators */
+          .toolbar-btn:focus-visible,
+          .view-source-btn:focus-visible,
+          #heading-select:focus-visible,
+          #theme-select:focus-visible,
+          .toc-toggle-btn:focus-visible,
+          .search-btn:focus-visible,
+          .lightbox-btn:focus-visible {
+            outline: 2px solid var(--accent-primary, var(--vscode-focusBorder));
+            outline-offset: 2px;
+          }
+          /* High contrast mode */
+          @media (prefers-contrast: more) {
+            #toolbar {
+              backdrop-filter: none;
+              background: var(--vscode-editor-background);
+              border-bottom: 2px solid var(--vscode-panel-border);
+            }
+            .toolbar-btn { opacity: 1; border: 1px solid var(--vscode-panel-border); }
+            .tiptap blockquote { border-left-width: 4px; opacity: 1; }
+            .tiptap code { border: 1px solid var(--crepe-color-outline); }
+            #editor-container::before { display: none; }
+            #editor-container::after { display: none; }
+            .tiptap img { outline: 2px solid var(--crepe-color-outline); }
+          }
+          /* Print stylesheet */
+          @media print {
+            #toolbar, #toolbar-hover-zone, #search-bar, #metadata-panel,
+            #toc-sidebar, .toc-toggle-btn, #reading-progress,
+            .heading-collapse-toggle, .heading-level-badge,
+            .code-copy-btn, .image-edit-overlay, #lightbox-overlay, #word-count {
+              display: none !important;
+            }
+            #main-layout { display: block !important; height: auto !important; }
+            #editor-container {
+              overflow: visible !important;
+              padding: 0 !important;
+            }
+            #editor-container::before, #editor-container::after { display: none !important; }
+            .tiptap {
+              max-width: 100% !important;
+              padding: 0 !important;
+              box-shadow: none !important;
+            }
+            .tiptap hr { page-break-after: always; }
+            .tiptap h1, .tiptap h2, .tiptap h3 { page-break-after: avoid; }
+            .tiptap pre, .tiptap img, .tiptap table { page-break-inside: avoid; }
+          }
+          /* Comprehensive reduced motion */
+          @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+              animation-duration: 0.01ms !important;
+              animation-iteration-count: 1 !important;
+              transition-duration: 0.01ms !important;
+              scroll-behavior: auto !important;
+            }
+            #toolbar.toolbar-hidden { transform: none; }
           }
 
         </style>
@@ -2509,6 +2953,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
               <option value="catppuccin-frappe">Catppuccin Frappé</option>
               <option value="catppuccin-macchiato">Catppuccin Macchiato</option>
               <option value="catppuccin-mocha">Catppuccin Mocha</option>
+              <option value="paper">Paper</option>
+              <option value="midnight">Midnight</option>
             </select>
             <button id="btn-source" class="view-source-btn" aria-label="View source in text editor">Source</button>
           </div>
@@ -2562,8 +3008,24 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
               <span class="loading-text">Loading editor...</span>
             </div>
             <div id="editor"></div>
+            <div id="word-count"></div>
           </div>
         </div>
+        <div id="lightbox-overlay">
+          <div class="lightbox-backdrop"></div>
+          <div class="lightbox-content">
+            <img id="lightbox-image" src="" alt="" />
+            <span id="lightbox-caption" class="hidden"></span>
+          </div>
+          <div class="lightbox-controls">
+            <button id="lightbox-zoom-out" class="lightbox-btn" aria-label="Zoom out">&minus;</button>
+            <span id="lightbox-zoom-level">100%</span>
+            <button id="lightbox-zoom-in" class="lightbox-btn" aria-label="Zoom in">+</button>
+            <button id="lightbox-close" class="lightbox-btn" aria-label="Close">&times;</button>
+          </div>
+        </div>
+        <div id="reading-progress"></div>
+        <div id="toolbar-hover-zone"></div>
         <script nonce="${nonce}" src="${scriptUri}"></script>
       </body>
       </html>

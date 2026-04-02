@@ -2,7 +2,7 @@
   "name": "tui-milkdown-vscode",
   "displayName": "TUI Markdown Editor",
   "description": "A beautiful WYSIWYG Markdown editor powered by Tiptap. Edit markdown files with rich text experience and theme selection.",
-  "version": "2.7.1",
+  "version": "2.8.0",
   "publisher": "tuanhv",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -103,6 +103,11 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically delete image files when removed from markdown (moves to trash)"
+        },
+        "tuiMarkdown.autoHideToolbar": {
+          "type": "boolean",
+          "default": false,
+          "description": "Auto-hide toolbar when typing (show on hover)"
         }
       }
     },

@@ -1,6 +1,7 @@
 import type { EditorView } from "@tiptap/pm/view";
 import { IMAGE_NODE_TYPES } from "./main";
 import { cleanImagePath } from "../utils/clean-image-path";
+import { openLightbox } from "./image-lightbox-plugin";
 
 /**
  * Floating overlay for editing image URLs.
@@ -60,10 +61,15 @@ function isPointInElement(x: number, y: number, el: Element): boolean {
  * Create the floating overlay container
  * Appends to parent of editorEl (container) to survive editor recreation
  */
+// Expand/fullscreen SVG icon
+const EXPAND_ICON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`;
+
 function createOverlay(editorEl: HTMLElement): HTMLDivElement {
   const overlay = document.createElement("div");
   overlay.className = "image-edit-overlay";
-  overlay.innerHTML = `<button class="image-edit-btn" title="Edit image path">${EDIT_ICON_SVG}</button>`;
+  overlay.style.display = "flex";
+  overlay.style.gap = "4px";
+  overlay.innerHTML = `<button class="image-edit-btn" title="Edit image path">${EDIT_ICON_SVG}</button><button class="image-expand-btn" title="View fullscreen">${EXPAND_ICON_SVG}</button>`;
 
   const btn = overlay.querySelector(".image-edit-btn") as HTMLButtonElement;
   btn.addEventListener("click", (e) => {
@@ -71,6 +77,15 @@ function createOverlay(editorEl: HTMLElement): HTMLDivElement {
     e.stopPropagation();
     if (currentHoveredImg) {
       triggerImageEdit(currentHoveredImg);
+    }
+  });
+
+  const expandBtn = overlay.querySelector(".image-expand-btn") as HTMLButtonElement;
+  expandBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (currentHoveredImg) {
+      openLightbox(currentHoveredImg.getAttribute("src") || "", currentHoveredImg.getAttribute("alt") || "");
     }
   });
 
