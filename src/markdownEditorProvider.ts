@@ -2391,6 +2391,12 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
           }
 
+          /* Image selected: accent border for visibility */
+          .tiptap img.ProseMirror-selectednode {
+            outline: 2.5px solid rgba(var(--accent-rgb, 100, 149, 237), 0.7);
+            outline-offset: 2px;
+          }
+
           /* Page Break: modern dashed separator */
           .tiptap hr {
             border: none;

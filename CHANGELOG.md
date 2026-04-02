@@ -15,6 +15,7 @@ All notable changes to "TUI Markdown Editor" extension.
 * **Paper Texture & Visual Depth**: CSS-only noise grain overlay + vignette radial gradient on editor background
 * **Code Block Premium Styling**: Gradient accent bar at top, enhanced header with accent tint, font ligatures (`liga`, `calt`)
 * **Premium Alert Blocks**: SVG icons replacing emoji, theme-aware colors, rounded borders with hover lift effect
+* **Image Selection Indicator**: Accent-colored outline on selected images for clear visual feedback
 * **Micro-interactions**: Task checkbox draw-in animation, H1/H2 gradient underline, enhanced blockquote hover, smooth table row highlight
 * **Clipboard Image Fallback**: Triple-fallback strategy for image paste in VSCode webview (ProseMirror → Clipboard API → extension-side native read)
 * **Accessibility**: `prefers-reduced-motion` support, high contrast mode, print stylesheet, visible focus indicators

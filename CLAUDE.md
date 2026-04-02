@@ -144,7 +144,7 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 **Micro-interactions:**
 * Toolbar buttons: 0.15s ease-out transitions
 * Code blocks: hover border, focus ring on edit
-* Images: 6px border-radius, hover shadow
+* Images: 6px border-radius, hover shadow, accent outline on selection (`ProseMirror-selectednode`)
 * Links: underline slide-in via `background-size` transition
 * Table rows: hover highlight, zebra striping
 * Blockquotes: border thickens on hover (3px→4px)
