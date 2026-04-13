@@ -2,6 +2,12 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## [2.8.2] - 2026-04-13
+
+### Fixed
+
+- **Mermaid SVG Clipping**: Cho phép `foreignObject` label trong mermaid diagram render vượt khỏi bbox (áp dụng `overflow: visible` cho SVG và mọi phần tử con bên trong `.mermaid-svg-host`), khắc phục tình trạng nhãn bị cắt ở mép diagram.
+
 ## [2.8.1] - 2026-04-13
 
 ### Added
