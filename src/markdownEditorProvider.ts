@@ -2196,6 +2196,12 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             max-width: 100%;
             height: auto;
           }
+          /* Allow foreignObject labels to render outside their bbox without
+             being clipped by SVG's default overflow:hidden. */
+          .mermaid-svg-host svg,
+          .mermaid-svg-host svg * {
+            overflow: visible;
+          }
           .mermaid-expand-btn {
             position: absolute;
             top: 8px;
