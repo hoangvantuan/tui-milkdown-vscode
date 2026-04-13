@@ -15,6 +15,9 @@ import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import mermaid from "mermaid";
+import { openMermaidLightbox } from "./image-lightbox-plugin";
+
+const EXPAND_ICON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`;
 
 const MERMAID_KEY = new PluginKey("mermaidDiagram");
 const RENDER_DEBOUNCE_MS = 500;
@@ -56,12 +59,24 @@ function escapeHtml(text: string): string {
     return el.innerHTML;
 }
 
-async function renderToEl(container: HTMLElement, code: string): Promise<void> {
+function getSvgHost(preview: HTMLElement): HTMLElement {
+    let host = preview.querySelector<HTMLElement>(".mermaid-svg-host");
+    if (!host) {
+        host = document.createElement("div");
+        host.className = "mermaid-svg-host";
+        preview.insertBefore(host, preview.firstChild);
+    }
+    return host;
+}
+
+async function renderToEl(preview: HTMLElement, code: string): Promise<void> {
+    const host = getSvgHost(preview);
     const id = `mermaid-render-${++renderCounter}`;
     try {
         const { svg } = await mermaid.render(id, code);
-        container.innerHTML = svg;
-        container.classList.remove("mermaid-error");
+        host.innerHTML = svg;
+        preview.classList.remove("mermaid-error");
+        preview.setAttribute("data-rendered", "true");
     } catch (err) {
         // Clean up stale temp element mermaid creates on failure
         const stale = document.getElementById(`d${id}`);
@@ -69,8 +84,9 @@ async function renderToEl(container: HTMLElement, code: string): Promise<void> {
 
         const msg = err instanceof Error ? err.message : String(err);
         const short = msg.split("\n").find((l) => l.trim()) || "Diagram error";
-        container.innerHTML = `<span class="mermaid-err-msg">${escapeHtml(short)}</span>`;
-        container.classList.add("mermaid-error");
+        host.innerHTML = `<span class="mermaid-err-msg">${escapeHtml(short)}</span>`;
+        preview.classList.add("mermaid-error");
+        preview.removeAttribute("data-rendered");
     }
 }
 
@@ -78,11 +94,13 @@ async function renderToEl(container: HTMLElement, code: string): Promise<void> {
 const renderCache = new Map<string, string>();
 const MAX_RENDER_CACHE = 30;
 
-async function renderMermaid(container: HTMLElement, code: string): Promise<void> {
+async function renderMermaid(preview: HTMLElement, code: string): Promise<void> {
+    const host = getSvgHost(preview);
     const cached = renderCache.get(code);
     if (cached) {
-        container.innerHTML = cached;
-        container.classList.remove("mermaid-error");
+        host.innerHTML = cached;
+        preview.classList.remove("mermaid-error");
+        preview.setAttribute("data-rendered", "true");
         return;
     }
 
@@ -94,16 +112,18 @@ async function renderMermaid(container: HTMLElement, code: string): Promise<void
             if (oldest !== undefined) renderCache.delete(oldest);
         }
         renderCache.set(code, svg);
-        container.innerHTML = svg;
-        container.classList.remove("mermaid-error");
+        host.innerHTML = svg;
+        preview.classList.remove("mermaid-error");
+        preview.setAttribute("data-rendered", "true");
     } catch (err) {
         const stale = document.getElementById(`d${id}`);
         if (stale) stale.remove();
 
         const msg = err instanceof Error ? err.message : String(err);
         const short = msg.split("\n").find((l) => l.trim()) || "Diagram error";
-        container.innerHTML = `<span class="mermaid-err-msg">${escapeHtml(short)}</span>`;
-        container.classList.add("mermaid-error");
+        host.innerHTML = `<span class="mermaid-err-msg">${escapeHtml(short)}</span>`;
+        preview.classList.add("mermaid-error");
+        preview.removeAttribute("data-rendered");
     }
 }
 
@@ -307,7 +327,33 @@ function buildDecorations(doc: any, activeMermaidPos: number): DecorationSet {
             el.className = "mermaid-preview";
             el.contentEditable = "false";
             el.setAttribute("data-pos", String(endPos));
-            el.innerHTML = `<span class="mermaid-loading">Rendering…</span>`;
+
+            const host = document.createElement("div");
+            host.className = "mermaid-svg-host";
+            host.innerHTML = `<span class="mermaid-loading">Rendering…</span>`;
+            el.appendChild(host);
+
+            const expandBtn = document.createElement("button");
+            expandBtn.className = "mermaid-expand-btn";
+            expandBtn.type = "button";
+            expandBtn.setAttribute("aria-label", "View fullscreen");
+            expandBtn.title = "View fullscreen";
+            expandBtn.innerHTML = EXPAND_ICON_SVG;
+            expandBtn.addEventListener("mousedown", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+            });
+            expandBtn.addEventListener("dblclick", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+            });
+            expandBtn.addEventListener("click", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const svgEl = host.querySelector("svg");
+                if (svgEl) openMermaidLightbox(svgEl.outerHTML, "");
+            });
+            el.appendChild(expandBtn);
             return el;
         }, {
             side: 1, // Place after the node

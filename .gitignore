@@ -1,5 +1,5 @@
-.claude
 plans/
 out/
 node_modules/
 *.vsix
+.gitnexus

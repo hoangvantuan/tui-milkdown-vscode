@@ -2189,6 +2189,51 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .mermaid-preview:hover::after {
             opacity: 0.8;
           }
+          .mermaid-svg-host {
+            display: block;
+          }
+          .mermaid-svg-host svg {
+            max-width: 100%;
+            height: auto;
+          }
+          .mermaid-expand-btn {
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            border: 1px solid var(--crepe-color-outline, rgba(0,0,0,0.15));
+            border-radius: 6px;
+            background: var(--vscode-badge-background, rgba(255,255,255,0.9));
+            color: var(--vscode-badge-foreground, #444);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.15s ease, background 0.15s ease;
+            z-index: 2;
+          }
+          .mermaid-expand-btn svg {
+            width: 14px;
+            height: 14px;
+          }
+          .mermaid-preview:hover .mermaid-expand-btn { opacity: 0.85; }
+          .mermaid-expand-btn:hover { opacity: 1 !important; }
+          .mermaid-preview.mermaid-error .mermaid-expand-btn,
+          .mermaid-preview:not([data-rendered="true"]) .mermaid-expand-btn,
+          .mermaid-code-block.mermaid-editing + .mermaid-preview .mermaid-expand-btn {
+            display: none;
+          }
+          body.dark-theme .mermaid-expand-btn {
+            border-color: rgba(255,255,255,0.15);
+            background: rgba(255,255,255,0.12);
+            color: rgba(255,255,255,0.9);
+          }
+          @media (prefers-reduced-motion: reduce) {
+            .mermaid-expand-btn { transition: none; }
+          }
 
           /* When editing: highlight the preview border, hide hint */
           .mermaid-code-block.mermaid-editing + .mermaid-preview {
@@ -2643,6 +2688,43 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             transition: transform 0.15s ease-out;
             user-select: none;
           }
+          #lightbox-image.hidden { display: none; }
+          .lightbox-svg-wrapper {
+            width: 90vw;
+            height: 80vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.96);
+            padding: 24px;
+            box-sizing: border-box;
+            transition: transform 0.15s ease-out;
+            user-select: none;
+            transform-origin: center center;
+          }
+          .lightbox-svg-wrapper.hidden { display: none; }
+          .lightbox-svg-wrapper svg {
+            width: 100% !important;
+            height: 100% !important;
+            max-width: none !important;
+            max-height: none !important;
+            overflow: visible !important;
+            display: block;
+            pointer-events: none;
+          }
+          .lightbox-svg-wrapper svg * { overflow: visible; }
+          body.dark-theme .lightbox-svg-wrapper {
+            background: rgba(20, 22, 28, 0.96);
+          }
+          .lightbox-svg-wrapper.grabbable { cursor: grab; }
+          .lightbox-svg-wrapper.grabbing { cursor: grabbing; }
+          #lightbox-image.grabbable { cursor: grab; }
+          #lightbox-image.grabbing { cursor: grabbing; }
+          @media (prefers-reduced-motion: reduce) {
+            #lightbox-image,
+            .lightbox-svg-wrapper { transition: none; }
+          }
           #lightbox-caption {
             color: rgba(255, 255, 255, 0.8);
             font-size: 13px;
@@ -3015,6 +3097,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           <div class="lightbox-backdrop"></div>
           <div class="lightbox-content">
             <img id="lightbox-image" src="" alt="" />
+            <div id="lightbox-svg" class="lightbox-svg-wrapper hidden"></div>
             <span id="lightbox-caption" class="hidden"></span>
           </div>
           <div class="lightbox-controls">
