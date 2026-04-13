@@ -354,17 +354,23 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 2. `navigator.clipboard.read()` — async Clipboard API (may need permission)
 3. Extension-side native read — `osascript` (macOS), PowerShell (Windows), `xclip` (Linux)
 
-## Image Lightbox
+## Lightbox (Image & Mermaid)
 
 **Plugin** (`src/webview/image-lightbox-plugin.ts`):
 
-* Fullscreen overlay with dark backdrop, zoom controls (0.5x–4x)
-* Expand button added to image hover overlay (alongside edit button) in `image-edit-plugin.ts`
-* Zoom via buttons (+/−), mouse wheel, or keyboard (+/−/0 for reset)
-* Caption from image alt text
+* Shared fullscreen overlay for both images and mermaid diagrams
+* Dark backdrop, zoom (0.5x–4x), pan by dragging when `scale > 1`
+* Zoom via buttons (+/−), mouse wheel, or keyboard (`+`/`-` step, `0` reset, `Esc` close)
+* Caption from image alt text or explicit string
 * Close via Escape, backdrop click, or close button
-* `openLightbox(src, alt)` / `closeLightbox()` exported API
-* `initLightbox()` called once in `init()`
+* Internal state `currentTarget: HTMLElement` switches between `#lightbox-image` and `#lightbox-svg` wrapper; `applyTransform()` writes to whichever is active
+* Exported API:
+  * `openLightbox(src, alt)` — image path → `<img>`
+  * `openMermaidLightbox(svgMarkup, caption)` — SVG outer HTML → `#lightbox-svg` wrapper
+  * `initLightbox()` called once in `init()`
+* Mousedown listener attached to `.lightbox-content` so both targets share drag-pan logic
+* Mermaid SVG is sanitized by `mermaid.render()` with `securityLevel: "strict"`, so `innerHTML` assignment is safe for this specific input
+* Mermaid expand button is injected in `mermaid-plugin.ts` widget decoration (top-left of `.mermaid-preview`, hidden on `.mermaid-error` or while editing); click reads `svgEl.outerHTML` from `.mermaid-svg-host` and calls `openMermaidLightbox`
 
 ## Toolbar Auto-hide
 
@@ -651,7 +657,9 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 
 * **Error handling**: Parse errors shown inline with `mermaid-error` class, stale temp elements cleaned up
 
-**CSS classes**: `.mermaid-code-block`, `.mermaid-editing`, `.mermaid-preview`, `.mermaid-error`
+* **Fullscreen expand**: Widget decoration contains `.mermaid-svg-host` (SVG target for `innerHTML`) + `.mermaid-expand-btn` sibling (top-left, hover fade-in, hidden on error/editing). Click reads `svgEl.outerHTML` and calls `openMermaidLightbox()`
+
+**CSS classes**: `.mermaid-code-block`, `.mermaid-editing`, `.mermaid-preview`, `.mermaid-svg-host`, `.mermaid-error`, `.mermaid-expand-btn`
 
 **Dependencies**: `mermaid@^11.12.2`
 
