@@ -135,6 +135,7 @@ const CodeExitHandler = Extension.create({
 interface WebviewState {
   theme?: string;
   fontFamily?: string;
+  zoomLevel?: number;
   tocVisible?: boolean;
   collapsedHeadings?: string[];
 }
@@ -792,6 +793,48 @@ function applyFontFamily(fontFamily: string): void {
   }
 }
 
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 2.0;
+const ZOOM_STEP = 0.1;
+const ZOOM_DEFAULT = 1.0;
+let currentZoom = ZOOM_DEFAULT;
+
+function clampZoom(value: number): number {
+  if (!Number.isFinite(value)) return ZOOM_DEFAULT;
+  // Round to 2 decimals to avoid floating-point drift (e.g. 0.1 + 0.1 + 0.1 !== 0.3)
+  const rounded = Math.round(value * 100) / 100;
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, rounded));
+}
+
+/** Apply zoom scale to editor content only (the .tiptap element). */
+function applyZoom(value: number): void {
+  const tiptapEl = document.querySelector(".tiptap") as HTMLElement | null;
+  if (tiptapEl) {
+    if (value === ZOOM_DEFAULT) {
+      tiptapEl.style.removeProperty("zoom");
+    } else {
+      tiptapEl.style.zoom = String(value);
+    }
+  }
+  const display = document.getElementById("btn-zoom-reset");
+  if (display) display.textContent = `${Math.round(value * 100)}%`;
+  const outBtn = document.getElementById("btn-zoom-out") as HTMLButtonElement | null;
+  const inBtn = document.getElementById("btn-zoom-in") as HTMLButtonElement | null;
+  if (outBtn) outBtn.disabled = value <= ZOOM_MIN;
+  if (inBtn) inBtn.disabled = value >= ZOOM_MAX;
+}
+
+/** Set zoom level, persist to state, notify extension. */
+function setZoom(value: number, persist = true): void {
+  const next = clampZoom(value);
+  currentZoom = next;
+  applyZoom(next);
+  if (persist) {
+    vscode.setState({ ...vscode.getState(), zoomLevel: next });
+    vscode.postMessage({ type: "zoomChange", zoom: next });
+  }
+}
+
 function applyFontSize(size: number): void {
   if (!Number.isFinite(size) || size < 8 || size > 32) return;
   const scaleFactor = size / 16;
@@ -1356,6 +1399,67 @@ function setupToolbarHandlers(): void {
     });
   }
 
+  // Appearance popover (theme / font / source)
+  const appearanceBtn = document.getElementById("btn-appearance");
+  const appearancePopover = document.getElementById("appearance-popover");
+  if (appearanceBtn && appearancePopover) {
+    const closePopover = () => {
+      appearancePopover.classList.add("hidden");
+      appearanceBtn.classList.remove("is-active");
+      appearanceBtn.setAttribute("aria-expanded", "false");
+    };
+    const openPopover = () => {
+      appearancePopover.classList.remove("hidden");
+      appearanceBtn.classList.add("is-active");
+      appearanceBtn.setAttribute("aria-expanded", "true");
+    };
+    appearanceBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (appearancePopover.classList.contains("hidden")) {
+        openPopover();
+      } else {
+        closePopover();
+      }
+    });
+    // Click outside → close. Clicks inside the popover don't bubble past it.
+    appearancePopover.addEventListener("click", (e) => e.stopPropagation());
+    document.addEventListener("click", () => {
+      if (!appearancePopover.classList.contains("hidden")) closePopover();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !appearancePopover.classList.contains("hidden")) {
+        closePopover();
+        appearanceBtn.focus();
+      }
+    });
+  }
+
+  // Zoom controls
+  document.getElementById("btn-zoom-out")?.addEventListener("click", () => {
+    setZoom(currentZoom - ZOOM_STEP);
+  });
+  document.getElementById("btn-zoom-in")?.addEventListener("click", () => {
+    setZoom(currentZoom + ZOOM_STEP);
+  });
+  document.getElementById("btn-zoom-reset")?.addEventListener("click", () => {
+    setZoom(ZOOM_DEFAULT);
+  });
+  // Keyboard shortcuts: Cmd/Ctrl + = / - / 0
+  document.addEventListener("keydown", (e) => {
+    if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+    // "=" and "+" share a physical key; accept both. NumpadAdd / NumpadSubtract too.
+    if (e.key === "=" || e.key === "+") {
+      e.preventDefault();
+      setZoom(currentZoom + ZOOM_STEP);
+    } else if (e.key === "-" || e.key === "_") {
+      e.preventDefault();
+      setZoom(currentZoom - ZOOM_STEP);
+    } else if (e.key === "0") {
+      e.preventDefault();
+      setZoom(ZOOM_DEFAULT);
+    }
+  });
+
   // Formatting buttons
   document.addEventListener("click", (e) => {
     const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('.toolbar-btn[data-command]');
@@ -1489,6 +1593,8 @@ window.addEventListener("message", async (event) => {
               // Re-apply font after .tiptap element is created
               const savedFont = vscode.getState()?.fontFamily;
               if (savedFont) applyFontFamily(savedFont);
+              // Re-apply zoom after .tiptap element is created
+              applyZoom(currentZoom);
             }
           } else {
             updateEditorContent(displayBody);
@@ -1572,6 +1678,13 @@ window.addEventListener("message", async (event) => {
         fontSelector.setSelected(message.font);
         vscode.setState({ ...vscode.getState(), fontFamily: message.font });
         applyFontFamily(message.font);
+      }
+      break;
+    case "savedZoom":
+      if (typeof message.zoom === "number") {
+        // Persist=false — this came from extension, no need to echo back
+        setZoom(message.zoom, false);
+        vscode.setState({ ...vscode.getState(), zoomLevel: currentZoom });
       }
       break;
     case "systemFonts":
@@ -1663,6 +1776,13 @@ function init() {
   // Restore font from webview state (applies immediately, before extension sends savedFont)
   if (savedState?.fontFamily && typeof savedState.fontFamily === "string") {
     applyFontFamily(savedState.fontFamily);
+  }
+  // Restore zoom from webview state (applies immediately, before extension sends savedZoom)
+  if (typeof savedState?.zoomLevel === "number") {
+    setZoom(savedState.zoomLevel, false);
+  } else {
+    // Still initializes display + disabled states to 100%
+    applyZoom(ZOOM_DEFAULT);
   }
 
   window.addEventListener("beforeunload", () => {

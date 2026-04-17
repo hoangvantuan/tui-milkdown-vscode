@@ -441,6 +441,16 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
                 font: savedFont,
               });
             }
+            // Send saved zoom
+            const savedZoom = this.context.globalState.get<number>(
+              "markdownEditorZoom",
+            );
+            if (typeof savedZoom === "number") {
+              webviewPanel.webview.postMessage({
+                type: "savedZoom",
+                zoom: savedZoom,
+              });
+            }
             sendTheme();
             sendConfig();
             updateWebview();
@@ -486,6 +496,21 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
               await this.context.globalState.update(
                 "markdownEditorFont",
                 font || undefined, // Remove key when "Default"
+              );
+            }
+            break;
+          }
+          case "zoomChange": {
+            const zoom = (msg as { zoom?: number }).zoom;
+            if (
+              typeof zoom === "number" &&
+              Number.isFinite(zoom) &&
+              zoom >= 0.5 &&
+              zoom <= 2.0
+            ) {
+              await this.context.globalState.update(
+                "markdownEditorZoom",
+                zoom === 1 ? undefined : zoom, // Remove key when back to 100%
               );
             }
             break;
@@ -1347,20 +1372,151 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             font-style: italic;
           }
           .toolbar-spacer { flex: 1; }
-          .view-source-btn {
-            padding: 4px 10px;
-            background: rgba(var(--border-rgb, 0, 0, 0), 0.05);
-            border: 1px solid rgba(var(--border-rgb, 0, 0, 0), 0.1);
+
+          .zoom-controls {
+            display: inline-flex;
+            align-items: center;
+            gap: 0;
+            height: 30px;
+          }
+          .zoom-btn {
+            width: 24px;
+            height: 24px;
+            padding: 0;
+            background: transparent;
+            border: none;
+            border-radius: 4px;
+            color: inherit;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.15s ease-out, transform 0.1s ease-out;
+          }
+          .zoom-btn svg {
+            width: 14px;
+            height: 14px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+          }
+          .zoom-btn:hover {
+            background: rgba(var(--border-rgb, 0, 0, 0), 0.12);
+          }
+          .zoom-btn:active {
+            transform: scale(0.92);
+          }
+          .zoom-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+          }
+          .zoom-display-btn {
+            min-width: 36px;
+            height: 24px;
+            padding: 0 4px;
+            background: transparent;
+            border: none;
             color: inherit;
             font-size: 11px;
             font-weight: 500;
+            font-variant-numeric: tabular-nums;
             cursor: pointer;
-            border-radius: 6px;
-            height: 30px;
-            transition: background-color 0.15s ease-out, color 0.15s ease-out;
+            border-radius: 4px;
+            transition: background-color 0.15s ease-out;
           }
-          .view-source-btn:hover {
-            background: rgba(var(--border-rgb, 0, 0, 0), 0.1);
+          .zoom-display-btn:hover {
+            background: rgba(var(--border-rgb, 0, 0, 0), 0.12);
+          }
+
+          .appearance-group {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+          }
+          .appearance-popover {
+            position: absolute;
+            top: calc(100% + 8px);
+            right: 0;
+            z-index: 1000;
+            min-width: 280px;
+            padding: 14px;
+            background: var(--vscode-editorWidget-background, var(--vscode-menu-background, #252526));
+            color: var(--vscode-editorWidget-foreground, var(--vscode-foreground, #cccccc));
+            border: 1px solid var(--vscode-editorWidget-border, var(--vscode-menu-border, rgba(127, 127, 127, 0.3)));
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+          }
+          .appearance-popover.hidden {
+            display: none;
+          }
+          .appearance-popover .appearance-row {
+            display: grid;
+            grid-template-columns: 60px 1fr;
+            align-items: center;
+            gap: 10px;
+          }
+          .appearance-popover .appearance-label {
+            font-size: 11px;
+            font-weight: 600;
+            opacity: 0.85;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: inherit;
+          }
+          /* Override input surfaces inside popover — need high contrast against editorWidget bg,
+             not the toolbar's glass bg. Uses neutral gray tint that works for both light & dark. */
+          .appearance-popover #theme-select,
+          .appearance-popover .font-selector-input {
+            width: 100%;
+            background-color: rgba(127, 127, 127, 0.15);
+            border: 1px solid rgba(127, 127, 127, 0.25);
+            color: inherit;
+          }
+          .appearance-popover #theme-select:hover,
+          .appearance-popover .font-selector-input:hover {
+            background-color: rgba(127, 127, 127, 0.22);
+          }
+          .appearance-popover #theme-select:focus,
+          .appearance-popover .font-selector-input:focus {
+            border-color: rgba(var(--accent-rgb, 59, 130, 246), 0.6);
+            outline: none;
+          }
+          .appearance-popover #font-selector-container,
+          .appearance-popover #font-selector-container .font-selector {
+            width: 100%;
+          }
+          .appearance-popover .font-selector-dropdown {
+            background: var(--vscode-editorWidget-background, #252526);
+            color: var(--vscode-editorWidget-foreground, #cccccc);
+            border-color: var(--vscode-editorWidget-border, rgba(127, 127, 127, 0.3));
+          }
+          /* Zoom row inside popover — compact trio */
+          .appearance-popover .zoom-controls {
+            justify-content: flex-start;
+            gap: 4px;
+          }
+          .appearance-popover .zoom-btn {
+            width: 28px;
+            height: 28px;
+            background: rgba(127, 127, 127, 0.15);
+          }
+          .appearance-popover .zoom-btn:hover:not(:disabled) {
+            background: rgba(127, 127, 127, 0.28);
+          }
+          .appearance-popover .zoom-display-btn {
+            min-width: 48px;
+            height: 28px;
+            background: rgba(127, 127, 127, 0.1);
+          }
+          .appearance-popover .zoom-display-btn:hover {
+            background: rgba(127, 127, 127, 0.22);
+          }
+          #btn-appearance.is-active {
+            background: rgba(var(--accent-rgb, 59, 130, 246), 0.18);
           }
 
           #editor-container {
@@ -2865,7 +3021,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           #editor-container:hover #word-count { opacity: 0.6; }
           /* Focus indicators */
           .toolbar-btn:focus-visible,
-          .view-source-btn:focus-visible,
           #heading-select:focus-visible,
           #theme-select:focus-visible,
           .toc-toggle-btn:focus-visible,
@@ -3027,24 +3182,51 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
           <div class="toolbar-spacer"></div>
 
-          <!-- Font, Theme & View Source (right side) -->
-          <div class="toolbar-group" style="gap: 6px;">
-            <div id="font-selector-container"></div>
-            <select id="theme-select" aria-label="Editor theme">
-              <option value="frame">Frame</option>
-              <option value="frame-dark">Frame Dark</option>
-              <option value="nord">Nord</option>
-              <option value="nord-dark">Nord Dark</option>
-              <option value="crepe">Crepe</option>
-              <option value="crepe-dark">Crepe Dark</option>
-              <option value="catppuccin-latte">Catppuccin Latte</option>
-              <option value="catppuccin-frappe">Catppuccin Frappé</option>
-              <option value="catppuccin-macchiato">Catppuccin Macchiato</option>
-              <option value="catppuccin-mocha">Catppuccin Mocha</option>
-              <option value="paper">Paper</option>
-              <option value="midnight">Midnight</option>
-            </select>
-            <button id="btn-source" class="view-source-btn" aria-label="View source in text editor">Source</button>
+          <!-- Appearance popover + Source (right side) -->
+          <div class="toolbar-group" style="gap: 4px;">
+            <button id="btn-source" class="toolbar-btn" title="View Source (open raw .md in text editor)" aria-label="View source">
+              <svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/><line x1="14.5" y1="4" x2="9.5" y2="20"/></svg>
+            </button>
+            <div class="appearance-group">
+              <button id="btn-appearance" class="toolbar-btn" title="Appearance (zoom, theme, font)" aria-label="Appearance" aria-haspopup="true" aria-expanded="false">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              </button>
+              <div id="appearance-popover" class="appearance-popover hidden" role="menu" aria-label="Appearance settings">
+                <div class="appearance-row">
+                  <label class="appearance-label">Zoom</label>
+                  <div id="zoom-controls" class="zoom-controls" role="group" aria-label="Zoom">
+                    <button id="btn-zoom-out" class="zoom-btn" title="Zoom Out (Ctrl/Cmd -)" aria-label="Zoom out">
+                      <svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    </button>
+                    <button id="btn-zoom-reset" class="zoom-display-btn" title="Reset Zoom (Ctrl/Cmd 0)" aria-label="Reset zoom">100%</button>
+                    <button id="btn-zoom-in" class="zoom-btn" title="Zoom In (Ctrl/Cmd +)" aria-label="Zoom in">
+                      <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    </button>
+                  </div>
+                </div>
+                <div class="appearance-row">
+                  <label class="appearance-label" for="theme-select">Theme</label>
+                  <select id="theme-select" aria-label="Editor theme">
+                    <option value="frame">Frame</option>
+                    <option value="frame-dark">Frame Dark</option>
+                    <option value="nord">Nord</option>
+                    <option value="nord-dark">Nord Dark</option>
+                    <option value="crepe">Crepe</option>
+                    <option value="crepe-dark">Crepe Dark</option>
+                    <option value="catppuccin-latte">Catppuccin Latte</option>
+                    <option value="catppuccin-frappe">Catppuccin Frappé</option>
+                    <option value="catppuccin-macchiato">Catppuccin Macchiato</option>
+                    <option value="catppuccin-mocha">Catppuccin Mocha</option>
+                    <option value="paper">Paper</option>
+                    <option value="midnight">Midnight</option>
+                  </select>
+                </div>
+                <div class="appearance-row">
+                  <label class="appearance-label">Font</label>
+                  <div id="font-selector-container"></div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         <div id="search-bar" class="hidden">
