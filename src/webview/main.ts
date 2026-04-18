@@ -1413,18 +1413,24 @@ function setupToolbarHandlers(): void {
       appearanceBtn.classList.add("is-active");
       appearanceBtn.setAttribute("aria-expanded", "true");
     };
-    appearanceBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
+    appearanceBtn.addEventListener("click", () => {
       if (appearancePopover.classList.contains("hidden")) {
         openPopover();
       } else {
         closePopover();
       }
     });
-    // Click outside → close. Clicks inside the popover don't bubble past it.
-    appearancePopover.addEventListener("click", (e) => e.stopPropagation());
-    document.addEventListener("click", () => {
-      if (!appearancePopover.classList.contains("hidden")) closePopover();
+    // Close on mousedown outside popover. mousedown fires on the actual pressed
+    // element, avoiding false closes from native <select> dropdowns and font
+    // selector items that hide on mousedown before click can propagate.
+    document.addEventListener("mousedown", (e) => {
+      if (
+        !appearancePopover.classList.contains("hidden") &&
+        !appearancePopover.contains(e.target as Node) &&
+        !appearanceBtn.contains(e.target as Node)
+      ) {
+        closePopover();
+      }
     });
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && !appearancePopover.classList.contains("hidden")) {

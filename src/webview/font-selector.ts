@@ -168,6 +168,7 @@ export function initFontSelector(
     }
 
     closeDropdown();
+    input.blur();
     onFontChange(fontFamily);
   }
 
