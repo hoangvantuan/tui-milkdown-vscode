@@ -1490,6 +1490,10 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .appearance-popover #font-selector-container .font-selector {
             width: 100%;
           }
+          .appearance-popover .font-selector-input::placeholder {
+            color: inherit;
+            opacity: 0.7;
+          }
           .appearance-popover .font-selector-dropdown {
             background: var(--vscode-editorWidget-background, #252526);
             color: var(--vscode-editorWidget-foreground, #cccccc);

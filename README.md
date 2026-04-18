@@ -15,6 +15,8 @@ A beautiful WYSIWYG Markdown editor for VS Code powered by Tiptap.
 - **Table Editing**: Resizable tables with multi-line cell content (lists, breaks) preserved in markdown
 - **Table Context Menu**: Right-click on table cells for select/add/delete row/column/table actions
 - **Cell Selection Highlight**: Drag-selecting across table cells shows visual highlight overlay
+- **Content Zoom**: Zoom editor content 50%–200% via Appearance popover or Ctrl/Cmd +/-/0 shortcuts
+- **Appearance Popover**: Consolidated zoom, theme, and font controls behind a single gear icon
 - **Theme Selection**: 12 editor themes including Catppuccin (4 variants), Paper (warm serif), Midnight (deep navy)
 - **Image Lightbox**: Fullscreen image viewer with zoom controls (0.5x–4x), expand button on hover
 - **Search (Cmd+F)**: Find text in editor with match highlighting, next/prev navigation, and match counter

@@ -44,7 +44,7 @@ npm run package    # Package extension as .vsix
 
 * `pendingEdit` flag prevents edit loops between extension and webview
 
-* Webview persists theme selection and TOC state in `vscode.setState()` (use spread pattern: `{ ...getState(), key: value }`)
+* Webview persists theme, font, zoom, TOC state in `vscode.setState()` (use spread pattern: `{ ...getState(), key: value }`)
 
 * Large files (>500KB) show warning dialog
 
@@ -198,7 +198,7 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 
 * Sticky toolbar at top with formatting buttons, heading select, theme select, and View Source
 
-* Buttons grouped by category with separators: Text formatting | Heading | Lists | Blocks | Table & Link | Theme & Source
+* Buttons grouped by category with separators: Text formatting | Heading | Lists | Blocks | Table & Link | Source & Appearance
 
 * Table context buttons (add/delete column/row, delete table) appear only when cursor is inside a table
 
@@ -371,6 +371,50 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 * Mousedown listener attached to `.lightbox-content` so both targets share drag-pan logic
 * Mermaid SVG is sanitized by `mermaid.render()` with `securityLevel: "strict"`, so `innerHTML` assignment is safe for this specific input
 * Mermaid expand button is injected in `mermaid-plugin.ts` widget decoration (top-left of `.mermaid-preview`, hidden on `.mermaid-error` or while editing); click reads `svgEl.outerHTML` from `.mermaid-svg-host` and calls `openMermaidLightbox`
+
+## Content Zoom
+
+**Feature** (in `src/webview/main.ts` + `src/markdownEditorProvider.ts`):
+
+* Zoom range: 50%–200% in 10% steps, applied as CSS `zoom` property on `.tiptap` element only
+* Toolbar, TOC sidebar, metadata panel, Source editor stay at native size (zoom is content-only)
+* Constants: `ZOOM_MIN = 0.5`, `ZOOM_MAX = 2.0`, `ZOOM_STEP = 0.1`, `ZOOM_DEFAULT = 1.0`
+* `clampZoom(value)`: Rounds to 2 decimals (prevents floating-point drift), clamps to min/max
+* `applyZoom(value)`: Sets `style.zoom` on `.tiptap`, updates display button text and disabled states
+* `setZoom(value, persist?)`: Clamp → apply → optionally persist to `vscode.setState()` + notify extension
+
+**Keyboard shortcuts**: `Cmd/Ctrl + =` zoom in, `Cmd/Ctrl + -` zoom out, `Cmd/Ctrl + 0` reset
+
+**Persistence** (dual path, same pattern as font selector):
+
+1. `vscode.setState({ zoomLevel })` — survives tab switches (webview state)
+2. `context.globalState.update("markdownEditorZoom", zoom)` — survives restarts (extension state)
+3. On init: restore from webview state first (immediate), then extension sends `savedZoom` message
+4. At zoom 100%: `globalState` key is removed (`undefined`) to keep clean state
+
+**Message types**: `zoomChange` (webview → extension), `savedZoom` (extension → webview)
+
+**Coordinate safety**: CSS `zoom` in Chromium is transparent to JS coordinate APIs (`getBoundingClientRect`, `clientX/Y`, `elementFromPoint` all operate in viewport coordinate space). Plugins using `posAtCoords`, table context menu, image edit — all verified safe because dropdown/overlay elements are appended to `#editor-container` (parent of `.tiptap`, not zoomed).
+
+## Appearance Popover
+
+**UI** (in `src/markdownEditorProvider.ts` HTML + CSS):
+
+* Gear icon button (`#btn-appearance`) with `aria-haspopup="true"` toggles `#appearance-popover`
+* Popover contains three rows: Zoom controls, Theme select, Font selector (grid layout: 60px label + 1fr control)
+* Positioned `absolute`, `top: calc(100% + 8px)`, `right: 0`, `z-index: 1000`
+* Background uses VS Code native `--vscode-editorWidget-*` variables (not toolbar glass styling) for theme-aware contrast
+* Input surfaces inside popover override with `rgba(127, 127, 127, 0.15)` neutral tint (works for both light & dark)
+* `max-width: calc(100vw - 16px)` prevents overflow on narrow viewports
+
+**Interaction** (in `src/webview/main.ts`):
+
+* Toggle: click `#btn-appearance` → open/close with `is-active` class
+* Close: click outside (document click listener), Escape key (returns focus to gear button)
+* `stopPropagation` on popover clicks prevents close-on-click-inside
+* Font selector Escape handler includes `stopPropagation()` to prevent closing popover when only closing dropdown
+
+**View Source button**: Moved to standalone `toolbar-btn` with `</>` SVG icon (replaces old `.view-source-btn` text button)
 
 ## Toolbar Auto-hide
 
