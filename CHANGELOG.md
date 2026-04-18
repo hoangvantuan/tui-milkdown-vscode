@@ -2,6 +2,20 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## [2.8.3] - 2026-04-18
+
+### Added
+
+- **Content Zoom**: Zoom editor content 50%–200% (10% step) via Appearance popover or Ctrl/Cmd +/-/0 shortcuts. Only zooms `.tiptap` element — toolbar, TOC, metadata panel stay at native size. Zoom level persisted globally via `context.globalState`.
+- **Appearance Popover**: Consolidated zoom, theme, and font controls into a single popover behind a gear icon on the right side of the toolbar. Prevents toolbar wrapping on narrow viewports (split-view).
+- **View Source Icon**: View Source button changed from text button to `</>` SVG icon using unified `toolbar-btn` class.
+
+### Fixed
+
+- **Popover Dark Theme Contrast**: Input surfaces inside popover now use VS Code native `--vscode-editorWidget-*` variables instead of toolbar glass styling, fixing unreadable controls on dark themes.
+- **Font Selector Escape Propagation**: Added `stopPropagation()` to font dropdown Escape handler, preventing parent popover from closing simultaneously.
+- **Popover Viewport Overflow**: Added `max-width: calc(100vw - 16px)` to prevent popover from overflowing on narrow panels.
+
 ## [2.8.2] - 2026-04-13
 
 ### Fixed
