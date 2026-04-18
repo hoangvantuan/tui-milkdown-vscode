@@ -1,14 +1,38 @@
-.vscode/**
+# Source & build config
 src/**
-node_modules/**
 *.ts
 tsconfig.json
 esbuild.config.js
-.gitignore
-.git/**
-.claude/**
-plans/**
-docs/**
-CLAUDE.md
+
+# Dependencies
+node_modules/**
 package-lock.json
+
+# Git & CI
+.git/**
+.github/**
+.gitignore
+.gitnexus/**
+.gitnexusignore
+
+# AI/agent tools
+.agent/**
+.claude/**
+.mcp.json
+_bmad/**
+_bmad-output/**
+AGENTS.md
+CLAUDE.md
+skills-lock.json
+
+# IDE
+.vscode/**
+.vscodeignore
+
+# Docs & plans
+docs/**
+plans/**
+
+# Build artifacts
 *.vsix
+.DS_Store
