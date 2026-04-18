@@ -1440,6 +1440,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             right: 0;
             z-index: 1000;
             min-width: 280px;
+            max-width: calc(100vw - 16px);
             padding: 14px;
             background: var(--vscode-editorWidget-background, var(--vscode-menu-background, #252526));
             color: var(--vscode-editorWidget-foreground, var(--vscode-foreground, #cccccc));

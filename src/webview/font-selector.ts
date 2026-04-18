@@ -242,6 +242,7 @@ export function initFontSelector(
         break;
       case "Escape":
         e.preventDefault();
+        e.stopPropagation();
         closeDropdown();
         input.value = "";
         input.blur();
