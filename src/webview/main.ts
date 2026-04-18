@@ -1339,7 +1339,8 @@ function setupToolbarAutoHide(autoHide: boolean): void {
     if (isHovering) return;
     if (hideTimeout) clearTimeout(hideTimeout);
     hideTimeout = setTimeout(() => {
-      if (!isHovering) toolbar.classList.add("toolbar-hidden");
+      const popoverOpen = !document.getElementById("appearance-popover")?.classList.contains("hidden");
+      if (!isHovering && !popoverOpen) toolbar.classList.add("toolbar-hidden");
     }, 3000);
   };
 
@@ -1434,6 +1435,8 @@ function setupToolbarHandlers(): void {
     });
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && !appearancePopover.classList.contains("hidden")) {
+        e.preventDefault();
+        e.stopPropagation();
         closePopover();
         appearanceBtn.focus();
       }
@@ -1453,6 +1456,7 @@ function setupToolbarHandlers(): void {
   // Keyboard shortcuts: Cmd/Ctrl + = / - / 0
   document.addEventListener("keydown", (e) => {
     if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+    if (document.getElementById("lightbox-overlay")?.classList.contains("active")) return;
     // "=" and "+" share a physical key; accept both. NumpadAdd / NumpadSubtract too.
     if (e.key === "=" || e.key === "+") {
       e.preventDefault();
