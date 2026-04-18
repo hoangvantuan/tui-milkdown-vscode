@@ -168,6 +168,7 @@ export function initFontSelector(
     }
 
     closeDropdown();
+    input.blur();
     onFontChange(fontFamily);
   }
 
@@ -242,6 +243,7 @@ export function initFontSelector(
         break;
       case "Escape":
         e.preventDefault();
+        e.stopPropagation();
         closeDropdown();
         input.value = "";
         input.blur();
