@@ -2,6 +2,12 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## [2.8.4] - 2026-04-18
+
+### Fixed
+
+- **Loại file thừa trong package**: Cập nhật `.vscodeignore` để loại bỏ file dev (`.agent`, `.github`, `.mcp.json`, `_bmad`, `AGENTS.md`, `.gitnexus`, `skills-lock.json`, `.DS_Store`) khỏi extension package. Giảm kích thước package và dọn sạch nội dung không cần thiết.
+
 ## [2.8.3] - 2026-04-18
 
 ### Added
