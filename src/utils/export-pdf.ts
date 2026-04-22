@@ -3,6 +3,7 @@ import * as path from "path";
 import * as fs from "fs/promises";
 import type { Root } from "mdast";
 import { findChromiumExecutable, clearChromiumCache } from "./chromium-discovery";
+import { extractVscodeResourcePath } from "./vscode-resource";
 
 export { clearChromiumCache };
 
@@ -95,7 +96,7 @@ export async function exportToPdf(
             format,
             printBackground: true,
             preferCSSPageSize: false,
-            margin: { top: "20mm", right: "15mm", bottom: "20mm", left: "15mm" },
+            margin: { top: "20mm", right: "20mm", bottom: "20mm", left: "20mm" },
           });
           await vscode.workspace.fs.writeFile(saveUri, pdfBuffer);
         } finally {
@@ -206,6 +207,21 @@ async function inlineRelativeImages(
     imgs.map(async (node) => {
       const src = typeof node.properties.src === "string" ? node.properties.src : "";
       if (!src) return;
+
+      // VS Code webview resource URLs — extract local path and inline from disk
+      const vscodeLocalPath = extractVscodeResourcePath(src);
+      if (vscodeLocalPath) {
+        try {
+          const buf = await fs.readFile(vscodeLocalPath);
+          const ext = (path.extname(vscodeLocalPath).slice(1) || "png").toLowerCase();
+          const mime = ext === "svg" ? "image/svg+xml" : `image/${ext === "jpg" ? "jpeg" : ext}`;
+          node.properties.src = `data:${mime};base64,${buf.toString("base64")}`;
+        } catch (err) {
+          console.warn(`[Export PDF] Failed to read vscode-resource image "${src.slice(0, 60)}":`, err);
+        }
+        return;
+      }
+
       if (/^(?:data:|https?:)/i.test(src)) return;
 
       try {
@@ -352,12 +368,14 @@ blockquote:has(> p:first-child > strong:first-child:where(
 /* Images — ensure they fit within a single page.
    No explicit height: browsers keep intrinsic aspect-ratio when
    max-width/max-height clip; explicit height:auto + object-fit can
-   collapse rasterised SVG with missing intrinsic dims. */
+   collapse rasterised SVG with missing intrinsic dims.
+   Single rule — avoids cascade conflicts from duplicate img selectors. */
 img {
   max-width: 100%;
   max-height: 90vh;
   display: block;
   margin: 0.5em auto;
+  border-radius: 4px;
   page-break-inside: avoid;
   break-inside: avoid;
 }
@@ -381,8 +399,8 @@ html, body {
   background: #fff;
   color: #1f2328;
   font-family: ${userFont}-apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-  font-size: 11pt;
-  line-height: 1.625;
+  font-size: 12pt;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
 .markdown-body {
@@ -402,13 +420,13 @@ h3 { font-size: 1.25em; }
 h4 { font-size: 1em; }
 h5 { font-size: 0.9em; }
 h6 { font-size: 0.85em; color: #57606a; }
-p { margin: 0 0 0.8em; text-wrap: pretty; }
+p { margin: 0 0 0.5em; text-wrap: pretty; }
 a { color: #0969da; text-decoration: underline; }
-ul, ol { margin: 0 0 0.8em; padding-left: 1.6em; }
+ul, ol { margin: 0 0 0.5em; padding-left: 1.6em; }
 li { margin: 0.1em 0; }
 li > p { margin: 0.2em 0; }
 blockquote {
-  margin: 0 0 0.8em;
+  margin: 0 0 0.5em;
   padding: 0.2em 1em;
   color: #57606a;
   border-left: 0.25em solid #d0d7de;
@@ -445,7 +463,7 @@ pre code {
 table {
   border-collapse: collapse;
   width: 100%;
-  margin: 0 0 0.8em;
+  margin: 0 0 0.5em;
   page-break-inside: avoid;
 }
 th, td {
@@ -456,12 +474,7 @@ th, td {
 }
 th { background: #f6f8fa; font-weight: 600; }
 tr:nth-child(2n) td { background: #f6f8fa; }
-img {
-  max-width: 100%;
-  height: auto;
-  border-radius: 4px;
-  page-break-inside: avoid;
-}
+/* img rule consolidated in printEnhancementsCss */
 input[type="checkbox"] {
   margin-right: 0.3em;
   vertical-align: middle;

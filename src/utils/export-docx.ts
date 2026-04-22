@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs/promises";
 import type { Root } from "mdast";
+import { extractVscodeResourcePath } from "./vscode-resource";
 
 export type PageSize = "A4" | "Letter";
 
@@ -107,7 +108,7 @@ const PAGE_SIZES = {
   Letter: { width: 12240, height: 15840 },
 } as const;
 
-const DEFAULT_MARGIN_DXA = 1440; // 1 inch
+const DEFAULT_MARGIN_DXA = 1134; // 20mm
 
 function contentWidthPx(pageSize?: PageSize): number {
   const size = pageSize === "Letter" ? PAGE_SIZES.Letter : PAGE_SIZES.A4;
@@ -131,7 +132,7 @@ function contentHeightPx(pageSize?: PageSize): number {
  * Units:
  *   - `size`: half-points (24 = 12pt).
  *   - `spacing.before/after`: twips (240 = 12pt; 1440 = 1 inch).
- *   - `spacing.line`: twips; 240 = single (1.0x), 276 ≈ 1.15x, 360 = 1.5x.
+ *   - `spacing.line`: twips; 240 = single (1.0x), 360 = 1.5x.
  *
  * Heading IDs MUST be `Heading1..Heading6`. mdast2docx maps markdown depth N
  * directly to `Heading${N}` only when section props set `useTitle: false`
@@ -165,7 +166,7 @@ function buildDocxProps(
             // which Word renders as odd wide spacing for Latin/Vietnamese.
             // Force left alignment and a normal Western gap between paragraphs.
             alignment: "left",
-            spacing: { before: 120, after: 0, line: 276 }, // 6pt before, 1.15x line
+            spacing: { before: 0, after: 120, line: 360 }, // 6pt after, 1.5x line
           },
         },
       },
@@ -195,7 +196,7 @@ function buildDocxProps(
           quickFormat: false,
           run: { font: monoFont, size: 20 }, // 10pt
           paragraph: {
-            spacing: { before: 120, after: 120, line: 260 },
+            spacing: { before: 120, after: 120, line: 300 }, // 1.25x line for code
             alignment: "left",
           },
         },
@@ -347,12 +348,19 @@ function createNodeImageResolver(
       let type: string;
       let dataForDocx: string | Buffer;
 
+      // VS Code webview resource URLs — extract local path and read from disk
+      const vscodeLocalPath = extractVscodeResourcePath(src);
+
       if (src.startsWith("data:")) {
         const match = /^data:image\/([\w+-]+)(?:;[^,]*)?;base64,(.+)$/i.exec(src);
         if (!match) throw new Error(`Invalid data URL: ${src.slice(0, 40)}…`);
         type = normalizeImageType(match[1]);
         buffer = Buffer.from(match[2], "base64");
         dataForDocx = src;
+      } else if (vscodeLocalPath) {
+        buffer = await fs.readFile(vscodeLocalPath);
+        type = normalizeImageType(path.extname(vscodeLocalPath).slice(1) || "png");
+        dataForDocx = buffer;
       } else if (/^https?:\/\//i.test(src)) {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), REMOTE_FETCH_TIMEOUT_MS);

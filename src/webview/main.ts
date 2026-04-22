@@ -866,7 +866,7 @@ function applyHeadingSizes(sizes: Record<string, number>): void {
 
 // Editor initialization
 function initEditor(initialContent: string = ""): Editor | null {
-  console.log("[Tiptap] Starting initialization...");
+
   const editorEl = getEditorEl();
   if (!editorEl) {
     console.error("[Tiptap] Editor element not found");
@@ -1072,7 +1072,7 @@ function initEditor(initialContent: string = ""): Editor | null {
     });
 
     hideLoading();
-    console.log("[Tiptap] Editor created successfully!");
+
     return instance;
   } catch (error) {
     console.error("[Tiptap] Failed to create editor:", error);
@@ -1856,7 +1856,7 @@ function initTocSidebar(): void {
 }
 
 function init() {
-  console.log("[Tiptap] init() called");
+
 
   const savedState = vscode.getState();
   if (savedState?.theme && THEMES.includes(savedState.theme as ThemeName)) {
@@ -1910,11 +1910,11 @@ function init() {
     vscode.postMessage({ type: "readClipboardImage" });
   }, { capture: true });
 
-  console.log("[Tiptap] init() complete, sending ready signal");
+
   vscode.postMessage({ type: "ready" });
 }
 
-console.log("[Tiptap] Script loaded, readyState:", document.readyState);
+
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", init);
 } else {
