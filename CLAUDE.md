@@ -73,6 +73,7 @@ src/
     ├── code-block-plugin.ts  # Code block header: language badge dropdown + copy button
     ├── image-edit-plugin.ts  # Double-click image URL editing + expand button
     ├── image-lightbox-plugin.ts # Fullscreen image viewer with zoom controls (0.5x-4x)
+    ├── svg-to-png.ts         # SVG → PNG blob via canvas + clipboard.write (mermaid copy helper)
     ├── table-markdown-serializer.ts # Custom GFM table serializer (multi-line cells)
     ├── table-cell-content-parser.ts # Post-parse transformer for table cell lists/breaks
     ├── table-context-menu.ts # Right-click context menu for table operations
@@ -703,9 +704,34 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 
 * **Fullscreen expand**: Widget decoration contains `.mermaid-svg-host` (SVG target for `innerHTML`) + `.mermaid-expand-btn` sibling (top-left, hover fade-in, hidden on error/editing). Click reads `svgEl.outerHTML` and calls `openMermaidLightbox()`
 
-**CSS classes**: `.mermaid-code-block`, `.mermaid-editing`, `.mermaid-preview`, `.mermaid-svg-host`, `.mermaid-error`, `.mermaid-expand-btn`
+**CSS classes**: `.mermaid-code-block`, `.mermaid-editing`, `.mermaid-preview`, `.mermaid-svg-host`, `.mermaid-error`, `.mermaid-expand-btn`, `.mermaid-copy-btn`
 
 **Dependencies**: `mermaid@^11.12.2`
+
+## Mermaid Copy as PNG
+
+**Module** (`src/webview/svg-to-png.ts`):
+* `svgToPngBlob(svgString, scale = 2)`: DOMParser → ensure `width`/`height` (fallback to `viewBox`) → Blob SVG → `URL.createObjectURL` → `<Image>` → `canvas.drawImage` at `native * scale` → `canvas.toBlob('image/png')`. Scale qua canvas (không qua CSS) đảm bảo PNG nét mọi dpi.
+* `copyPngBlobToClipboard(blob)`: `navigator.clipboard.write([new ClipboardItem({'image/png': blob})])`. Throws nếu `ClipboardItem` hoặc `clipboard.write` unavailable.
+* `reportCopyError(message)`: Dispatch `CustomEvent('mermaid-copy-error', { detail: { message } })` trên `document`. Module giữ decoupled với vscode API handle.
+
+**Preview button** (`src/webview/mermaid-plugin.ts`):
+* `.mermaid-copy-btn` injected cạnh `.mermaid-expand-btn` trong widget decoration (cùng vòng tạo button). Click: query `svg` trong `.mermaid-svg-host` → `svgToPngBlob` → `copyPngBlobToClipboard` → `flashCopiedState()` (thêm `.is-copied` 1.5s, 2 `<svg>` icon copy/check toggle qua CSS).
+* Tự ẩn qua CSS khi `.mermaid-error`, `.mermaid-editing`, hoặc chưa `data-rendered="true"`.
+
+**Lightbox button** (`src/webview/image-lightbox-plugin.ts`):
+* `#lightbox-copy` trong `.lightbox-controls` (trước nút close). Wired trong `initLightbox`, toggle hiển thị qua `setCopyButtonVisibility()`:
+  * `openMermaidLightbox` → visible
+  * `openLightbox` (image) và `closeLightbox` → hidden
+* Click đọc SVG từ `#lightbox-svg.querySelector('svg')` → cùng flow với preview.
+
+**Error forwarding** (`src/webview/main.ts`):
+* Listener `document.addEventListener('mermaid-copy-error', ...)` forward `detail.message` tới extension bằng `vscode.postMessage({ type: 'showWarning', message })`. Giữ `svg-to-png.ts` không cần `acquireVsCodeApi()` reference.
+
+**Gotchas**:
+* Lightbox strips `width`/`height` attribute của SVG (để zoom tự do), nhưng `svgToPngBlob` đã normalize qua `resolveSvgSize()` (đọc `viewBox` khi thiếu attr) rồi set lại trước khi serialize.
+* Clipboard requires secure context — VS Code webview đủ điều kiện. Nếu runtime cũ thiếu `ClipboardItem`, button ném lỗi, error được gửi thành VS Code warning dialog.
+* `XMLSerializer` + Blob SVG tránh inline `<script>` → CSP-safe, không cần tweak CSP.
 
 ## GitHub-Style Alerts
 
@@ -834,7 +860,7 @@ After every development cycle (new feature, bug fix, refactor), update these fil
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **tui-milkdown-vscode** (405 symbols, 990 relationships, 33 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **tui-milkdown-vscode** (496 symbols, 1178 relationships, 41 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 

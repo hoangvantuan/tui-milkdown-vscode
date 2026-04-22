@@ -2401,6 +2401,49 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           @media (prefers-reduced-motion: reduce) {
             .mermaid-expand-btn { transition: none; }
           }
+          .mermaid-copy-btn {
+            position: absolute;
+            top: 8px;
+            left: 44px;
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            border: 1px solid var(--crepe-color-outline, rgba(0,0,0,0.15));
+            border-radius: 6px;
+            background: var(--vscode-badge-background, rgba(255,255,255,0.9));
+            color: var(--vscode-badge-foreground, #444);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.15s ease, background 0.15s ease;
+            z-index: 2;
+          }
+          .mermaid-copy-btn svg { width: 14px; height: 14px; }
+          .mermaid-copy-btn .icon-check { display: none; }
+          .mermaid-copy-btn.is-copied .icon-copy { display: none; }
+          .mermaid-copy-btn.is-copied .icon-check {
+            display: inline-flex;
+            color: #2da44e;
+          }
+          .mermaid-preview:hover .mermaid-copy-btn { opacity: 0.85; }
+          .mermaid-copy-btn:hover { opacity: 1 !important; }
+          .mermaid-copy-btn.is-copied { opacity: 1 !important; }
+          .mermaid-preview.mermaid-error .mermaid-copy-btn,
+          .mermaid-preview:not([data-rendered="true"]) .mermaid-copy-btn,
+          .mermaid-code-block.mermaid-editing + .mermaid-preview .mermaid-copy-btn {
+            display: none;
+          }
+          body.dark-theme .mermaid-copy-btn {
+            border-color: rgba(255,255,255,0.15);
+            background: rgba(255,255,255,0.12);
+            color: rgba(255,255,255,0.9);
+          }
+          body.dark-theme .mermaid-copy-btn.is-copied .icon-check { color: #3fb950; }
+          @media (prefers-reduced-motion: reduce) {
+            .mermaid-copy-btn { transition: none; }
+          }
 
           /* When editing: highlight the preview border, hide hint */
           .mermaid-code-block.mermaid-editing + .mermaid-preview {
@@ -2927,6 +2970,14 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             transition: background 0.15s ease-out;
           }
           .lightbox-btn:hover { background: rgba(255, 255, 255, 0.2); }
+          #lightbox-copy.hidden { display: none; }
+          #lightbox-copy svg { width: 16px; height: 16px; }
+          #lightbox-copy .icon-check { display: none; }
+          #lightbox-copy.is-copied .icon-copy { display: none; }
+          #lightbox-copy.is-copied .icon-check {
+            display: inline-flex;
+            color: #3fb950;
+          }
           #lightbox-zoom-level {
             color: rgba(255, 255, 255, 0.7);
             font-size: 12px;
@@ -3297,6 +3348,10 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             <button id="lightbox-zoom-out" class="lightbox-btn" aria-label="Zoom out">&minus;</button>
             <span id="lightbox-zoom-level">100%</span>
             <button id="lightbox-zoom-in" class="lightbox-btn" aria-label="Zoom in">+</button>
+            <button id="lightbox-copy" class="lightbox-btn lightbox-copy-btn hidden" aria-label="Copy as PNG" title="Copy as PNG">
+              <span class="icon icon-copy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span>
+              <span class="icon icon-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+            </button>
             <button id="lightbox-close" class="lightbox-btn" aria-label="Close">&times;</button>
           </div>
         </div>

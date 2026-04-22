@@ -16,8 +16,17 @@ import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import mermaid from "mermaid";
 import { openMermaidLightbox } from "./image-lightbox-plugin";
+import {
+    copyPngBlobToClipboard,
+    reportCopyError,
+    svgToPngBlob,
+} from "./svg-to-png";
 
 const EXPAND_ICON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`;
+const COPY_ICON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+const CHECK_ICON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+const COPY_FEEDBACK_MS = 1500;
+const PNG_SCALE = 2;
 
 const MERMAID_KEY = new PluginKey("mermaidDiagram");
 const RENDER_DEBOUNCE_MS = 500;
@@ -354,6 +363,46 @@ function buildDecorations(doc: any, activeMermaidPos: number): DecorationSet {
                 if (svgEl) openMermaidLightbox(svgEl.outerHTML, "");
             });
             el.appendChild(expandBtn);
+
+            const copyBtn = document.createElement("button");
+            copyBtn.className = "mermaid-copy-btn";
+            copyBtn.type = "button";
+            copyBtn.setAttribute("aria-label", "Copy as PNG");
+            copyBtn.title = "Copy as PNG";
+            copyBtn.innerHTML =
+                `<span class="icon icon-copy">${COPY_ICON_SVG}</span>` +
+                `<span class="icon icon-check">${CHECK_ICON_SVG}</span>`;
+            copyBtn.addEventListener("mousedown", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+            });
+            copyBtn.addEventListener("dblclick", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+            });
+            copyBtn.addEventListener("click", async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (copyBtn.disabled) return;
+                const svgEl = host.querySelector("svg");
+                if (!svgEl) return;
+                const svgMarkup = svgEl.outerHTML;
+                copyBtn.disabled = true;
+                try {
+                    const blob = await svgToPngBlob(svgMarkup, PNG_SCALE);
+                    await copyPngBlobToClipboard(blob);
+                    if (copyBtn.isConnected) flashCopiedState(copyBtn);
+                } catch (err) {
+                    reportCopyError(
+                        `Copy mermaid thất bại: ${
+                            err instanceof Error ? err.message : String(err)
+                        }`,
+                    );
+                } finally {
+                    if (copyBtn.isConnected) copyBtn.disabled = false;
+                }
+            });
+            el.appendChild(copyBtn);
             return el;
         }, {
             side: 1, // Place after the node
@@ -410,4 +459,16 @@ function rebuildNodeDecosOnly(
     decos = decos.add(doc, toAdd);
 
     return decos;
+}
+
+function flashCopiedState(button: HTMLElement): void {
+    if (!button.isConnected) return;
+    button.classList.add("is-copied");
+    const host = button as HTMLElement & { __copyTimer?: number };
+    if (host.__copyTimer !== undefined) {
+        window.clearTimeout(host.__copyTimer);
+    }
+    host.__copyTimer = window.setTimeout(() => {
+        if (button.isConnected) button.classList.remove("is-copied");
+    }, COPY_FEEDBACK_MS);
 }

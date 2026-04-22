@@ -182,6 +182,14 @@ const isMac = /Mac|iPhone|iPod|iPad/.test(navigator.userAgent);
 
 const vscode = acquireVsCodeApi();
 
+document.addEventListener("mermaid-copy-error", (e: Event) => {
+  const detail = (e as CustomEvent<{ message?: string }>).detail;
+  vscode.postMessage({
+    type: "showWarning",
+    message: detail?.message || "Copy mermaid thất bại",
+  });
+});
+
 const lowlight = createLowlight();
 lowlight.register({
   javascript, typescript, python, xml, css, json,
