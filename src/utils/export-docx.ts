@@ -1,15 +1,19 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs/promises";
+import type { Root } from "mdast";
 
 /**
- * Export markdown content to DOCX file.
+ * Export an MDAST tree to a DOCX file.
  *
- * Pipeline: markdown → remark-parse (+gfm,+frontmatter) → MDAST → mdast2docx.toDocx → Uint8Array.
+ * Stage 3: MDAST is parsed once in the extension host (markdown-ast.ts)
+ * and shared between DOCX and PDF exporters, so mermaid substitution
+ * happens on the tree instead of by regex on markdown text.
+ *
  * Bundled as a separate file (out/export-docx.js) and lazy-loaded on demand.
  */
 export async function exportToDocx(
-  markdown: string,
+  mdast: Root,
   documentUri: vscode.Uri,
   fontFamily?: string,
 ): Promise<void> {
@@ -38,10 +42,6 @@ export async function exportToDocx(
       },
       async () => {
         const [
-          { unified },
-          { default: remarkParse },
-          { default: remarkGfm },
-          { default: remarkFrontmatter },
           { toDocx },
           { htmlPlugin },
           { imagePlugin },
@@ -49,10 +49,6 @@ export async function exportToDocx(
           { listPlugin },
           { imageSize },
         ] = await Promise.all([
-          import("unified"),
-          import("remark-parse"),
-          import("remark-gfm"),
-          import("remark-frontmatter"),
           import("mdast2docx"),
           import("@m2d/html"),
           import("@m2d/image"),
@@ -62,12 +58,6 @@ export async function exportToDocx(
         ]);
 
         const imageResolver = createNodeImageResolver(baseDir, imageSize);
-
-        const mdast = unified()
-          .use(remarkParse)
-          .use(remarkGfm)
-          .use(remarkFrontmatter, ["yaml"])
-          .parse(markdown);
 
         const docxProps: Record<string, unknown> = { title: docName };
         if (fontFamily) {

@@ -921,36 +921,35 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             const exportFormat = exportMsg.format || "docx";
             const fontFamily = exportMsg.fontFamily || "";
 
-            // Strip frontmatter
             const rawText = document.getText();
             const frontmatterRegex = /^﻿?---\r?\n[\s\S]*?\r?\n---\r?\n?/;
-            let bodyForExport = rawText.replace(frontmatterRegex, "");
-
-            // Replace mermaid code blocks with inline images
-            if (mermaidImages.length > 0) {
-              for (const { code, base64 } of mermaidImages) {
-                const escaped = code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-                const mermaidBlockRegex = new RegExp(
-                  "```mermaid\\s*\\n" + escaped + "\\s*\\n```",
-                  "g",
-                );
-                bodyForExport = bodyForExport.replace(
-                  mermaidBlockRegex,
-                  `![Mermaid Diagram](${base64})`,
-                );
-              }
-            }
+            const bodyMarkdown = rawText.replace(frontmatterRegex, "");
 
             (async () => {
               try {
+                const markdownAstPath = require("path").join(__dirname, "markdown-ast.js");
+                const {
+                  parseMarkdownToMdast,
+                  replaceMermaidBlocks,
+                  hashMermaidCode,
+                  mdastToMarkdown,
+                } = require(markdownAstPath);
+
+                const mdast = await parseMarkdownToMdast(bodyMarkdown);
+                const imageMap = new Map<string, string>(
+                  mermaidImages.map(({ code, base64 }) => [hashMermaidCode(code), base64]),
+                );
+                await replaceMermaidBlocks(mdast, imageMap);
+
                 if (exportFormat === "pdf") {
                   const exportPdfPath = require("path").join(__dirname, "export-pdf.js");
                   const { exportToPdf: doExport } = require(exportPdfPath);
-                  await doExport(bodyForExport, document.uri, fontFamily);
+                  const bridgedMarkdown = await mdastToMarkdown(mdast);
+                  await doExport(bridgedMarkdown, document.uri, fontFamily);
                 } else {
                   const exportDocxPath = require("path").join(__dirname, "export-docx.js");
                   const { exportToDocx: doExport } = require(exportDocxPath);
-                  await doExport(bodyForExport, document.uri, fontFamily);
+                  await doExport(mdast, document.uri, fontFamily);
                 }
               } catch (err) {
                 const errMsg = err instanceof Error ? err.message : String(err);
