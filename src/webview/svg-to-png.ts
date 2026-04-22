@@ -31,9 +31,13 @@ export async function svgToPngBlob(
         throw new Error("Invalid SVG markup");
     }
 
-    const { width, height } = resolveSvgSize(svg);
+    let { width, height } = resolveSvgSize(svg);
     if (width <= 0 || height <= 0) {
-        throw new Error("SVG has zero dimensions");
+        // Fallback for SVGs without width/height/viewBox so the mermaid block
+        // still produces a copy/export image instead of failing silently.
+        console.warn("[svgToPng] SVG dimensions missing, using fallback 800x600");
+        width = 800;
+        height = 600;
     }
 
     // Ensure explicit width/height so <img> can rasterize; lightbox strips these.

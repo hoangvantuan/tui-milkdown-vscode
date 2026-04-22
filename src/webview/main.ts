@@ -1403,6 +1403,11 @@ function setupToolbarHandlers(): void {
   exportBtn?.addEventListener("click", async () => {
     if (!exportBtn || exportBtn.disabled) return;
     exportBtn.disabled = true;
+    // Safety net: re-enable after 60s even if extension never responds.
+    // The normal path re-enables via the `exportDone` message listener below.
+    const safetyTimer = window.setTimeout(() => {
+      if (exportBtn) exportBtn.disabled = false;
+    }, 60_000);
     try {
       const formatSelect = document.getElementById("export-format") as HTMLSelectElement | null;
       const format = formatSelect?.value || "docx";
@@ -1429,11 +1434,13 @@ function setupToolbarHandlers(): void {
       }
       const fontFamily = vscode.getState()?.fontFamily || "";
       vscode.postMessage({ type: "export", format, fontFamily, mermaidImages });
-    } finally {
-      setTimeout(() => {
-        if (exportBtn) exportBtn.disabled = false;
-      }, 3000);
+    } catch (err) {
+      window.clearTimeout(safetyTimer);
+      if (exportBtn) exportBtn.disabled = false;
+      throw err;
     }
+    // The safety timer is cleared inside the `exportDone` handler.
+    (exportBtn as HTMLButtonElement & { _safetyTimer?: number })._safetyTimer = safetyTimer;
   });
 
   // Font selector
@@ -1609,6 +1616,20 @@ function scrollToHeading(slug: string): void {
 window.addEventListener("message", async (event) => {
   const message = event.data;
   if (!message || typeof message !== "object") return;
+
+  if (message.type === "exportDone") {
+    const btn = document.getElementById("btn-export-go") as
+      | (HTMLButtonElement & { _safetyTimer?: number })
+      | null;
+    if (btn) {
+      if (btn._safetyTimer !== undefined) {
+        window.clearTimeout(btn._safetyTimer);
+        btn._safetyTimer = undefined;
+      }
+      btn.disabled = false;
+    }
+    return;
+  }
 
   switch (message.type) {
     case "update":

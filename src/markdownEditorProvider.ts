@@ -244,6 +244,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
     let pendingEdit = false;
     let renameInProgress = false;
+    let exportInProgress = false;
     let updateDebounceTimer: ReturnType<typeof setTimeout> | null = null;
     const disposables: vscode.Disposable[] = [];
 
@@ -917,14 +918,32 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
               fontFamily?: string;
               mermaidImages?: { code: string; base64: string }[];
             };
+
+            // Reject duplicate export requests so two save dialogs / two
+            // Chromium instances cannot race to the same output path.
+            if (exportInProgress) {
+              webviewPanel.webview.postMessage({
+                type: "exportDone",
+                success: false,
+                reason: "busy",
+              });
+              vscode.window.showWarningMessage(
+                "Đang export, vui lòng đợi export hiện tại kết thúc.",
+              );
+              break;
+            }
+
             const mermaidImages = exportMsg.mermaidImages || [];
             const exportFormat = exportMsg.format || "docx";
             const fontFamily = exportMsg.fontFamily || "";
 
+            // Strip only the BOM. Frontmatter is handled by remark-frontmatter
+            // inside parseMarkdownToMdast, so avoid a regex that could eat a
+            // legitimate `---` horizontal rule at the top of the document.
             const rawText = document.getText();
-            const frontmatterRegex = /^﻿?---\r?\n[\s\S]*?\r?\n---\r?\n?/;
-            const bodyMarkdown = rawText.replace(frontmatterRegex, "");
+            const normalized = rawText.replace(/^﻿/, "");
 
+            exportInProgress = true;
             (async () => {
               try {
                 const markdownAstPath = require("path").join(__dirname, "markdown-ast.js");
@@ -932,10 +951,25 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
                   parseMarkdownToMdast,
                   replaceMermaidBlocks,
                   hashMermaidCode,
-                  mdastToMarkdown,
                 } = require(markdownAstPath);
 
-                const mdast = await parseMarkdownToMdast(bodyMarkdown);
+                const mdast = await parseMarkdownToMdast(normalized);
+
+                // Drop the frontmatter node so it is not rendered as content.
+                if (
+                  mdast?.children?.[0] &&
+                  (mdast.children[0].type === "yaml" || mdast.children[0].type === "toml")
+                ) {
+                  mdast.children.shift();
+                }
+
+                if (!mdast?.children || mdast.children.length === 0) {
+                  vscode.window.showWarningMessage(
+                    "Document trống, không có nội dung để export.",
+                  );
+                  return;
+                }
+
                 const imageMap = new Map<string, string>(
                   mermaidImages.map(({ code, base64 }) => [hashMermaidCode(code), base64]),
                 );
@@ -944,17 +978,35 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
                 if (exportFormat === "pdf") {
                   const exportPdfPath = require("path").join(__dirname, "export-pdf.js");
                   const { exportToPdf: doExport } = require(exportPdfPath);
-                  const bridgedMarkdown = await mdastToMarkdown(mdast);
-                  await doExport(bridgedMarkdown, document.uri, fontFamily);
+                  await doExport(mdast, document.uri, fontFamily);
                 } else {
                   const exportDocxPath = require("path").join(__dirname, "export-docx.js");
                   const { exportToDocx: doExport } = require(exportDocxPath);
                   await doExport(mdast, document.uri, fontFamily);
                 }
+
+                // Notify webview on success so the button can re-enable without
+                // relying on the 3-second timeout.
+                try {
+                  webviewPanel.webview.postMessage({ type: "exportDone", success: true });
+                } catch {
+                  /* webview may have been disposed */
+                }
               } catch (err) {
                 const errMsg = err instanceof Error ? err.message : String(err);
                 vscode.window.showErrorMessage(`Export thất bại: ${errMsg}`);
                 console.error("[Export]", err);
+                try {
+                  webviewPanel.webview.postMessage({
+                    type: "exportDone",
+                    success: false,
+                    reason: errMsg,
+                  });
+                } catch {
+                  /* webview may have been disposed */
+                }
+              } finally {
+                exportInProgress = false;
               }
             })();
             break;
@@ -972,6 +1024,15 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           e.affectsConfiguration("tuiMarkdown.highlightCurrentLine")
         ) {
           sendConfig();
+        }
+        if (e.affectsConfiguration("tuiMarkdown.chromiumPath")) {
+          try {
+            const exportPdfPath = require("path").join(__dirname, "export-pdf.js");
+            const { clearChromiumCache } = require(exportPdfPath);
+            clearChromiumCache?.();
+          } catch {
+            /* module may not be loaded yet — cache will be empty anyway */
+          }
         }
       }),
       vscode.workspace.onDidSaveTextDocument(async (savedDoc) => {

@@ -2,7 +2,7 @@
   "name": "tui-milkdown-vscode",
   "displayName": "TUI Markdown Editor",
   "description": "A beautiful WYSIWYG Markdown editor powered by Tiptap. Edit markdown files with rich text experience and theme selection.",
-  "version": "2.8.5",
+  "version": "2.8.6",
   "publisher": "tuanhv",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -108,6 +108,11 @@
           "type": "boolean",
           "default": false,
           "description": "Auto-hide toolbar when typing (show on hover)"
+        },
+        "tuiMarkdown.chromiumPath": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to a Chrome/Chromium/Edge/Brave executable used for PDF export. Leave empty to auto-detect."
         }
       }
     },
@@ -170,12 +175,14 @@
     "lowlight": "^3.3.0",
     "mdast2docx": "^1.6.1",
     "mermaid": "^11.12.2",
-    "pdfmake": "^0.3.7",
     "prosemirror-search": "^1.1.0",
+    "puppeteer-core": "^24.42.0",
+    "rehype-highlight": "^7.0.2",
+    "rehype-stringify": "^10.0.1",
     "remark-frontmatter": "^5.0.0",
     "remark-gfm": "^4.0.1",
     "remark-parse": "^11.0.0",
-    "remark-stringify": "^11.0.0",
+    "remark-rehype": "^11.1.2",
     "unified": "^11.0.5",
     "unist-util-visit": "^5.1.0"
   }

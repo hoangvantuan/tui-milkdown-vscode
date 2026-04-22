@@ -1,5 +1,4 @@
 const esbuild = require('esbuild');
-const path = require('path');
 const fs = require('fs');
 
 const isDev = process.argv.includes('--dev');
@@ -86,22 +85,9 @@ function ensureOutDir() {
   }
 }
 
-// Copy pdfmake font files to output directory for runtime use
-function copyFonts() {
-  const pdfmakeDir = path.join(__dirname, 'node_modules', 'pdfmake', 'build', 'fonts', 'Roboto');
-  const outFontsDir = path.join(__dirname, 'out', 'fonts');
-  if (!fs.existsSync(outFontsDir)) fs.mkdirSync(outFontsDir, { recursive: true });
-  for (const file of fs.readdirSync(pdfmakeDir)) {
-    if (file.endsWith('.ttf')) {
-      fs.copyFileSync(path.join(pdfmakeDir, file), path.join(outFontsDir, file));
-    }
-  }
-}
-
 async function build() {
   console.log(`Building (${isProduction ? 'production' : 'development'})...`);
   ensureOutDir();
-  copyFonts();
 
   if (isWatch) {
     const extCtx = await esbuild.context(extensionConfig);

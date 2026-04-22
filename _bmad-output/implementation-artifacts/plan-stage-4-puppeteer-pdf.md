@@ -1,6 +1,6 @@
 # Plan Stage 4 — PDF rewrite với `puppeteer-core`
 
-**Status**: ready
+**Status**: done (2026-04-22)
 **Estimated effort**: 1-1.5 ngày (8-12 giờ)
 **Risk**: Cao (Chromium discovery cross-platform, bundle footprint)
 **Dependencies**: **PHẢI làm sau Stage 3** (cần MDAST pipeline sẵn sàng)
@@ -69,16 +69,19 @@ Phải hỗ trợ cross-platform, có fallback. Đề xuất chuỗi thử:
 - [ ] Optional: `rehype-sanitize` nếu cần sanitize HTML từ user markdown (tránh XSS khi render trong Chromium).
 
 ### 4. Cập nhật `esbuild.config.js`
-- [ ] Xoá hàm `copyFonts()` và call tương ứng.
-- [ ] Thêm `puppeteer-core` vào `external` list (không bundle, require at runtime):
+- [x] Xoá hàm `copyFonts()` và call tương ứng.
+- [x] `puppeteer-core` được bundle INLINE vào `out/export-pdf.js` (tree-shake qua esbuild). Chỉ `vscode` là external.
   ```js
   const exportPdfConfig = {
     // ...
-    external: ['vscode', 'puppeteer-core'],
+    external: ['vscode'],
   };
   ```
-- [ ] Bundle size `out/export-pdf.js` sẽ nhỏ hơn (< 200KB), nhưng user cần `node_modules/puppeteer-core` có mặt trong VSIX.
-- [ ] Verify VSIX include `node_modules/puppeteer-core`: update `.vscodeignore` nếu cần.
+- [x] Bundle size thực tế `out/export-pdf.js` ~2.5MB (inline puppeteer-core). Quyết định giữ inline để:
+  1. `.vscodeignore` có thể giữ `node_modules/**` catch-all → VSIX nhỏ gọn, không lo sót dep.
+  2. Extension lazy-load qua `require()` tại runtime chỉ khi user bấm Export PDF, cold path.
+  3. Tránh phụ thuộc vào đường dẫn `node_modules` tại runtime cross-platform.
+- [x] `.vscodeignore` giữ nguyên pattern `node_modules/**`.
 
 ### 5. Rewrite `src/utils/export-pdf.ts`
 - [ ] Pipeline:
@@ -219,11 +222,12 @@ Stage này commit riêng. Nếu sai: `git revert <commit>` và `npm install` res
 
 ## Done criteria
 
-- [ ] PDF export cross-platform trên ít nhất macOS
-- [ ] Bundle VSIX size tăng không quá 15MB (từ current size)
-- [ ] Test matrix pass
-- [ ] Parser tự viết 339 dòng đã xoá hết
-- [ ] pdfmake + Roboto font đã gỡ khỏi package.json và `out/`
+- [x] PDF export cross-platform trên ít nhất macOS
+- [x] Bundle VSIX size tăng không quá 15MB (từ current size) — inline `out/export-pdf.js` ~2.5MB, VSIX vẫn dưới ngưỡng.
+- [x] Test matrix pass (manual verification)
+- [x] Parser tự viết 339 dòng đã xoá hết
+- [x] pdfmake + Roboto font đã gỡ khỏi package.json và `out/`
+- [x] `out/export-pdf.js` size < 3MB (revised từ <200KB do quyết định bundle inline thay vì external — xem Task 4)
 - [ ] Commit message: `refactor(export): rewrite PDF với puppeteer-core, bỏ pdfmake`
 
 ## Follow-up (out of scope)

@@ -2,6 +2,41 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## [2.8.6] - 2026-04-22
+
+### Added
+
+- **Export to DOCX**: Xuất tài liệu ra Word `.docx` qua `mdast2docx` + plugins (`@m2d/html`, `@m2d/image`, `@m2d/table`, `@m2d/list`). Giữ nguyên heading, list, table, code block, image. Font trong DOCX kế thừa font đang chọn của editor.
+- **Export to PDF**: Xuất tài liệu ra PDF WYSIWYG dùng Chromium headless (`puppeteer-core`). Yêu cầu Chrome/Edge/Chromium/Brave đã cài trên máy; không bundle binary theo extension. Auto-detect path phổ biến, fallback `tuiMarkdown.chromiumPath` hoặc env `PUPPETEER_EXECUTABLE_PATH`.
+- **Setting `tuiMarkdown.chromiumPath`**: Cho phép chỉ định thủ công đường dẫn Chrome/Edge/Chromium/Brave cho PDF export khi auto-detect không bắt đúng binary.
+
+### Changed
+
+- **PDF export viết lại bằng puppeteer-core**: Bỏ `pdfmake` + parser markdown tự viết 339 dòng + bundled Roboto font. Pipeline mới MDAST → HTML (`remark-rehype` + `rehype-highlight` + `rehype-stringify`) → Chromium `page.pdf()`, cho chất lượng WYSIWYG giống preview (syntax highlight code, GitHub table, alert, mermaid base64). Yêu cầu Chrome/Edge/Chromium/Brave đã cài trên máy user, tự dò theo `tuiMarkdown.chromiumPath` → `PUPPETEER_EXECUTABLE_PATH` → system paths quen thuộc. Bundle `out/export-pdf.js` tree-shake puppeteer-core xuống ~2.5MB, VSIX tổng ~5.4MB.
+- **Bỏ bridge MDAST→markdown cho PDF**: Call site giờ truyền thẳng MDAST vào cả `exportToPdf` và `exportToDocx`, loại nguy cơ drift serialize/parse. Hàm `mdastToMarkdown` + dependency `remark-stringify` được xoá.
+- **Mermaid `securityLevel` đổi sang `"loose"`**: Bắt buộc để ELK + `foreignObject` render HTML trong label. Trade-off: SVG sinh ra có thể chứa HTML thô từ markdown, cần treat mermaid từ nguồn không tin cậy như potentially executable. PDF export đã disable JavaScript trong Chromium để chặn leo thang.
+
+### Fixed
+
+- **PDF render relative image**: Image local (`./img.png`) giờ được inline thành base64 trước khi vào Chromium thay vì load từ `about:blank` 404 silent. Pipeline mới walk HAST, đọc file, encode data URL.
+- **Frontmatter handling an toàn**: Bỏ regex strip thủ công, dùng `remark-frontmatter` trong pipeline MDAST để parse frontmatter đúng cú pháp. BOM `﻿` vẫn strip trước khi parse.
+- **Mermaid hash CRLF/LF mismatch**: `hashMermaidCode` normalize line ending `\r\n|\r` → `\n` trước khi trim, đảm bảo file CRLF export mermaid không bị miss.
+- **DOCX fetch remote có timeout**: `AbortController` 30s + check `content-length` / `arrayBuffer.byteLength` không quá 10MB. Ảnh lỗi fetch (timeout, HTTP error, quá lớn) → placeholder 1x1 PNG thay vì abort toàn bộ export.
+- **DOCX ảnh local thiếu**: `fs.readFile` fail không còn làm crash toàn bộ export, thay bằng placeholder + log warning. Ảnh SVG cũng fallback placeholder thay vì throw.
+- **DOCX filename chứa `%` literal**: `decodeURIComponent("50%_off.png")` ném `URIError` không còn crash export; bọc try/catch, fallback raw path.
+- **Export button race duplicate**: Extension track `exportInProgress` flag; request thứ 2 trong khi đang export bị reject với dialog "Đang export, vui lòng đợi". Webview re-enable button qua message `exportDone` thay vì chờ timeout 3s cứng.
+- **Empty document warning**: Export file trống / chỉ có frontmatter hiện cảnh báo "Document trống, không có nội dung để export" thay vì sinh file rỗng silent.
+- **PDF font-family CSS context**: Font user chọn giờ được sanitize qua whitelist `[A-Za-z0-9 _-]` thay vì `escapeHtml` (CSS `<style>` không decode HTML entities, trước đây font có dấu `"` làm declaration invalid).
+- **PDF Chromium sandbox conditional**: `--no-sandbox` chỉ pass khi Linux + root; macOS/Windows/Linux user thường giữ nguyên isolation mặc định.
+- **PDF strip HTML nguy hiểm**: Bỏ `<script>`, `<iframe>`, `<object>`, `<embed>`, `<link>`, `<base>`, `<meta http-equiv>` trước khi vào Chromium (bổ sung thêm cho `setJavaScriptEnabled(false)`).
+- **PDF `waitUntil: "networkidle0"`**: Đổi từ `"load"` sang `"networkidle0"` để đợi ảnh load hết trước khi `page.pdf()` chạy.
+- **PDF `rehype-highlight` `detect: false`**: Chỉ syntax highlight khi code block có language. Giảm CPU trên document lớn.
+- **Open Folder sau export**: Dùng `vscode.commands.executeCommand("revealFileInOS", ...)` thay `openExternal(folder)` để reveal đúng file trong Finder/Explorer cross-platform.
+- **Chromium discovery chắc chắn hơn**: Check `fs.constants.X_OK` ngoài `isFile()` để loại path không executable; strip quote thừa quanh `chromiumPath` nếu user paste nguyên vẹn `"C:\...\chrome.exe"`.
+- **Chromium cache invalidate khi đổi setting**: `onDidChangeConfiguration` listen `tuiMarkdown.chromiumPath` → gọi `clearChromiumCache()`, không cần reload window.
+- **Puppeteer launch error message thân thiện**: Wrap lỗi launch thành "Không khởi chạy được Chromium tại `<path>`: <original>. Kiểm tra quyền execute hoặc cấu hình tuiMarkdown.chromiumPath".
+- **SVG zero-dimension fallback**: `svgToPngBlob` dùng fallback 800×600 + console.warn khi SVG không có width/height/viewBox, thay vì throw silent.
+
 ## [2.8.5] - 2026-04-22
 
 ### Added

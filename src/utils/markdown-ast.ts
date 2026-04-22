@@ -25,30 +25,19 @@ export async function parseMarkdownToMdast(markdown: string): Promise<Root> {
 }
 
 /**
- * Serialize MDAST back to markdown (Stage 4 bridge for PDF while
- * the legacy string-based PDF parser is still in place).
- * GFM plugin required so tables and task lists survive roundtrip.
- */
-export async function mdastToMarkdown(mdast: Root): Promise<string> {
-  const [{ unified }, { default: remarkStringify }, { default: remarkGfm }] = await Promise.all([
-    import("unified"),
-    import("remark-stringify"),
-    import("remark-gfm"),
-  ]);
-
-  return unified().use(remarkStringify).use(remarkGfm).stringify(mdast) as string;
-}
-
-/**
  * djb2 hash (32-bit unsigned, hex).
- * Used to correlate mermaid code blocks with pre-rendered images
- * sent from the webview. Both sides must trim the code identically.
+ *
+ * Used to correlate mermaid code blocks with pre-rendered images sent from
+ * the webview. Both sides pipe through this function so the CRLF/LF line
+ * ending the user's file happens to carry does not cause a miss between
+ * `node.textContent` (ProseMirror in the webview) and `node.value`
+ * (remark-parse in the extension host).
  */
 export function hashMermaidCode(code: string): string {
+  const normalized = code.replace(/\r\n?/g, "\n").trim();
   let h = 5381;
-  const trimmed = code.trim();
-  for (let i = 0; i < trimmed.length; i++) {
-    h = (h << 5) + h + trimmed.charCodeAt(i);
+  for (let i = 0; i < normalized.length; i++) {
+    h = (h << 5) + h + normalized.charCodeAt(i);
   }
   return (h >>> 0).toString(16);
 }

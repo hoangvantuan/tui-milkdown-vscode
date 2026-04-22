@@ -24,6 +24,13 @@ Findings surfaced incidentally by review but not caused by the triggering story.
 13. **Đánh giá migrate PDF sang puppeteer-core dùng VS Code Electron** — WYSIWYG thực sự với CSS theme, bỏ parser hoàn toàn. PoC riêng, defer dài hạn.
 14. **Migrate `@m2d/md2docx@0.0.1` sang `mdast2docx@1.6.1` trực tiếp hoặc `docx@9.6.1`** — Phần wrapper của `@m2d/md2docx` chỉ ~12KB code và version 0.0.1 là alpha. Sau khi áp patch ghim version, đánh giá migrate.
 
+## Deferred from: code review of plan-export-rewrite-overview (2026-04-22, pass 2)
+
+1. **Chromium process orphan nếu `launch` throw sau fork** — `src/utils/export-pdf.ts:581-604`. Nếu `puppeteer.launch` succeed tạo process Chrome nhưng throw trước khi return, `finally` không close vì `browser` chưa được gán. Puppeteer thường tự cleanup qua SIGCHLD, nhưng không guaranteed. Hyper-edge, defer cho đến khi có report zombie process thực tế.
+2. **Document > 500KB có thể OOM Chromium khi render HTML** — `src/utils/export-pdf.ts:590-599`. `page.setContent` với HTML cực dài + nhiều inline base64 image có thể OOM. Đã có MAX_FILE_SIZE warning tại bước open (500KB, warning only không block). Fix đầy đủ cần: (a) streaming HTML, (b) chunk export theo trang. Defer tới khi có user bug report.
+3. **`mermaidImages` postMessage không chunk, IPC size unlimited** — `src/webview/main.ts:1411-1431`. 50 mermaid × 2MB PNG base64 → payload 100MB qua `vscode.postMessage`. Có thể crash webview hoặc extension host. Fix: chunk hoặc stream via `vscode.workspace.fs.writeFile` tạm rồi đọc lại. Edge case hiếm, defer.
+4. **Save dialog chọn file đang mở bởi Word/Acrobat (Windows `EBUSY`)** — `src/utils/export-docx.ts:415`, `src/utils/export-pdf.ts:600`. VS Code error `EBUSY` đã khá rõ nhưng không hint user đóng app đang lock file. Defer tới khi có feedback.
+
 ## Mermaid plugin — pre-existing issues
 
 1. **Stale lightbox snapshot on doc edit** — If user edits mermaid code while fullscreen lightbox is open, the lightbox keeps showing the snapshot captured at click time. Nice-to-have: close lightbox on `docChanged` when the underlying mermaid block changes, or re-render from the current block.
