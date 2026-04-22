@@ -12,11 +12,22 @@ export async function svgToPngBlob(
     svgString: string,
     scale: number = 2,
 ): Promise<Blob> {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(svgString, "image/svg+xml");
-    const svg = doc.documentElement as unknown as SVGSVGElement;
+    // Mermaid with securityLevel:"loose" emits foreignObject containing HTML
+    // (e.g. unclosed <br>, <div>) which breaks strict XML parsing.
+    // Try XML first; fall back to HTML parsing if it fails.
+    let svg: SVGSVGElement | null = null;
 
-    if (!svg || svg.tagName.toLowerCase() !== "svg") {
+    const xmlDoc = new DOMParser().parseFromString(svgString, "image/svg+xml");
+    const parseError = xmlDoc.querySelector("parsererror");
+    if (!parseError && xmlDoc.documentElement.tagName.toLowerCase() === "svg") {
+        svg = xmlDoc.documentElement as unknown as SVGSVGElement;
+    } else {
+        // Fallback: parse as HTML and extract the SVG element
+        const htmlDoc = new DOMParser().parseFromString(svgString, "text/html");
+        svg = htmlDoc.querySelector("svg") as unknown as SVGSVGElement | null;
+    }
+
+    if (!svg) {
         throw new Error("Invalid SVG markup");
     }
 

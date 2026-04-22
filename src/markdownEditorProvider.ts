@@ -911,6 +911,55 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             })();
             break;
           }
+          case "export": {
+            const exportMsg = msg as {
+              format?: string;
+              fontFamily?: string;
+              mermaidImages?: { code: string; base64: string }[];
+            };
+            const mermaidImages = exportMsg.mermaidImages || [];
+            const exportFormat = exportMsg.format || "docx";
+            const fontFamily = exportMsg.fontFamily || "";
+
+            // Strip frontmatter
+            const rawText = document.getText();
+            const frontmatterRegex = /^﻿?---\r?\n[\s\S]*?\r?\n---\r?\n?/;
+            let bodyForExport = rawText.replace(frontmatterRegex, "");
+
+            // Replace mermaid code blocks with inline images
+            if (mermaidImages.length > 0) {
+              for (const { code, base64 } of mermaidImages) {
+                const escaped = code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                const mermaidBlockRegex = new RegExp(
+                  "```mermaid\\s*\\n" + escaped + "\\s*\\n```",
+                  "g",
+                );
+                bodyForExport = bodyForExport.replace(
+                  mermaidBlockRegex,
+                  `![Mermaid Diagram](${base64})`,
+                );
+              }
+            }
+
+            (async () => {
+              try {
+                if (exportFormat === "pdf") {
+                  const exportPdfPath = require("path").join(__dirname, "export-pdf.js");
+                  const { exportToPdf: doExport } = require(exportPdfPath);
+                  await doExport(bodyForExport, document.uri, fontFamily);
+                } else {
+                  const exportDocxPath = require("path").join(__dirname, "export-docx.js");
+                  const { exportToDocx: doExport } = require(exportDocxPath);
+                  await doExport(bodyForExport, document.uri, fontFamily);
+                }
+              } catch (err) {
+                const errMsg = err instanceof Error ? err.message : String(err);
+                vscode.window.showErrorMessage(`Export thất bại: ${errMsg}`);
+                console.error("[Export]", err);
+              }
+            })();
+            break;
+          }
         }
       }),
       webviewPanel.onDidChangeViewState((e) => {
@@ -1519,6 +1568,67 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           }
           .appearance-popover .zoom-display-btn:hover {
             background: rgba(127, 127, 127, 0.22);
+          }
+          /* Export row inside popover */
+          .appearance-popover .export-controls {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+          }
+          .appearance-popover #export-format {
+            flex: 1;
+            -webkit-appearance: none;
+            appearance: none;
+            background-color: rgba(127, 127, 127, 0.15);
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 8px center;
+            padding: 4px 28px 4px 10px;
+            border: 1px solid rgba(127, 127, 127, 0.25);
+            border-radius: 6px;
+            height: 30px;
+            color: inherit;
+            cursor: pointer;
+            font-size: 11px;
+          }
+          .appearance-popover #export-format:hover {
+            background-color: rgba(127, 127, 127, 0.22);
+          }
+          .appearance-popover #export-format:focus {
+            border-color: rgba(var(--accent-rgb, 59, 130, 246), 0.6);
+            outline: none;
+          }
+          .appearance-popover #btn-export-go {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            height: 30px;
+            padding: 0 12px;
+            background: rgba(var(--accent-rgb, 59, 130, 246), 0.15);
+            color: var(--accent-primary, var(--vscode-focusBorder, #3b82f6));
+            border: 1px solid rgba(var(--accent-rgb, 59, 130, 246), 0.3);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 600;
+            white-space: nowrap;
+            transition: background 0.15s ease-out, transform 0.1s ease-out;
+          }
+          .appearance-popover #btn-export-go:hover {
+            background: rgba(var(--accent-rgb, 59, 130, 246), 0.25);
+          }
+          .appearance-popover #btn-export-go:active {
+            transform: scale(0.95);
+          }
+          .appearance-popover #btn-export-go svg {
+            width: 13px;
+            height: 13px;
+            stroke: currentColor;
+            stroke-width: 2;
+            fill: none;
+            stroke-linecap: round;
+            stroke-linejoin: round;
           }
           #btn-appearance.is-active {
             background: rgba(var(--accent-rgb, 59, 130, 246), 0.18);
@@ -2328,7 +2438,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             box-shadow: 0 0 0 1px var(--vscode-focusBorder, rgba(0,122,204,0.3));
           }
           .mermaid-preview svg {
-            max-width: 100%;
             height: auto;
           }
 
@@ -2352,16 +2461,24 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           }
           .mermaid-svg-host {
             display: block;
+            overflow-x: auto;
+            overflow-y: auto;
           }
           .mermaid-svg-host svg {
-            max-width: 100%;
             height: auto;
+            min-width: min-content;
           }
           /* Allow foreignObject labels to render outside their bbox without
              being clipped by SVG's default overflow:hidden. */
-          .mermaid-svg-host svg,
-          .mermaid-svg-host svg * {
+          .mermaid-svg-host svg foreignObject,
+          .mermaid-svg-host svg text {
             overflow: visible;
+          }
+          .mermaid-svg-host::-webkit-scrollbar { height: 4px; }
+          .mermaid-svg-host::-webkit-scrollbar-track { background: transparent; }
+          .mermaid-svg-host::-webkit-scrollbar-thumb {
+            background: rgba(var(--border-rgb, 0, 0, 0), 0.12);
+            border-radius: 2px;
           }
           .mermaid-expand-btn {
             position: absolute;
@@ -3280,6 +3397,19 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
                 <div class="appearance-row">
                   <label class="appearance-label">Font</label>
                   <div id="font-selector-container"></div>
+                </div>
+                <div class="appearance-row">
+                  <label class="appearance-label">Export</label>
+                  <div class="export-controls">
+                    <select id="export-format" aria-label="Export format">
+                      <option value="docx">DOCX</option>
+                      <option value="pdf">PDF</option>
+                    </select>
+                    <button id="btn-export-go" title="Export file" aria-label="Export">
+                      <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                      Export
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

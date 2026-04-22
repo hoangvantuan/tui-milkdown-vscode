@@ -148,6 +148,8 @@
     "typescript": "^5.3.0"
   },
   "dependencies": {
+    "@m2d/md2docx": "^0.0.1",
+    "@mermaid-js/layout-elk": "^0.2.1",
     "@tiptap/core": "^3.19.0",
     "@tiptap/extension-code-block-lowlight": "^3.19.0",
     "@tiptap/extension-highlight": "^3.19.0",
@@ -163,6 +165,7 @@
     "js-yaml": "^4.1.1",
     "lowlight": "^3.3.0",
     "mermaid": "^11.12.2",
+    "pdfmake": "^0.3.7",
     "prosemirror-search": "^1.1.0"
   }
 }

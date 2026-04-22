@@ -50,6 +50,7 @@ import { CodeBlockEnhancement } from "./code-block-plugin";
 import { SearchPlugin, performSearch, clearSearch, searchNext, searchPrev, getMatchInfo } from "./search-plugin";
 import { initFontSelector, type FontSelectorAPI, sanitizeFontName } from "./font-selector";
 import { initLightbox } from "./image-lightbox-plugin";
+import { svgToPngBlob } from "./svg-to-png";
 
 // Fix: @tiptap/markdown v3.19.0 drops `escape` tokens from marked parser,
 // causing escaped characters like \_ to be silently lost during roundtrip.
@@ -1396,6 +1397,44 @@ function setupToolbarHandlers(): void {
   });
 
   getSourceBtn()?.addEventListener("click", viewSource);
+
+  // Export (DOCX/PDF) from appearance popover
+  const exportBtn = document.getElementById("btn-export-go") as HTMLButtonElement | null;
+  exportBtn?.addEventListener("click", async () => {
+    if (!exportBtn || exportBtn.disabled) return;
+    exportBtn.disabled = true;
+    try {
+      const formatSelect = document.getElementById("export-format") as HTMLSelectElement | null;
+      const format = formatSelect?.value || "docx";
+
+      // Collect all rendered mermaid diagrams as PNG base64
+      const mermaidImages: { code: string; base64: string }[] = [];
+      const previews = Array.from(document.querySelectorAll<HTMLElement>(".mermaid-preview[data-rendered='true']"));
+      for (const preview of previews) {
+        const code = preview.getAttribute("data-mermaid-src");
+        const svgEl = preview.querySelector("svg");
+        if (!code || !svgEl) continue;
+        try {
+          const blob = await svgToPngBlob(svgEl.outerHTML, 2);
+          const reader = new FileReader();
+          const base64: string = await new Promise((resolve, reject) => {
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+          mermaidImages.push({ code: code.trim(), base64 });
+        } catch {
+          // Skip failed mermaid renders
+        }
+      }
+      const fontFamily = vscode.getState()?.fontFamily || "";
+      vscode.postMessage({ type: "export", format, fontFamily, mermaidImages });
+    } finally {
+      setTimeout(() => {
+        if (exportBtn) exportBtn.disabled = false;
+      }, 3000);
+    }
+  });
 
   // Font selector
   const fontContainer = document.getElementById("font-selector-container");
