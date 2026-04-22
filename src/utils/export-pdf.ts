@@ -149,7 +149,12 @@ function stripDangerousHtmlTags(html: string): string {
     .replace(/<embed\b[^>]*\/?\s*>/gi, "")
     .replace(/<link\b[^>]*\/?\s*>/gi, "")
     .replace(/<base\b[^>]*\/?\s*>/gi, "")
-    .replace(/<meta\b[^>]*http-equiv\s*=[^>]*>/gi, "");
+    .replace(/<meta\b[^>]*http-equiv\s*=[^>]*>/gi, "")
+    // Strip inline event handlers (onclick, onerror, onload, …)
+    .replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+    // Neutralise javascript: and data: URLs in href/src attributes
+    .replace(/(href|src)\s*=\s*(?:"\s*javascript:[^"]*"|'\s*javascript:[^']*')/gi, '$1=""')
+    .replace(/(href|src)\s*=\s*(?:"\s*data:text\/html[^"]*"|'\s*data:text\/html[^']*')/gi, '$1=""');
 }
 
 async function mdastToHtml(mdast: Root, baseDir: string): Promise<string> {
@@ -197,7 +202,7 @@ async function inlineRelativeImages(
     imgs.map(async (node) => {
       const src = typeof node.properties.src === "string" ? node.properties.src : "";
       if (!src) return;
-      if (/^(?:data:|https?:|file:)/i.test(src)) return;
+      if (/^(?:data:|https?:)/i.test(src)) return;
 
       try {
         const cleaned = src.replace(/^file:\/\//, "");

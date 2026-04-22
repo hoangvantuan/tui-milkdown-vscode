@@ -159,7 +159,7 @@ function createNodeImageResolver(
       let dataForDocx: string | Buffer;
 
       if (src.startsWith("data:")) {
-        const match = /^data:image\/([\w+-]+);base64,(.+)$/.exec(src);
+        const match = /^data:image\/([\w+-]+)(?:;[^,]*)?;base64,(.+)$/i.exec(src);
         if (!match) throw new Error(`Invalid data URL: ${src.slice(0, 40)}…`);
         type = normalizeImageType(match[1]);
         buffer = Buffer.from(match[2], "base64");

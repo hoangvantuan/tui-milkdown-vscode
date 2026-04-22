@@ -51,8 +51,8 @@ export async function findChromiumExecutable(): Promise<string | null> {
     }
   }
 
-  cachedPath = null;
-  return cachedPath;
+  // Don't cache misses: user may install a browser during this session
+  return null;
 }
 
 function isExecutable(p: string): boolean {

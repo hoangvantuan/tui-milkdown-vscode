@@ -1414,6 +1414,7 @@ function setupToolbarHandlers(): void {
 
       // Collect all rendered mermaid diagrams as PNG base64
       const mermaidImages: { code: string; base64: string }[] = [];
+      let skippedMermaidCount = 0;
       const previews = Array.from(document.querySelectorAll<HTMLElement>(".mermaid-preview[data-rendered='true']"));
       for (const preview of previews) {
         const code = preview.getAttribute("data-mermaid-src");
@@ -1428,9 +1429,16 @@ function setupToolbarHandlers(): void {
             reader.readAsDataURL(blob);
           });
           mermaidImages.push({ code: code.trim(), base64 });
-        } catch {
-          // Skip failed mermaid renders
+        } catch (err) {
+          skippedMermaidCount++;
+          console.warn("[Export] Failed to rasterize Mermaid diagram:", err);
         }
+      }
+      if (skippedMermaidCount > 0) {
+        vscode.postMessage({
+          type: "showWarning",
+          message: `${skippedMermaidCount} Mermaid diagram(s) could not be embedded in the export.`,
+        });
       }
       const fontFamily = vscode.getState()?.fontFamily || "";
       vscode.postMessage({ type: "export", format, fontFamily, mermaidImages });

@@ -194,7 +194,7 @@ Phải hỗ trợ cross-platform, có fallback. Đề xuất chuỗi thử:
 ```bash
 npm run lint
 npm run build
-ls -lh out/export-pdf.js  # phải < 200KB (xoá parser + font + pdfmake)
+ls -lh out/export-pdf.js  # phải < 3MB (puppeteer-core bundled inline)
 du -sh node_modules/puppeteer-core  # ghi lại size
 npm run package  # tạo VSIX, check size
 ```

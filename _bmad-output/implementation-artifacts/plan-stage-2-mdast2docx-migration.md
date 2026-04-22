@@ -62,7 +62,7 @@ Dùng trực tiếp `mdast2docx@1.6.1` (14K weekly DL, active, cùng tác giả)
 
 ### 3. Test matrix
 - [ ] Heading H1-H6
-- [ ] Paragraph với **bold**, *italic*, `code`, [link](url), ~~strike~~
+- [ ] Paragraph với **bold**, *italic*, `code`, `[link](url)`, ~~strike~~
 - [ ] Unordered list, ordered list, task list (`- [x]`)
 - [ ] Nested list (2 level indent)
 - [ ] Code block với language tag

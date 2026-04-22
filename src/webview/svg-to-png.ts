@@ -17,14 +17,19 @@ export async function svgToPngBlob(
     // Try XML first; fall back to HTML parsing if it fails.
     let svg: SVGSVGElement | null = null;
 
-    const xmlDoc = new DOMParser().parseFromString(svgString, "image/svg+xml");
-    const parseError = xmlDoc.querySelector("parsererror");
-    if (!parseError && xmlDoc.documentElement.tagName.toLowerCase() === "svg") {
-        svg = xmlDoc.documentElement as unknown as SVGSVGElement;
-    } else {
-        // Fallback: parse as HTML and extract the SVG element
-        const htmlDoc = new DOMParser().parseFromString(svgString, "text/html");
-        svg = htmlDoc.querySelector("svg") as unknown as SVGSVGElement | null;
+    try {
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(svgString, "image/svg+xml");
+        const parseError = xmlDoc.querySelector("parsererror");
+        if (!parseError && xmlDoc.documentElement.tagName.toLowerCase() === "svg") {
+            svg = xmlDoc.documentElement as unknown as SVGSVGElement;
+        } else {
+            // Fallback: parse as HTML and extract the SVG element
+            const htmlDoc = parser.parseFromString(svgString, "text/html");
+            svg = htmlDoc.querySelector("svg") as unknown as SVGSVGElement | null;
+        }
+    } catch (err) {
+        throw new Error(`Invalid SVG markup: ${err instanceof Error ? err.message : String(err)}`);
     }
 
     if (!svg) {
@@ -47,7 +52,12 @@ export async function svgToPngBlob(
         svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
     }
 
-    const serialized = new XMLSerializer().serializeToString(svg);
+    let serialized: string;
+    try {
+        serialized = new XMLSerializer().serializeToString(svg);
+    } catch (err) {
+        throw new Error(`Failed to serialize SVG: ${err instanceof Error ? err.message : String(err)}`);
+    }
     // data: URL stays same-origin with the document so the resulting canvas
     // is not tainted (blob: URLs inside the VS Code webview sandbox can cross
     // the origin boundary and block canvas.toBlob export).

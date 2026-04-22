@@ -11,18 +11,23 @@ Findings surfaced incidentally by review but not caused by the triggering story.
 
 1. **Windows font path thiếu trong PDF export** — `findSystemFont` trong `src/utils/export-pdf.ts` không có `C:\Windows\Fonts`. Trên Windows, user chọn font custom nhưng PDF vẫn fallback Roboto silent. Defer cho đến khi có user Windows báo lỗi.
 2. **Variable font không có Italic variant** — `italicVarFont` null dẫn đến `italicPath = varPath`, italic hiển thị như normal. Case hiếm (user có variable font không có italic), defer.
-3. **PDF inline image bị bỏ** — `imgMatch` trong `markdownToPdfContent` chỉ match image standalone đầu dòng (`^!\[`). Inline image giữa paragraph bị bỏ qua. Sẽ tự fix khi migrate parser sang AST (xem action `Migrate PDF parser to remark-parse`).
-4. **Nested list mất trong PDF** — Parser hiện tại không track indent depth. List lồng thành list phẳng. Tự fix khi migrate AST.
-5. **Table cell escape `\|` và `<br>` multiline sai** — `parseRow` split raw theo `|`. Cell có `\|` bị split sai, cell có `<br>` in literal. Tự fix khi migrate AST.
-6. **Heading `#######` (7 dấu `#`) parse sai** — Regex `#{1,6}` match 6 đầu, còn lại vào text. Hiếm.
-7. **Code block không đóng nuốt phần còn lại** — `while (!lines[i].startsWith("\`\`\`"))` chạy đến EOF. Hiếm, nhưng nên clamp.
-8. **`parseInline` không hỗ trợ escape `\*`, `\[`** — Text `\*not bold\*` thành italic sai. Tự fix khi migrate AST.
-9. **Link URL chứa `)` bị cắt** — Regex `\(([^)]+)\)` dừng ở `)` đầu tiên. Case `[text](https://en.wikipedia.org/wiki/Foo_(disambiguation))` mất đuôi. Tự fix khi migrate AST.
-10. **ELK layout áp cho non-flowchart diagram** — `mermaid.initialize({ layout: "elk" })` global, áp cho cả sequence/class/ER. ELK có thể fallback nội bộ nhưng không rollback `elkAvailable` khi render runtime fail.
-11. **`copyFonts()` crash nếu node_modules chưa cài** — Build bị crash với error khó hiểu cho contributor mới. Thêm try/catch.
-12. **Pipeline MDAST thống nhất cho DOCX + PDF** — Webview nên gửi MDAST + image map thay vì markdown text + regex replace. Giải quyết CRLF mismatch, duplicate mermaid, base64 regex O(N*M). Effort ~1 ngày, defer để tránh scope creep.
-13. **Đánh giá migrate PDF sang puppeteer-core dùng VS Code Electron** — WYSIWYG thực sự với CSS theme, bỏ parser hoàn toàn. PoC riêng, defer dài hạn.
-14. **Migrate `@m2d/md2docx@0.0.1` sang `mdast2docx@1.6.1` trực tiếp hoặc `docx@9.6.1`** — Phần wrapper của `@m2d/md2docx` chỉ ~12KB code và version 0.0.1 là alpha. Sau khi áp patch ghim version, đánh giá migrate.
+3. **ELK layout áp cho non-flowchart diagram** — `mermaid.initialize({ layout: "elk" })` global, áp cho cả sequence/class/ER. ELK có thể fallback nội bộ nhưng không rollback `elkAvailable` khi render runtime fail.
+4. **`copyFonts()` crash nếu node_modules chưa cài** — Build bị crash với error khó hiểu cho contributor mới. Thêm try/catch.
+
+### Resolved in PR #50
+
+Items below were originally deferred but resolved by the export rewrite:
+
+- ~~PDF inline image bị bỏ~~ — resolved: puppeteer-core renders HTML natively.
+- ~~Nested list mất trong PDF~~ — resolved: remark-rehype handles nested lists.
+- ~~Table cell escape `\|` và `<br>` multiline sai~~ — resolved: remark-gfm parses correctly.
+- ~~Heading `#######` (7 dấu `#`) parse sai~~ — resolved: remark-parse handles.
+- ~~Code block không đóng nuốt phần còn lại~~ — resolved: remark-parse handles.
+- ~~`parseInline` không hỗ trợ escape `\*`, `\[`~~ — resolved: remark-parse handles.
+- ~~Link URL chứa `)` bị cắt~~ — resolved: remark-parse handles.
+- ~~Pipeline MDAST thống nhất cho DOCX + PDF~~ — resolved: `markdown-ast.ts` shared pipeline.
+- ~~Đánh giá migrate PDF sang puppeteer-core~~ — resolved: Stage 4 complete.
+- ~~Migrate `@m2d/md2docx@0.0.1` sang `mdast2docx@1.6.1`~~ — resolved: Stage 2 complete.
 
 ## Deferred from: code review of plan-export-rewrite-overview (2026-04-22, pass 2)
 

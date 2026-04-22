@@ -20,7 +20,7 @@ export async function parseMarkdownToMdast(markdown: string): Promise<Root> {
   return unified()
     .use(remarkParse)
     .use(remarkGfm)
-    .use(remarkFrontmatter, ["yaml"])
+    .use(remarkFrontmatter, ["yaml", "toml"])
     .parse(markdown) as Root;
 }
 
