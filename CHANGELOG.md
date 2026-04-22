@@ -2,6 +2,12 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## [2.8.4] - 2026-04-22
+
+### Added
+
+- **Copy Mermaid as PNG**: Nút "copy" xuất hiện trên mermaid preview khi hover (cạnh nút expand) và trong lightbox toolbar. Click sẽ render SVG sang PNG bitmap (scale 2x cho retina) rồi ghi vào clipboard bằng `navigator.clipboard.write` + `ClipboardItem("image/png")`. Dán được trực tiếp vào Slack, Word, Figma, Notion, Preview.app. Feedback checkmark 1.5s khi thành công, VS Code warning dialog khi lỗi. Nút tự ẩn trên `.mermaid-error`, mode editing, và lightbox mode ảnh thường.
+
 ## [2.8.3] - 2026-04-18
 
 ### Added

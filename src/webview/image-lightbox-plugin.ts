@@ -1,3 +1,9 @@
+import {
+  copyPngBlobToClipboard,
+  reportCopyError,
+  svgToPngBlob,
+} from './svg-to-png';
+
 let scale = 1;
 let translateX = 0;
 let translateY = 0;
@@ -11,6 +17,9 @@ let currentTarget: HTMLElement | null = null;
 const MIN_SCALE = 0.5;
 const MAX_SCALE = 4;
 const SCALE_STEP = 0.25;
+const COPY_FEEDBACK_MS = 1500;
+const PNG_SCALE = 2;
+let copyFeedbackTimer: number | null = null;
 
 function getElements() {
   return {
@@ -23,8 +32,51 @@ function getElements() {
     zoomOut: document.getElementById('lightbox-zoom-out'),
     zoomLevel: document.getElementById('lightbox-zoom-level'),
     close: document.getElementById('lightbox-close'),
+    copy: document.getElementById('lightbox-copy'),
     backdrop: document.querySelector('.lightbox-backdrop'),
   };
+}
+
+function setCopyButtonVisibility(visible: boolean) {
+  const { copy } = getElements();
+  if (!copy) return;
+  copy.classList.toggle('hidden', !visible);
+  copy.classList.remove('is-copied');
+  if (copyFeedbackTimer !== null) {
+    window.clearTimeout(copyFeedbackTimer);
+    copyFeedbackTimer = null;
+  }
+}
+
+async function copyCurrentMermaidToClipboard(button: HTMLButtonElement): Promise<void> {
+  if (button.disabled) return;
+  const { svgWrapper } = getElements();
+  const svgEl = svgWrapper?.querySelector('svg');
+  if (!svgEl) return;
+  // Snapshot at click time: if user edits doc or closes lightbox during the
+  // async work, we still copy the diagram the user clicked on.
+  const svgMarkup = svgEl.outerHTML;
+  button.disabled = true;
+  try {
+    const blob = await svgToPngBlob(svgMarkup, PNG_SCALE);
+    await copyPngBlobToClipboard(blob);
+    if (button.isConnected) {
+      button.classList.add('is-copied');
+      if (copyFeedbackTimer !== null) window.clearTimeout(copyFeedbackTimer);
+      copyFeedbackTimer = window.setTimeout(() => {
+        if (button.isConnected) button.classList.remove('is-copied');
+        copyFeedbackTimer = null;
+      }, COPY_FEEDBACK_MS);
+    }
+  } catch (err) {
+    reportCopyError(
+      `Copy mermaid thất bại: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function applyTransform() {
@@ -72,6 +124,7 @@ function closeLightbox() {
   }
   image?.classList.remove('hidden');
   currentTarget = null;
+  setCopyButtonVisibility(false);
   applyTransform();
 }
 
@@ -99,6 +152,7 @@ export function openLightbox(src: string, alt: string): void {
   image.classList.remove('hidden');
   image.src = src;
   currentTarget = image;
+  setCopyButtonVisibility(false);
 
   setCaption(alt);
   overlay.classList.add('active');
@@ -129,6 +183,7 @@ export function openMermaidLightbox(svgMarkup: string, caption: string): void {
 
   svgWrapper.classList.remove('hidden');
   currentTarget = svgWrapper;
+  setCopyButtonVisibility(true);
 
   setCaption(caption);
   overlay.classList.add('active');
@@ -140,12 +195,18 @@ let initialized = false;
 export function initLightbox(): void {
   if (initialized) return;
   initialized = true;
-  const { close, backdrop, zoomIn, zoomOut, content } = getElements();
+  const { close, backdrop, zoomIn, zoomOut, content, copy } = getElements();
 
   close?.addEventListener('click', closeLightbox);
   backdrop?.addEventListener('click', closeLightbox);
   zoomIn?.addEventListener('click', () => setScale(scale + SCALE_STEP));
   zoomOut?.addEventListener('click', () => setScale(scale - SCALE_STEP));
+  copy?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    void copyCurrentMermaidToClipboard(copy as HTMLButtonElement);
+  });
+  setCopyButtonVisibility(false);
 
   document.addEventListener('keydown', (e) => {
     if (!isActive()) return;

@@ -2,6 +2,11 @@
 
 Findings surfaced incidentally by review but not caused by the triggering story. Pick up later.
 
+## Mermaid copy as PNG — nice-to-have cải thiện
+
+1. **Screen reader feedback cho trạng thái "copied"** — `.mermaid-copy-btn` và `#lightbox-copy` chỉ đổi icon visual khi copy thành công. Nên thêm `aria-live="polite"` region hoặc đổi `aria-label` tạm thành "Copied" trong 1.5s để screen reader thông báo. Surfaced by blind-hunter review spec-mermaid-copy-image.
+2. **Refactor duplicate copy flow** — mermaid-plugin.ts và image-lightbox-plugin.ts cùng implement pattern `svgToPngBlob → copyPngBlobToClipboard → flashCopied → reportCopyError`. Có thể gom thành helper `copySvgAsPng(button, getSvgMarkup)` trong svg-to-png.ts. Surfaced by blind-hunter review spec-mermaid-copy-image.
+
 ## Mermaid plugin — pre-existing issues
 
 1. **Stale lightbox snapshot on doc edit** — If user edits mermaid code while fullscreen lightbox is open, the lightbox keeps showing the snapshot captured at click time. Nice-to-have: close lightbox on `docChanged` when the underlying mermaid block changes, or re-render from the current block.
