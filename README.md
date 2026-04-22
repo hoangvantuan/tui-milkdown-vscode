@@ -39,6 +39,8 @@ A beautiful WYSIWYG Markdown editor for VS Code powered by Tiptap.
 - **Reading Progress Bar**: Fixed top bar tracking scroll position
 - **Word Count**: Subtle indicator in bottom-right corner
 - **Toolbar Auto-hide**: Opt-in auto-hide after 3s of inactivity, reveal on hover
+- **Export to DOCX**: One-click export to Word `.docx` via `mdast2docx`. Preserves headings, lists, tables, code blocks, and images (inline mermaid diagrams rendered as PNG). Respects the active editor font.
+- **Export to PDF**: WYSIWYG export via headless Chromium (`puppeteer-core`). Requires Chrome, Edge, Chromium, or Brave installed locally (not bundled). Auto-detects common install paths; override with `tuiMarkdown.chromiumPath` if needed.
 - **Configurable Font Size**: Adjust editor font size (8-32px)
 - **Configurable Heading Sizes**: Customize font sizes for H1-H6 headings (12-72px)
 
@@ -59,6 +61,7 @@ A beautiful WYSIWYG Markdown editor for VS Code powered by Tiptap.
 | `tuiMarkdown.autoRenameImages` | true | Auto rename image files when path changes in markdown |
 | `tuiMarkdown.autoDeleteImages` | true | Auto delete image files when removed from markdown (moves to Trash) |
 | `tuiMarkdown.autoHideToolbar` | false | Auto-hide toolbar when typing (show on hover) |
+| `tuiMarkdown.chromiumPath` | `""` | Absolute path to a Chrome/Edge/Chromium/Brave executable for PDF export. Leave empty to auto-detect. |
 | `tuiMarkdown.headingSizes.h1` | 32 | H1 heading font size (12-72px) |
 | `tuiMarkdown.headingSizes.h2` | 28 | H2 heading font size (12-72px) |
 | `tuiMarkdown.headingSizes.h3` | 24 | H3 heading font size (12-72px) |

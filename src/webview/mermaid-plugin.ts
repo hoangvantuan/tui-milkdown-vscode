@@ -15,12 +15,22 @@ import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import mermaid from "mermaid";
+import elkLayouts from "@mermaid-js/layout-elk";
 import { openMermaidLightbox } from "./image-lightbox-plugin";
 import {
     copyPngBlobToClipboard,
     reportCopyError,
     svgToPngBlob,
 } from "./svg-to-png";
+
+// Register ELK layout engine for better subgraph/edge routing
+let elkAvailable = false;
+try {
+    mermaid.registerLayoutLoaders(elkLayouts);
+    elkAvailable = true;
+} catch {
+    console.warn("ELK layout registration failed, falling back to dagre");
+}
 
 const EXPAND_ICON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`;
 const COPY_ICON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
@@ -35,12 +45,23 @@ let mermaidInitialized = false;
 let renderCounter = 0;
 let mermaidBlockCount = 0;
 
+/** Shared mermaid config (layout tuning for complex diagrams). */
+const MERMAID_FLOWCHART_CFG = {
+    nodeSpacing: 80,
+    rankSpacing: 70,
+    subGraphTitleMargin: { top: 10, bottom: 6 },
+    diagramPadding: 16,
+    wrappingWidth: 300,
+    padding: 20,
+};
+
 function ensureMermaidInit(isDark: boolean): void {
     mermaid.initialize({
         startOnLoad: false,
+        layout: elkAvailable ? "elk" : "dagre",
         theme: isDark ? "dark" : "default",
-        securityLevel: "strict",
-        fontFamily: "inherit",
+        securityLevel: "loose",
+        flowchart: MERMAID_FLOWCHART_CFG,
     });
     mermaidInitialized = true;
 }
@@ -51,9 +72,10 @@ function ensureMermaidInit(isDark: boolean): void {
 export function updateMermaidTheme(isDark: boolean): void {
     mermaid.initialize({
         startOnLoad: false,
+        layout: elkAvailable ? "elk" : "dagre",
         theme: isDark ? "dark" : "default",
-        securityLevel: "strict",
-        fontFamily: "inherit",
+        securityLevel: "loose",
+        flowchart: MERMAID_FLOWCHART_CFG,
     });
     // Re-render all existing previews
     document.querySelectorAll<HTMLElement>(".mermaid-preview").forEach((el) => {
@@ -115,7 +137,14 @@ async function renderMermaid(preview: HTMLElement, code: string): Promise<void> 
 
     const id = `mermaid-render-${++renderCounter}`;
     try {
-        const { svg } = await mermaid.render(id, code);
+        // Mermaid v11 no longer auto-converts literal \n inside labels.
+        // Replace \n with <br/> inside any bracket group ([...], (...), {...})
+        // regardless of quote style. Covers plain labels like A[Line1\nLine2].
+        const processed = code.replace(
+            /(\[[^\]]*\]|\([^)]*\)|\{[^}]*\})/g,
+            (match) => match.replace(/\\n/g, "<br/>"),
+        );
+        const { svg } = await mermaid.render(id, processed);
         if (renderCache.size >= MAX_RENDER_CACHE) {
             const oldest = renderCache.keys().next().value;
             if (oldest !== undefined) renderCache.delete(oldest);
@@ -248,47 +277,54 @@ export const MermaidDiagram = Extension.create({
                     // decorations (they can be outside editorView.dom in the DOM tree)
                     document.addEventListener("dblclick", handleDblClick);
 
+                    function scanAndSchedule(view: any): void {
+                        const isDark = document.body.classList.contains("dark-theme");
+                        if (!mermaidInitialized) ensureMermaidInit(isDark);
+
+                        // Skip expensive scan when no mermaid blocks exist
+                        if (mermaidBlockCount === 0) return;
+
+                        // After decorations are applied, find preview containers and render
+                        requestAnimationFrame(() => {
+                            const doc = view.state.doc;
+                            doc.descendants((node: any, pos: number) => {
+                                if (node.type.name !== "codeBlock" || node.attrs.language !== "mermaid") return;
+
+                                const code = node.textContent.trim();
+                                if (!code) return;
+
+                                const endPos = pos + node.nodeSize;
+                                const widget = document.querySelector(
+                                    `.mermaid-preview[data-pos="${endPos}"]`
+                                ) as HTMLElement | null;
+                                if (!widget) return;
+
+                                if (widget.getAttribute("data-mermaid-src") === code) return;
+
+                                widget.setAttribute("data-mermaid-src", code);
+
+                                const prev = pendingTimers.get(endPos);
+                                if (prev) clearTimeout(prev);
+
+                                const timer = setTimeout(() => {
+                                    renderMermaid(widget, code);
+                                    pendingTimers.delete(endPos);
+                                }, RENDER_DEBOUNCE_MS);
+
+                                pendingTimers.set(endPos, timer);
+                            });
+                        });
+                    }
+
+                    // Initial scan: ProseMirror does NOT call plugin view's update() on
+                    // view creation, only on subsequent transactions. Without this, mermaid
+                    // blocks present in the initial content stay stuck at "Rendering…" until
+                    // the user triggers another transaction (e.g. clicks inside a block).
+                    scanAndSchedule(editorView);
+
                     return {
                         update(view) {
-                            const isDark = document.body.classList.contains("dark-theme");
-                            if (!mermaidInitialized) ensureMermaidInit(isDark);
-
-                            // Skip expensive scan when no mermaid blocks exist
-                            if (mermaidBlockCount === 0) return;
-
-                            // After decorations are applied, find preview containers and render
-                            requestAnimationFrame(() => {
-                                const doc = view.state.doc;
-                                doc.descendants((node, pos) => {
-                                    if (node.type.name !== "codeBlock" || node.attrs.language !== "mermaid") return;
-
-                                    const code = node.textContent.trim();
-                                    if (!code) return;
-
-                                    const endPos = pos + node.nodeSize;
-                                    // Find the widget element for this position
-                                    const widget = document.querySelector(
-                                        `.mermaid-preview[data-pos="${endPos}"]`
-                                    ) as HTMLElement | null;
-                                    if (!widget) return;
-
-                                    // Check if already rendered with same code
-                                    if (widget.getAttribute("data-mermaid-src") === code) return;
-
-                                    widget.setAttribute("data-mermaid-src", code);
-
-                                    // Cancel previous pending render for this position
-                                    const prev = pendingTimers.get(endPos);
-                                    if (prev) clearTimeout(prev);
-
-                                    const timer = setTimeout(() => {
-                                        renderMermaid(widget, code);
-                                        pendingTimers.delete(endPos);
-                                    }, RENDER_DEBOUNCE_MS);
-
-                                    pendingTimers.set(endPos, timer);
-                                });
-                            });
+                            scanAndSchedule(view);
                         },
 
                         destroy() {
@@ -394,7 +430,7 @@ function buildDecorations(doc: any, activeMermaidPos: number): DecorationSet {
                     if (copyBtn.isConnected) flashCopiedState(copyBtn);
                 } catch (err) {
                     reportCopyError(
-                        `Copy mermaid thất bại: ${
+                        `Failed to copy mermaid diagram: ${
                             err instanceof Error ? err.message : String(err)
                         }`,
                     );

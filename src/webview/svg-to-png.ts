@@ -8,21 +8,52 @@
 const LOAD_IMAGE_TIMEOUT_MS = 5000;
 const TO_BLOB_TIMEOUT_MS = 5000;
 
+/**
+ * Convert SVG markup to a PNG Blob.
+ *
+ * @param svgString  SVG markup.
+ * @param scale      Pixel scale multiplier (2 = retina).
+ * @param background CSS color for the canvas behind the SVG. Defaults to
+ *                   white so exported/copied mermaid diagrams are readable
+ *                   on any target (Word, Slack, PDF, email). Pass `null`
+ *                   to keep the canvas transparent.
+ */
 export async function svgToPngBlob(
     svgString: string,
     scale: number = 2,
+    background: string | null = "#ffffff",
 ): Promise<Blob> {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(svgString, "image/svg+xml");
-    const svg = doc.documentElement as unknown as SVGSVGElement;
+    // Mermaid with securityLevel:"loose" emits foreignObject containing HTML
+    // (e.g. unclosed <br>, <div>) which breaks strict XML parsing.
+    // Try XML first; fall back to HTML parsing if it fails.
+    let svg: SVGSVGElement | null = null;
 
-    if (!svg || svg.tagName.toLowerCase() !== "svg") {
+    try {
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(svgString, "image/svg+xml");
+        const parseError = xmlDoc.querySelector("parsererror");
+        if (!parseError && xmlDoc.documentElement.tagName.toLowerCase() === "svg") {
+            svg = xmlDoc.documentElement as unknown as SVGSVGElement;
+        } else {
+            // Fallback: parse as HTML and extract the SVG element
+            const htmlDoc = parser.parseFromString(svgString, "text/html");
+            svg = htmlDoc.querySelector("svg") as unknown as SVGSVGElement | null;
+        }
+    } catch (err) {
+        throw new Error(`Invalid SVG markup: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    if (!svg) {
         throw new Error("Invalid SVG markup");
     }
 
-    const { width, height } = resolveSvgSize(svg);
+    let { width, height } = resolveSvgSize(svg);
     if (width <= 0 || height <= 0) {
-        throw new Error("SVG has zero dimensions");
+        // Fallback for SVGs without width/height/viewBox so the mermaid block
+        // still produces a copy/export image instead of failing silently.
+        console.warn("[svgToPng] SVG dimensions missing, using fallback 800x600");
+        width = 800;
+        height = 600;
     }
 
     // Ensure explicit width/height so <img> can rasterize; lightbox strips these.
@@ -32,7 +63,12 @@ export async function svgToPngBlob(
         svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
     }
 
-    const serialized = new XMLSerializer().serializeToString(svg);
+    let serialized: string;
+    try {
+        serialized = new XMLSerializer().serializeToString(svg);
+    } catch (err) {
+        throw new Error(`Failed to serialize SVG: ${err instanceof Error ? err.message : String(err)}`);
+    }
     // data: URL stays same-origin with the document so the resulting canvas
     // is not tainted (blob: URLs inside the VS Code webview sandbox can cross
     // the origin boundary and block canvas.toBlob export).
@@ -44,6 +80,10 @@ export async function svgToPngBlob(
     canvas.height = Math.max(1, Math.round(height * scale));
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Canvas 2D context unavailable");
+    if (background) {
+        ctx.fillStyle = background;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
     return await new Promise<Blob>((resolve, reject) => {
         const timeoutId = window.setTimeout(

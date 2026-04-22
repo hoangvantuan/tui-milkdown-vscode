@@ -244,6 +244,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
     let pendingEdit = false;
     let renameInProgress = false;
+    let exportInProgress = false;
     let updateDebounceTimer: ReturnType<typeof setTimeout> | null = null;
     const disposables: vscode.Disposable[] = [];
 
@@ -911,6 +912,120 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             })();
             break;
           }
+          case "export": {
+            const exportMsg = msg as {
+              format?: string;
+              fontFamily?: string;
+              mermaidImages?: { code: string; base64: string }[];
+            };
+
+            // Reject duplicate export requests so two save dialogs / two
+            // Chromium instances cannot race to the same output path.
+            if (exportInProgress) {
+              webviewPanel.webview.postMessage({
+                type: "exportDone",
+                success: false,
+                reason: "busy",
+              });
+              vscode.window.showWarningMessage(
+                "Export in progress, please wait for the current export to finish.",
+              );
+              break;
+            }
+
+            const mermaidImages = exportMsg.mermaidImages || [];
+            const exportFormat = exportMsg.format || "docx";
+            const fontFamily = exportMsg.fontFamily || "";
+            const configuredPageSize = vscode.workspace
+              .getConfiguration("tuiMarkdown")
+              .get<string>("exportPageSize", "A4");
+            const pageSize: "A4" | "Letter" =
+              configuredPageSize === "Letter" ? "Letter" : "A4";
+
+            // Strip only the BOM. Frontmatter is handled by remark-frontmatter
+            // inside parseMarkdownToMdast, so avoid a regex that could eat a
+            // legitimate `---` horizontal rule at the top of the document.
+            const rawText = document.getText();
+            const normalized = rawText.replace(/^﻿/, "");
+
+            exportInProgress = true;
+            (async () => {
+              try {
+                const markdownAstPath = require("path").join(__dirname, "markdown-ast.js");
+                const {
+                  parseMarkdownToMdast,
+                  replaceMermaidBlocks,
+                  hashMermaidCode,
+                  countMermaidBlocks,
+                } = require(markdownAstPath);
+
+                const mdast = await parseMarkdownToMdast(normalized);
+
+                // Drop the frontmatter node so it is not rendered as content.
+                if (
+                  mdast?.children?.[0] &&
+                  (mdast.children[0].type === "yaml" || mdast.children[0].type === "toml")
+                ) {
+                  mdast.children.shift();
+                }
+
+                if (!mdast?.children || mdast.children.length === 0) {
+                  vscode.window.showWarningMessage(
+                    "Document is empty, nothing to export.",
+                  );
+                  return;
+                }
+
+                const imageMap = new Map<string, string>(
+                  mermaidImages.map(({ code, base64 }: { code: string; base64: string }) => [
+                    hashMermaidCode(code),
+                    base64,
+                  ]),
+                );
+                const totalMermaid = countMermaidBlocks(mdast);
+                const replaced = await replaceMermaidBlocks(mdast, imageMap);
+                if (replaced < totalMermaid) {
+                  vscode.window.showWarningMessage(
+                    `${totalMermaid - replaced} of ${totalMermaid} Mermaid diagram(s) could not be embedded (still rendering or parse error). They will appear as code in the export.`,
+                  );
+                }
+
+                if (exportFormat === "pdf") {
+                  const exportPdfPath = require("path").join(__dirname, "export-pdf.js");
+                  const { exportToPdf: doExport } = require(exportPdfPath);
+                  await doExport(mdast, document.uri, fontFamily, pageSize);
+                } else {
+                  const exportDocxPath = require("path").join(__dirname, "export-docx.js");
+                  const { exportToDocx: doExport } = require(exportDocxPath);
+                  await doExport(mdast, document.uri, fontFamily, pageSize);
+                }
+
+                // Notify webview on success so the button can re-enable without
+                // relying on the 3-second timeout.
+                try {
+                  webviewPanel.webview.postMessage({ type: "exportDone", success: true });
+                } catch {
+                  /* webview may have been disposed */
+                }
+              } catch (err) {
+                const errMsg = err instanceof Error ? err.message : String(err);
+                vscode.window.showErrorMessage(`Export failed: ${errMsg}`);
+                console.error("[Export]", err);
+                try {
+                  webviewPanel.webview.postMessage({
+                    type: "exportDone",
+                    success: false,
+                    reason: errMsg,
+                  });
+                } catch {
+                  /* webview may have been disposed */
+                }
+              } finally {
+                exportInProgress = false;
+              }
+            })();
+            break;
+          }
         }
       }),
       webviewPanel.onDidChangeViewState((e) => {
@@ -924,6 +1039,15 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           e.affectsConfiguration("tuiMarkdown.highlightCurrentLine")
         ) {
           sendConfig();
+        }
+        if (e.affectsConfiguration("tuiMarkdown.chromiumPath")) {
+          try {
+            const exportPdfPath = require("path").join(__dirname, "export-pdf.js");
+            const { clearChromiumCache } = require(exportPdfPath);
+            clearChromiumCache?.();
+          } catch {
+            /* module may not be loaded yet — cache will be empty anyway */
+          }
         }
       }),
       vscode.workspace.onDidSaveTextDocument(async (savedDoc) => {
@@ -1519,6 +1643,67 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           }
           .appearance-popover .zoom-display-btn:hover {
             background: rgba(127, 127, 127, 0.22);
+          }
+          /* Export row inside popover */
+          .appearance-popover .export-controls {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+          }
+          .appearance-popover #export-format {
+            flex: 1;
+            -webkit-appearance: none;
+            appearance: none;
+            background-color: rgba(127, 127, 127, 0.15);
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 8px center;
+            padding: 4px 28px 4px 10px;
+            border: 1px solid rgba(127, 127, 127, 0.25);
+            border-radius: 6px;
+            height: 30px;
+            color: inherit;
+            cursor: pointer;
+            font-size: 11px;
+          }
+          .appearance-popover #export-format:hover {
+            background-color: rgba(127, 127, 127, 0.22);
+          }
+          .appearance-popover #export-format:focus {
+            border-color: rgba(var(--accent-rgb, 59, 130, 246), 0.6);
+            outline: none;
+          }
+          .appearance-popover #btn-export-go {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            height: 30px;
+            padding: 0 12px;
+            background: rgba(var(--accent-rgb, 59, 130, 246), 0.15);
+            color: var(--accent-primary, var(--vscode-focusBorder, #3b82f6));
+            border: 1px solid rgba(var(--accent-rgb, 59, 130, 246), 0.3);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 600;
+            white-space: nowrap;
+            transition: background 0.15s ease-out, transform 0.1s ease-out;
+          }
+          .appearance-popover #btn-export-go:hover {
+            background: rgba(var(--accent-rgb, 59, 130, 246), 0.25);
+          }
+          .appearance-popover #btn-export-go:active {
+            transform: scale(0.95);
+          }
+          .appearance-popover #btn-export-go svg {
+            width: 13px;
+            height: 13px;
+            stroke: currentColor;
+            stroke-width: 2;
+            fill: none;
+            stroke-linecap: round;
+            stroke-linejoin: round;
           }
           #btn-appearance.is-active {
             background: rgba(var(--accent-rgb, 59, 130, 246), 0.18);
@@ -2328,7 +2513,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             box-shadow: 0 0 0 1px var(--vscode-focusBorder, rgba(0,122,204,0.3));
           }
           .mermaid-preview svg {
-            max-width: 100%;
             height: auto;
           }
 
@@ -2352,16 +2536,24 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           }
           .mermaid-svg-host {
             display: block;
+            overflow-x: auto;
+            overflow-y: auto;
           }
           .mermaid-svg-host svg {
-            max-width: 100%;
             height: auto;
+            min-width: min-content;
           }
           /* Allow foreignObject labels to render outside their bbox without
              being clipped by SVG's default overflow:hidden. */
-          .mermaid-svg-host svg,
-          .mermaid-svg-host svg * {
+          .mermaid-svg-host svg foreignObject,
+          .mermaid-svg-host svg text {
             overflow: visible;
+          }
+          .mermaid-svg-host::-webkit-scrollbar { height: 4px; }
+          .mermaid-svg-host::-webkit-scrollbar-track { background: transparent; }
+          .mermaid-svg-host::-webkit-scrollbar-thumb {
+            background: rgba(var(--border-rgb, 0, 0, 0), 0.12);
+            border-radius: 2px;
           }
           .mermaid-expand-btn {
             position: absolute;
@@ -3280,6 +3472,19 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
                 <div class="appearance-row">
                   <label class="appearance-label">Font</label>
                   <div id="font-selector-container"></div>
+                </div>
+                <div class="appearance-row">
+                  <label class="appearance-label">Export</label>
+                  <div class="export-controls">
+                    <select id="export-format" aria-label="Export format">
+                      <option value="docx">DOCX</option>
+                      <option value="pdf">PDF</option>
+                    </select>
+                    <button id="btn-export-go" title="Export file" aria-label="Export">
+                      <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                      Export
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

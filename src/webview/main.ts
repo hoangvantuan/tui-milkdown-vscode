@@ -50,6 +50,7 @@ import { CodeBlockEnhancement } from "./code-block-plugin";
 import { SearchPlugin, performSearch, clearSearch, searchNext, searchPrev, getMatchInfo } from "./search-plugin";
 import { initFontSelector, type FontSelectorAPI, sanitizeFontName } from "./font-selector";
 import { initLightbox } from "./image-lightbox-plugin";
+import { svgToPngBlob } from "./svg-to-png";
 
 // Fix: @tiptap/markdown v3.19.0 drops `escape` tokens from marked parser,
 // causing escaped characters like \_ to be silently lost during roundtrip.
@@ -186,7 +187,7 @@ document.addEventListener("mermaid-copy-error", (e: Event) => {
   const detail = (e as CustomEvent<{ message?: string }>).detail;
   vscode.postMessage({
     type: "showWarning",
-    message: detail?.message || "Copy mermaid thất bại",
+    message: detail?.message || "Failed to copy mermaid diagram",
   });
 });
 
@@ -865,7 +866,7 @@ function applyHeadingSizes(sizes: Record<string, number>): void {
 
 // Editor initialization
 function initEditor(initialContent: string = ""): Editor | null {
-  console.log("[Tiptap] Starting initialization...");
+
   const editorEl = getEditorEl();
   if (!editorEl) {
     console.error("[Tiptap] Editor element not found");
@@ -1071,7 +1072,7 @@ function initEditor(initialContent: string = ""): Editor | null {
     });
 
     hideLoading();
-    console.log("[Tiptap] Editor created successfully!");
+
     return instance;
   } catch (error) {
     console.error("[Tiptap] Failed to create editor:", error);
@@ -1397,6 +1398,62 @@ function setupToolbarHandlers(): void {
 
   getSourceBtn()?.addEventListener("click", viewSource);
 
+  // Export (DOCX/PDF) from appearance popover
+  const exportBtn = document.getElementById("btn-export-go") as HTMLButtonElement | null;
+  exportBtn?.addEventListener("click", async () => {
+    if (!exportBtn || exportBtn.disabled) return;
+    exportBtn.disabled = true;
+    // Safety net: re-enable after 60s even if extension never responds.
+    // The normal path re-enables via the `exportDone` message listener below.
+    const safetyTimer = window.setTimeout(() => {
+      if (exportBtn) exportBtn.disabled = false;
+    }, 60_000);
+    try {
+      const formatSelect = document.getElementById("export-format") as HTMLSelectElement | null;
+      const format = formatSelect?.value || "docx";
+
+      // Collect all rendered mermaid diagrams as PNG base64.
+      // Only previews with data-rendered='true' have a usable SVG; the
+      // extension will warn the user about blocks that fall through
+      // (race with 500ms render debounce, or mermaid parse errors).
+      const mermaidImages: { code: string; base64: string }[] = [];
+      let skippedMermaidCount = 0;
+      const previews = Array.from(document.querySelectorAll<HTMLElement>(".mermaid-preview[data-rendered='true']"));
+      for (const preview of previews) {
+        const code = preview.getAttribute("data-mermaid-src");
+        const svgEl = preview.querySelector("svg");
+        if (!code || !svgEl) continue;
+        try {
+          const blob = await svgToPngBlob(svgEl.outerHTML, 2);
+          const reader = new FileReader();
+          const base64: string = await new Promise((resolve, reject) => {
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+          mermaidImages.push({ code: code.trim(), base64 });
+        } catch (err) {
+          skippedMermaidCount++;
+          console.warn("[Export] Failed to rasterize Mermaid diagram:", err);
+        }
+      }
+      if (skippedMermaidCount > 0) {
+        vscode.postMessage({
+          type: "showWarning",
+          message: `${skippedMermaidCount} Mermaid diagram(s) could not be embedded in the export.`,
+        });
+      }
+      const fontFamily = vscode.getState()?.fontFamily || "";
+      vscode.postMessage({ type: "export", format, fontFamily, mermaidImages });
+    } catch (err) {
+      window.clearTimeout(safetyTimer);
+      if (exportBtn) exportBtn.disabled = false;
+      throw err;
+    }
+    // The safety timer is cleared inside the `exportDone` handler.
+    (exportBtn as HTMLButtonElement & { _safetyTimer?: number })._safetyTimer = safetyTimer;
+  });
+
   // Font selector
   const fontContainer = document.getElementById("font-selector-container");
   if (fontContainer) {
@@ -1571,6 +1628,20 @@ window.addEventListener("message", async (event) => {
   const message = event.data;
   if (!message || typeof message !== "object") return;
 
+  if (message.type === "exportDone") {
+    const btn = document.getElementById("btn-export-go") as
+      | (HTMLButtonElement & { _safetyTimer?: number })
+      | null;
+    if (btn) {
+      if (btn._safetyTimer !== undefined) {
+        window.clearTimeout(btn._safetyTimer);
+        btn._safetyTimer = undefined;
+      }
+      btn.disabled = false;
+    }
+    return;
+  }
+
   switch (message.type) {
     case "update":
       if (typeof message.content === "string") {
@@ -1630,7 +1701,7 @@ window.addEventListener("message", async (event) => {
             }
             // Update TOC after content change (skip if just initialized — initTocSidebar already did it)
             if (!justInitialized) updateTocFromEditor(editor, true);
-            // Cập nhật số lượng kết quả tìm kiếm nếu search bar đang hiển thị
+            // Update search result count if search bar is visible
             const searchBar = document.getElementById("search-bar");
             if (searchBar && !searchBar.classList.contains("hidden")) {
               const searchCount = document.getElementById("search-count");
@@ -1785,7 +1856,7 @@ function initTocSidebar(): void {
 }
 
 function init() {
-  console.log("[Tiptap] init() called");
+
 
   const savedState = vscode.getState();
   if (savedState?.theme && THEMES.includes(savedState.theme as ThemeName)) {
@@ -1839,11 +1910,11 @@ function init() {
     vscode.postMessage({ type: "readClipboardImage" });
   }, { capture: true });
 
-  console.log("[Tiptap] init() complete, sending ready signal");
+
   vscode.postMessage({ type: "ready" });
 }
 
-console.log("[Tiptap] Script loaded, readyState:", document.readyState);
+
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", init);
 } else {
