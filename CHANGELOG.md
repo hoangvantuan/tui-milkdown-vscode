@@ -36,6 +36,7 @@ All notable changes to "TUI Markdown Editor" extension.
 - **Chromium cache invalidate khi đổi setting**: `onDidChangeConfiguration` listen `tuiMarkdown.chromiumPath` → gọi `clearChromiumCache()`, không cần reload window.
 - **Puppeteer launch error message thân thiện**: Wrap lỗi launch thành "Không khởi chạy được Chromium tại `<path>`: <original>. Kiểm tra quyền execute hoặc cấu hình tuiMarkdown.chromiumPath".
 - **SVG zero-dimension fallback**: `svgToPngBlob` dùng fallback 800×600 + console.warn khi SVG không có width/height/viewBox, thay vì throw silent.
+- **Git Graph diff bị chặn ([#48](https://github.com/hoangvantuan/tui-milkdown-vscode/issues/48))**: Thêm scheme `git-graph` vào `configurationDefaults.workbench.editorAssociations` để Tui Milkdown không chặn mở file markdown khi xem diff từ Git Graph plugin. Trước đó chỉ exclude `git` và `gitlens`.
 
 ## [2.8.5] - 2026-04-22
 

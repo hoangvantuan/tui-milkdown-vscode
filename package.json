@@ -133,8 +133,8 @@
     ],
     "configurationDefaults": {
       "workbench.editorAssociations": {
-        "{git,gitlens}:/**/*.md": "default",
-        "{git,gitlens}:/**/*.markdown": "default"
+        "{git,gitlens,git-graph}:/**/*.md": "default",
+        "{git,gitlens,git-graph}:/**/*.markdown": "default"
       }
     }
   },
