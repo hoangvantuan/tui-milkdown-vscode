@@ -1,12 +1,12 @@
 import * as vscode from "vscode";
 import * as path from "path";
+import * as fs from "fs/promises";
 
 /**
  * Export markdown content to DOCX file.
- * Uses @m2d/md2docx for conversion (remark-based pipeline).
  *
- * This module is bundled as a separate file (out/export-docx.js) and
- * lazy-loaded on demand to keep the main extension.js small.
+ * Pipeline: markdown → remark-parse (+gfm,+frontmatter) → MDAST → mdast2docx.toDocx → Uint8Array.
+ * Bundled as a separate file (out/export-docx.js) and lazy-loaded on demand.
  */
 export async function exportToDocx(
   markdown: string,
@@ -25,7 +25,9 @@ export async function exportToDocx(
     title: "Export as DOCX",
   });
 
-  if (!saveUri) return; // User cancelled
+  if (!saveUri) return;
+
+  const baseDir = path.dirname(documentUri.fsPath);
 
   try {
     await vscode.window.withProgress(
@@ -35,11 +37,39 @@ export async function exportToDocx(
         cancellable: false,
       },
       async () => {
-        const { md2docx } = await import("@m2d/md2docx");
+        const [
+          { unified },
+          { default: remarkParse },
+          { default: remarkGfm },
+          { default: remarkFrontmatter },
+          { toDocx },
+          { htmlPlugin },
+          { imagePlugin },
+          { tablePlugin },
+          { listPlugin },
+          { imageSize },
+        ] = await Promise.all([
+          import("unified"),
+          import("remark-parse"),
+          import("remark-gfm"),
+          import("remark-frontmatter"),
+          import("mdast2docx"),
+          import("@m2d/html"),
+          import("@m2d/image"),
+          import("@m2d/table"),
+          import("@m2d/list"),
+          import("image-size"),
+        ]);
+
+        const imageResolver = createNodeImageResolver(baseDir, imageSize);
+
+        const mdast = unified()
+          .use(remarkParse)
+          .use(remarkGfm)
+          .use(remarkFrontmatter, ["yaml"])
+          .parse(markdown);
 
         const docxProps: Record<string, unknown> = { title: docName };
-
-        // Apply user's font preference as default document font
         if (fontFamily) {
           docxProps.styles = {
             default: {
@@ -50,10 +80,21 @@ export async function exportToDocx(
           };
         }
 
-        const result = await md2docx(
-          markdown,
+        const result = await toDocx(
+          mdast,
           docxProps,
-          {},
+          {
+            plugins: [
+              htmlPlugin(),
+              imagePlugin({
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                imageResolver: imageResolver as any,
+                cacheConfig: { cacheMode: "memory" },
+              }),
+              tablePlugin(),
+              listPlugin(),
+            ],
+          },
           "uint8array",
         );
 
@@ -80,4 +121,77 @@ export async function exportToDocx(
     vscode.window.showErrorMessage(`Export failed: ${message}`);
     console.error("[Export DOCX]", err);
   }
+}
+
+type ImageResolver = (
+  src: string,
+  options: unknown,
+) => Promise<{
+  data: string | Buffer;
+  type: string;
+  transformation: { width: number; height: number };
+}>;
+
+function createNodeImageResolver(
+  baseDir: string,
+  imageSize: (input: Uint8Array) => { width?: number; height?: number },
+): ImageResolver {
+  return async (src) => {
+    let buffer: Buffer;
+    let type: string;
+    let dataForDocx: string | Buffer;
+
+    if (src.startsWith("data:")) {
+      const match = /^data:image\/([\w+-]+);base64,(.+)$/.exec(src);
+      if (!match) throw new Error(`Invalid data URL: ${src.slice(0, 40)}…`);
+      type = normalizeImageType(match[1]);
+      buffer = Buffer.from(match[2], "base64");
+      dataForDocx = src;
+    } else if (/^https?:\/\//i.test(src)) {
+      const res = await fetch(src);
+      if (!res.ok) throw new Error(`Fetch ${res.status} for ${src}`);
+      buffer = Buffer.from(await res.arrayBuffer());
+      const contentType = res.headers.get("content-type") ?? "";
+      const ext = contentType.split("/")[1]?.split(";")[0] ?? "png";
+      type = normalizeImageType(ext);
+      dataForDocx = buffer;
+    } else {
+      const cleaned = src.replace(/^file:\/\//, "");
+      const resolved = path.isAbsolute(cleaned)
+        ? cleaned
+        : path.resolve(baseDir, decodeURIComponent(cleaned));
+      buffer = await fs.readFile(resolved);
+      type = normalizeImageType(path.extname(resolved).slice(1) || "png");
+      dataForDocx = buffer;
+    }
+
+    if (type === "svg") {
+      throw new Error(`SVG images are not supported in DOCX export: ${src.slice(0, 60)}`);
+    }
+
+    let width = 600;
+    let height = 400;
+    try {
+      const probed = imageSize(buffer);
+      if (probed.width && probed.height) {
+        width = probed.width;
+        height = probed.height;
+      }
+    } catch {
+      // keep defaults
+    }
+
+    return {
+      data: dataForDocx,
+      type,
+      transformation: { width, height },
+    };
+  };
+}
+
+function normalizeImageType(raw: string): string {
+  const lower = raw.toLowerCase().trim();
+  if (lower === "jpeg") return "jpg";
+  if (lower === "svg+xml") return "svg";
+  return lower;
 }
