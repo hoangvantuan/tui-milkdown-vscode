@@ -1,99 +1,128 @@
-# TUI Markdown Editor
+<div align="center">
+  <img src="media/icon.png" width="96" alt="TUI Markdown Editor">
 
-A beautiful WYSIWYG Markdown editor for VS Code powered by Tiptap.
+  # TUI Markdown Editor
+
+  *A beautiful WYSIWYG Markdown editor for VS Code, powered by Tiptap*
+
+  [![VS Code](https://img.shields.io/badge/VS_Code-%3E%3D1.85.0-007ACC?style=flat-square&logo=visual-studio-code)](https://code.visualstudio.com/)
+  [![Version](https://img.shields.io/badge/version-2.8.6-blue?style=flat-square)](CHANGELOG.md)
+  [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
+
+  [Features](#features) · [Usage](#usage) · [Configuration](#configuration) · [Themes](#themes) · [Export](#export)
+
+</div>
 
 ![Preview](media/preview.png)
 
 ## Features
 
-- **Rich Text Editing**: WYSIWYG markdown editing powered by Tiptap + `@tiptap/markdown` (MarkedJS parser, GFM support)
-- **Syntax Highlighting**: Code blocks with language-aware highlighting via lowlight (19 languages)
-- **Code Block Header**: Language badge with dropdown selector and copy-to-clipboard button
-- **Mermaid Diagrams**: Live SVG preview for `mermaid` code blocks with view/edit mode toggle, theme sync, caching, fullscreen lightbox (zoom/pan), and copy-as-PNG button (2x retina) on preview + in lightbox toolbar
-- **GitHub-Style Alerts**: `[!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]` render as color-coded alert boxes
-- **Task Lists**: Checkbox support with nested task items
-- **Table Editing**: Resizable tables with multi-line cell content (lists, breaks) preserved in markdown
-- **Table Context Menu**: Right-click on table cells for select/add/delete row/column/table actions
-- **Cell Selection Highlight**: Drag-selecting across table cells shows visual highlight overlay
-- **Content Zoom**: Zoom editor content 50%–200% via Appearance popover or Ctrl/Cmd +/-/0 shortcuts
-- **Appearance Popover**: Consolidated zoom, theme, and font controls behind a single gear icon
-- **Theme Selection**: 12 editor themes including Catppuccin (4 variants), Paper (warm serif), Midnight (deep navy)
-- **Image Lightbox**: Fullscreen image viewer with zoom controls (0.5x–4x), expand button on hover
-- **Search (Cmd+F)**: Find text in editor with match highlighting, next/prev navigation, and match counter
-- **Link Navigation**: Cmd+Click (macOS) / Ctrl+Click (Windows/Linux) to follow links — scroll to headings, open files, or launch URLs
-- **View Source**: Toggle between WYSIWYG and source view (Ctrl/Cmd+Shift+M)
-- **Cursor Line Highlight**: Visual highlight of current block/paragraph
-- **Table of Contents**: Sidebar with click-to-scroll, active heading tracking, and collapse/expand
-- **Heading Level Badges**: H1-H6 indicators next to headings
-- **Heading Collapse/Expand**: Toggle arrows on headings to collapse/expand content sections
-- **Metadata Panel**: Collapsible YAML frontmatter editor with validation
-- **Image Upload**: Paste images from clipboard or drag-and-drop into editor
-- **Image URL Editing**: Double-click on image to edit URL/path
-- **Auto-link Paste**: Paste URL on selected text to create markdown link
-- **Auto Rename Images**: Rename image files when you change the path in markdown
-- **Auto Delete Images**: Delete image files when removed from markdown (moves to Trash)
-- **Local Image Display**: Renders local images from document folder and workspace
-- **Tab Indentation**: Tab key inserts 2-space indentation inside code blocks
-- **Large File Warning**: Protection for files >500KB
-- **Font Selector**: Searchable font picker on toolbar — browse all system fonts with live preview
-- **Reading Progress Bar**: Fixed top bar tracking scroll position
-- **Word Count**: Subtle indicator in bottom-right corner
-- **Toolbar Auto-hide**: Opt-in auto-hide after 3s of inactivity, reveal on hover
-- **Export to DOCX**: One-click export to Word `.docx` via `mdast2docx`. Preserves headings, lists, tables, code blocks, and images (inline mermaid diagrams rendered as PNG). Respects the active editor font.
-- **Export to PDF**: WYSIWYG export via headless Chromium (`puppeteer-core`). Requires Chrome, Edge, Chromium, or Brave installed locally (not bundled). Auto-detects common install paths; override with `tuiMarkdown.chromiumPath` if needed.
-- **Configurable Font Size**: Adjust editor font size (8-32px)
-- **Configurable Heading Sizes**: Customize font sizes for H1-H6 headings (12-72px)
+### Rich Text Editing
+
+Full WYSIWYG markdown editing with Tiptap + `@tiptap/markdown` (GFM support via MarkedJS). Format text using the glassmorphic toolbar or keyboard shortcuts. Toggle between WYSIWYG and source view with `Ctrl/Cmd+Shift+M`.
+
+### Code & Diagrams
+
+- **Syntax Highlighting** — 19 languages via lowlight, with language badge dropdown and copy button
+- **Mermaid Diagrams** — Live SVG preview with view/edit toggle, theme sync, fullscreen lightbox (zoom/pan), and copy-as-PNG (2x retina)
+- **GitHub Alerts** — `[!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]` render as styled alert boxes
+
+### Tables
+
+Resizable tables with multi-line cell content. Right-click context menu for row/column operations. Drag-select cells with visual highlight overlay.
+
+### Images
+
+- Paste from clipboard or drag-and-drop (auto-saved to configurable folder)
+- Double-click to edit URL/path
+- Auto-rename files when path changes in markdown
+- Auto-delete files when removed from markdown (moves to Trash)
+- Fullscreen lightbox with zoom controls (0.5x–4x)
+
+### Navigation & Search
+
+- **Search** (`Cmd/Ctrl+F`) — Find with match highlighting, next/prev navigation, match counter
+- **Link Navigation** — `Cmd+Click` / `Ctrl+Click` to follow links, scroll to headings, open files, or launch URLs
+- **Table of Contents** — Sidebar with click-to-scroll, active heading tracking, collapse/expand
+
+### Writing Experience
+
+- **Content Zoom** — 50%–200% via Appearance popover or `Ctrl/Cmd +/-/0`
+- **Font Selector** — Browse all system fonts with live preview
+- **Cursor Line Highlight** — Visual highlight of current block
+- **Heading Collapse** — Toggle arrows on headings to collapse/expand sections
+- **Metadata Panel** — Collapsible YAML frontmatter editor with validation
+- **Reading Progress Bar** — Fixed top bar tracking scroll position
+- **Word Count** — Subtle indicator in bottom-right corner
+- **Toolbar Auto-hide** — Opt-in, reveals on hover
 
 ## Usage
 
-1. Open any `.md` or `.markdown` file
-2. Editor opens automatically in WYSIWYG mode
-3. Use toolbar to format text and insert elements
-4. Changes save automatically to source file
+1. Install from [VS Code Marketplace](https://marketplace.visualstudio.com/)
+2. Open any `.md` or `.markdown` file
+3. Editor opens automatically in WYSIWYG mode
+4. Use toolbar to format text and insert elements
+5. Changes save automatically to source file
+
+## Export
+
+### Export to DOCX
+
+One-click export to Word `.docx` via `mdast2docx`. Preserves headings, lists, tables, code blocks, and images (mermaid diagrams rendered as PNG). Respects the active editor font.
+
+### Export to PDF
+
+WYSIWYG export via headless Chromium (`puppeteer-core`). Requires Chrome, Edge, Chromium, or Brave installed locally (not bundled). Auto-detects common install paths.
+
+> [!TIP]
+> If auto-detection fails, set `tuiMarkdown.chromiumPath` in VS Code settings to the absolute path of your browser executable.
 
 ## Configuration
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `tuiMarkdown.fontSize` | 16 | Editor font size (8-32px) |
-| `tuiMarkdown.highlightCurrentLine` | true | Enable cursor line highlight |
-| `tuiMarkdown.imageSaveFolder` | `images` | Folder to save pasted images (relative to document) |
-| `tuiMarkdown.autoRenameImages` | true | Auto rename image files when path changes in markdown |
-| `tuiMarkdown.autoDeleteImages` | true | Auto delete image files when removed from markdown (moves to Trash) |
-| `tuiMarkdown.autoHideToolbar` | false | Auto-hide toolbar when typing (show on hover) |
-| `tuiMarkdown.chromiumPath` | `""` | Absolute path to a Chrome/Edge/Chromium/Brave executable for PDF export. Leave empty to auto-detect. |
-| `tuiMarkdown.headingSizes.h1` | 32 | H1 heading font size (12-72px) |
-| `tuiMarkdown.headingSizes.h2` | 28 | H2 heading font size (12-72px) |
-| `tuiMarkdown.headingSizes.h3` | 24 | H3 heading font size (12-72px) |
-| `tuiMarkdown.headingSizes.h4` | 20 | H4 heading font size (12-72px) |
-| `tuiMarkdown.headingSizes.h5` | 18 | H5 heading font size (12-72px) |
-| `tuiMarkdown.headingSizes.h6` | 16 | H6 heading font size (12-72px) |
+| `tuiMarkdown.fontSize` | `16` | Editor font size (8–32px) |
+| `tuiMarkdown.highlightCurrentLine` | `true` | Enable cursor line highlight |
+| `tuiMarkdown.imageSaveFolder` | `images` | Folder for pasted images (relative to document) |
+| `tuiMarkdown.autoRenameImages` | `true` | Auto-rename image files when path changes |
+| `tuiMarkdown.autoDeleteImages` | `true` | Auto-delete images removed from markdown (Trash) |
+| `tuiMarkdown.autoHideToolbar` | `false` | Auto-hide toolbar when typing |
+| `tuiMarkdown.chromiumPath` | `""` | Chrome/Chromium path for PDF export |
+| `tuiMarkdown.exportPageSize` | `A4` | Page size for PDF/DOCX export (`A4` or `Letter`) |
+| `tuiMarkdown.headingSizes.h1`–`h6` | `32`–`16` | Heading font sizes (12–72px) |
 
 ## Themes
 
-| Theme | Style |
-|-------|-------|
-| Frame | Light |
-| Frame Dark | Dark |
-| Nord | Light |
-| Nord Dark | Dark |
-| Crepe | Light |
-| Crepe Dark | Dark |
-| Catppuccin Latte | Light |
-| Catppuccin Frappé | Dark |
-| Catppuccin Macchiato | Dark |
-| Catppuccin Mocha | Dark |
-| Paper | Light |
-| Midnight | Dark |
+12 built-in themes with curated typography and color palettes:
+
+| Theme | Style | Character |
+|-------|-------|-----------|
+| Frame | Light | Clean, modern default |
+| Frame Dark | Dark | Blue-tinted, sharp |
+| Nord | Light | Soft Arctic palette |
+| Nord Dark | Dark | Official Nord colors |
+| Crepe | Light | Warm serif reading |
+| Crepe Dark | Dark | Warm serif, inverted |
+| Catppuccin Latte | Light | Pastel warmth |
+| Catppuccin Frappé | Dark | Subdued, muted |
+| Catppuccin Macchiato | Dark | Medium contrast |
+| Catppuccin Mocha | Dark | Rich, deep |
+| Paper | Light | Serif, book-like |
+| Midnight | Dark | Deep navy (#0d1117) |
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Editor engine | [Tiptap 3](https://tiptap.dev) + `@tiptap/markdown` |
+| Markdown parser | MarkedJS (GFM) via `@tiptap/markdown` |
+| Syntax highlighting | [lowlight](https://github.com/wooorm/lowlight) (highlight.js) |
+| Diagrams | [Mermaid 11](https://mermaid.js.org) + ELK layout |
+| DOCX export | [mdast2docx](https://github.com/nicolo-ribaudo/mdast2docx) + @m2d plugins |
+| PDF export | [puppeteer-core](https://pptr.dev) + remark/rehype pipeline |
+| Build | esbuild |
 
 ## Requirements
 
 - VS Code 1.85.0 or higher
-
-## Release Notes
-
-See [CHANGELOG.md](CHANGELOG.md) for version history.
-
-## License
-
-MIT
+- For PDF export: Chrome, Edge, Chromium, or Brave installed on the system
