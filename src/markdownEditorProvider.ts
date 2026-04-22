@@ -928,7 +928,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
                 reason: "busy",
               });
               vscode.window.showWarningMessage(
-                "Đang export, vui lòng đợi export hiện tại kết thúc.",
+                "Export in progress, please wait for the current export to finish.",
               );
               break;
             }
@@ -965,7 +965,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
                 if (!mdast?.children || mdast.children.length === 0) {
                   vscode.window.showWarningMessage(
-                    "Document trống, không có nội dung để export.",
+                    "Document is empty, nothing to export.",
                   );
                   return;
                 }
@@ -994,7 +994,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
                 }
               } catch (err) {
                 const errMsg = err instanceof Error ? err.message : String(err);
-                vscode.window.showErrorMessage(`Export thất bại: ${errMsg}`);
+                vscode.window.showErrorMessage(`Export failed: ${errMsg}`);
                 console.error("[Export]", err);
                 try {
                   webviewPanel.webview.postMessage({

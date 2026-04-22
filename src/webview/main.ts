@@ -187,7 +187,7 @@ document.addEventListener("mermaid-copy-error", (e: Event) => {
   const detail = (e as CustomEvent<{ message?: string }>).detail;
   vscode.postMessage({
     type: "showWarning",
-    message: detail?.message || "Copy mermaid thất bại",
+    message: detail?.message || "Failed to copy mermaid diagram",
   });
 });
 
@@ -1690,7 +1690,7 @@ window.addEventListener("message", async (event) => {
             }
             // Update TOC after content change (skip if just initialized — initTocSidebar already did it)
             if (!justInitialized) updateTocFromEditor(editor, true);
-            // Cập nhật số lượng kết quả tìm kiếm nếu search bar đang hiển thị
+            // Update search result count if search bar is visible
             const searchBar = document.getElementById("search-bar");
             if (searchBar && !searchBar.classList.contains("hidden")) {
               const searchCount = document.getElementById("search-count");

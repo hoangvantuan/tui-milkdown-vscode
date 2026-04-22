@@ -717,27 +717,27 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 ## Mermaid Copy as PNG
 
 **Module** (`src/webview/svg-to-png.ts`):
-* `svgToPngBlob(svgString, scale = 2)`: DOMParser → ensure `width`/`height` (fallback to `viewBox`) → Blob SVG → `URL.createObjectURL` → `<Image>` → `canvas.drawImage` at `native * scale` → `canvas.toBlob('image/png')`. Scale qua canvas (không qua CSS) đảm bảo PNG nét mọi dpi.
-* `copyPngBlobToClipboard(blob)`: `navigator.clipboard.write([new ClipboardItem({'image/png': blob})])`. Throws nếu `ClipboardItem` hoặc `clipboard.write` unavailable.
-* `reportCopyError(message)`: Dispatch `CustomEvent('mermaid-copy-error', { detail: { message } })` trên `document`. Module giữ decoupled với vscode API handle.
+* `svgToPngBlob(svgString, scale = 2)`: DOMParser → ensure `width`/`height` (fallback to `viewBox`) → Blob SVG → `URL.createObjectURL` → `<Image>` → `canvas.drawImage` at `native * scale` → `canvas.toBlob('image/png')`. Scales via canvas (not CSS) to ensure crisp PNG at all DPIs.
+* `copyPngBlobToClipboard(blob)`: `navigator.clipboard.write([new ClipboardItem({'image/png': blob})])`. Throws if `ClipboardItem` or `clipboard.write` is unavailable.
+* `reportCopyError(message)`: Dispatches `CustomEvent('mermaid-copy-error', { detail: { message } })` on `document`. Keeps the module decoupled from the vscode API handle.
 
 **Preview button** (`src/webview/mermaid-plugin.ts`):
-* `.mermaid-copy-btn` injected cạnh `.mermaid-expand-btn` trong widget decoration (cùng vòng tạo button). Click: query `svg` trong `.mermaid-svg-host` → `svgToPngBlob` → `copyPngBlobToClipboard` → `flashCopiedState()` (thêm `.is-copied` 1.5s, 2 `<svg>` icon copy/check toggle qua CSS).
-* Tự ẩn qua CSS khi `.mermaid-error`, `.mermaid-editing`, hoặc chưa `data-rendered="true"`.
+* `.mermaid-copy-btn` injected next to `.mermaid-expand-btn` in the widget decoration (same button creation loop). Click: queries `svg` in `.mermaid-svg-host` → `svgToPngBlob` → `copyPngBlobToClipboard` → `flashCopiedState()` (adds `.is-copied` for 1.5s, two `<svg>` icons copy/check toggled via CSS).
+* Auto-hidden via CSS when `.mermaid-error`, `.mermaid-editing`, or `data-rendered="true"` is not set.
 
 **Lightbox button** (`src/webview/image-lightbox-plugin.ts`):
-* `#lightbox-copy` trong `.lightbox-controls` (trước nút close). Wired trong `initLightbox`, toggle hiển thị qua `setCopyButtonVisibility()`:
+* `#lightbox-copy` in `.lightbox-controls` (before the close button). Wired in `initLightbox`, visibility toggled via `setCopyButtonVisibility()`:
   * `openMermaidLightbox` → visible
-  * `openLightbox` (image) và `closeLightbox` → hidden
-* Click đọc SVG từ `#lightbox-svg.querySelector('svg')` → cùng flow với preview.
+  * `openLightbox` (image) and `closeLightbox` → hidden
+* Click reads SVG from `#lightbox-svg.querySelector('svg')` → same flow as preview.
 
 **Error forwarding** (`src/webview/main.ts`):
-* Listener `document.addEventListener('mermaid-copy-error', ...)` forward `detail.message` tới extension bằng `vscode.postMessage({ type: 'showWarning', message })`. Giữ `svg-to-png.ts` không cần `acquireVsCodeApi()` reference.
+* Listener `document.addEventListener('mermaid-copy-error', ...)` forwards `detail.message` to the extension via `vscode.postMessage({ type: 'showWarning', message })`. Keeps `svg-to-png.ts` from needing an `acquireVsCodeApi()` reference.
 
 **Gotchas**:
-* Lightbox strips `width`/`height` attribute của SVG (để zoom tự do), nhưng `svgToPngBlob` đã normalize qua `resolveSvgSize()` (đọc `viewBox` khi thiếu attr) rồi set lại trước khi serialize.
-* Clipboard requires secure context — VS Code webview đủ điều kiện. Nếu runtime cũ thiếu `ClipboardItem`, button ném lỗi, error được gửi thành VS Code warning dialog.
-* `XMLSerializer` + Blob SVG tránh inline `<script>` → CSP-safe, không cần tweak CSP.
+* Lightbox strips `width`/`height` attributes from SVG (for free zoom), but `svgToPngBlob` already normalizes via `resolveSvgSize()` (reads `viewBox` when attributes are missing) then sets them back before serializing.
+* Clipboard requires secure context — VS Code webview qualifies. If an older runtime lacks `ClipboardItem`, the button throws an error, which is forwarded as a VS Code warning dialog.
+* `XMLSerializer` + Blob SVG avoids inline `<script>` → CSP-safe, no CSP tweaking needed.
 
 ## GitHub-Style Alerts
 
@@ -809,9 +809,9 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 
 **Provider hook** (`src/markdownEditorProvider.ts` case `"export"`):
 
-* Enforces a single-in-flight export per webview via the `exportInProgress` flag. A second click while busy gets rejected with "Đang export, vui lòng đợi" + `exportDone {success: false, reason: "busy"}` back to the webview.
+* Enforces a single-in-flight export per webview via the `exportInProgress` flag. A second click while busy gets rejected with "Export in progress, please wait for the current export to finish." + `exportDone {success: false, reason: "busy"}` back to the webview.
 * On success or error, extension sends `exportDone` so the webview can re-enable its button without relying on a 3 s timeout. The webview also keeps a 60 s safety timer in case the message is lost.
-* After build the MDAST, provider warns "Document trống, không có nội dung để export" when `mdast.children` is empty (or was only frontmatter).
+* After building the MDAST, provider warns "Document is empty, nothing to export." when `mdast.children` is empty (or was only frontmatter).
 
 **DOCX** (`src/utils/export-docx.ts`):
 
@@ -830,7 +830,7 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 * HTML is wrapped in a GitHub-like document template (`buildHtmlDocument`). Font family user chose is passed through `cssFontFamilyToken()` — NOT `escapeHtml`. CSS `<style>` text does not decode HTML entities, so a whitelist strip (`[A-Za-z0-9 _-]`) is used to keep the `font-family` declaration valid.
 * Chromium launch: `puppeteer.launch({ args: puppeteerLaunchArgs() })`. `puppeteerLaunchArgs()` returns `["--no-sandbox", "--disable-setuid-sandbox"]` ONLY on Linux-as-root — macOS/Windows/Linux-as-user keep Chromium's default sandbox.
 * `page.setJavaScriptEnabled(false)` before `setContent`. `waitUntil: "networkidle0"` so inlined images finish decoding before `page.pdf()` prints.
-* Launch errors are wrapped: "Không khởi chạy được Chromium tại `<path>`: <original>. Kiểm tra quyền execute hoặc cấu hình tuiMarkdown.chromiumPath."
+* Launch errors are wrapped: "Failed to launch Chromium at `<path>`: <original>. Check execute permission or configure tuiMarkdown.chromiumPath."
 * Extension does NOT ship a Chromium binary. `chromium-discovery.ts` looks up an installed Chrome/Edge/Chromium/Brave via (in order): `tuiMarkdown.chromiumPath` setting → `PUPPETEER_EXECUTABLE_PATH` env → OS-specific well-known paths. First hit is cached for the session.
 * Path validation uses `fs.accessSync(path, X_OK)` on top of `isFile()`. Leading/trailing quotes in the setting value are stripped so `"C:\...\chrome.exe"` works.
 * The provider listens for `tuiMarkdown.chromiumPath` changes via `onDidChangeConfiguration` and calls `clearChromiumCache()` — no reload needed. (`clearChromiumCache` is re-exported from `export-pdf.js` so the provider can reach it without a separate bundle entry for `chromium-discovery`.)
@@ -839,7 +839,7 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 **Gotchas**:
 
 * **VS Code Electron is not a Chromium puppeteer can drive.** `process.execPath` in the extension host points at an Electron helper — launching puppeteer against it fails. This is why the discovery module explicitly does not try `process.execPath`.
-* **Chromium is required on the user's machine.** PDF export surfaces a "Mở Settings" error dialog when no binary is found. Fallback was intentionally NOT implemented to keep the bundle small and the pipeline WYSIWYG.
+* **Chromium is required on the user's machine.** PDF export surfaces an "Open Settings" error dialog when no binary is found. Fallback was intentionally NOT implemented to keep the bundle small and the pipeline WYSIWYG.
 * **Do NOT add `--disable-web-security` or re-enable JS** on the puppeteer page. `--no-sandbox` is also gated to Linux root only — do not widen.
 * **Do NOT drop `stripDangerousHtmlTags` or `inlineRelativeImages`.** They are the reason user markdown with `<iframe src="file:///...">` or `![](./img.png)` behaves safely and correctly.
 * `findChromiumExecutable()` result is cached per session — clear with `clearChromiumCache()` if a test needs to re-probe. The provider auto-clears on `tuiMarkdown.chromiumPath` changes.

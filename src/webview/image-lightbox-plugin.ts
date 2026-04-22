@@ -70,7 +70,7 @@ async function copyCurrentMermaidToClipboard(button: HTMLButtonElement): Promise
     }
   } catch (err) {
     reportCopyError(
-      `Copy mermaid thất bại: ${
+      `Failed to copy mermaid diagram: ${
         err instanceof Error ? err.message : String(err)
       }`,
     );

@@ -423,7 +423,7 @@ function buildDecorations(doc: any, activeMermaidPos: number): DecorationSet {
                     if (copyBtn.isConnected) flashCopiedState(copyBtn);
                 } catch (err) {
                     reportCopyError(
-                        `Copy mermaid thất bại: ${
+                        `Failed to copy mermaid diagram: ${
                             err instanceof Error ? err.message : String(err)
                         }`,
                     );

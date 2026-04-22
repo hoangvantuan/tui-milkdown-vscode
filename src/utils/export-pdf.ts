@@ -39,10 +39,10 @@ export async function exportToPdf(
   const chromiumPath = await findChromiumExecutable();
   if (!chromiumPath) {
     const action = await vscode.window.showErrorMessage(
-      "Cần Chrome, Edge hoặc Chromium đã cài trên máy để export PDF. Cài xong hoặc cấu hình \"tuiMarkdown.chromiumPath\" rồi thử lại.",
-      "Mở Settings",
+      "Chrome, Edge or Chromium must be installed to export PDF. Install one or configure \"tuiMarkdown.chromiumPath\" and try again.",
+      "Open Settings",
     );
-    if (action === "Mở Settings") {
+    if (action === "Open Settings") {
       await vscode.commands.executeCommand(
         "workbench.action.openSettings",
         "tuiMarkdown.chromiumPath",
@@ -76,7 +76,7 @@ export async function exportToPdf(
         } catch (launchErr) {
           const original = launchErr instanceof Error ? launchErr.message : String(launchErr);
           throw new Error(
-            `Không khởi chạy được Chromium tại "${chromiumPath}": ${original}. Kiểm tra quyền execute hoặc cấu hình tuiMarkdown.chromiumPath.`,
+            `Failed to launch Chromium at "${chromiumPath}": ${original}. Check execute permission or configure tuiMarkdown.chromiumPath.`,
           );
         }
 
@@ -209,7 +209,7 @@ async function inlineRelativeImages(
         const mime = ext === "svg" ? "image/svg+xml" : `image/${ext === "jpg" ? "jpeg" : ext}`;
         node.properties.src = `data:${mime};base64,${buf.toString("base64")}`;
       } catch (err) {
-        console.warn(`[Export PDF] Không đọc được ảnh "${src}":`, err);
+        console.warn(`[Export PDF] Failed to read image "${src}":`, err);
       }
     }),
   );

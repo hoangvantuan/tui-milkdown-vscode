@@ -197,7 +197,7 @@ function createNodeImageResolver(
       }
 
       if (type === "svg") {
-        console.warn(`[Export DOCX] SVG image không được hỗ trợ, thay bằng placeholder: ${src.slice(0, 60)}`);
+        console.warn(`[Export DOCX] SVG image not supported, using placeholder: ${src.slice(0, 60)}`);
         return placeholderImage();
       }
 
@@ -209,10 +209,10 @@ function createNodeImageResolver(
           width = probed.width;
           height = probed.height;
         } else {
-          console.warn(`[Export DOCX] Không đọc được dimensions, dùng 600x400 cho: ${src.slice(0, 60)}`);
+          console.warn(`[Export DOCX] Cannot read dimensions, using 600x400 for: ${src.slice(0, 60)}`);
         }
       } catch (err) {
-        console.warn(`[Export DOCX] imageSize failed cho "${src.slice(0, 60)}":`, err);
+        console.warn(`[Export DOCX] imageSize failed for "${src.slice(0, 60)}":`, err);
       }
 
       return {
