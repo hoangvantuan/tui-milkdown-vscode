@@ -936,6 +936,11 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             const mermaidImages = exportMsg.mermaidImages || [];
             const exportFormat = exportMsg.format || "docx";
             const fontFamily = exportMsg.fontFamily || "";
+            const configuredPageSize = vscode.workspace
+              .getConfiguration("tuiMarkdown")
+              .get<string>("exportPageSize", "A4");
+            const pageSize: "A4" | "Letter" =
+              configuredPageSize === "Letter" ? "Letter" : "A4";
 
             // Strip only the BOM. Frontmatter is handled by remark-frontmatter
             // inside parseMarkdownToMdast, so avoid a regex that could eat a
@@ -951,6 +956,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
                   parseMarkdownToMdast,
                   replaceMermaidBlocks,
                   hashMermaidCode,
+                  countMermaidBlocks,
                 } = require(markdownAstPath);
 
                 const mdast = await parseMarkdownToMdast(normalized);
@@ -971,18 +977,27 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
                 }
 
                 const imageMap = new Map<string, string>(
-                  mermaidImages.map(({ code, base64 }) => [hashMermaidCode(code), base64]),
+                  mermaidImages.map(({ code, base64 }: { code: string; base64: string }) => [
+                    hashMermaidCode(code),
+                    base64,
+                  ]),
                 );
-                await replaceMermaidBlocks(mdast, imageMap);
+                const totalMermaid = countMermaidBlocks(mdast);
+                const replaced = await replaceMermaidBlocks(mdast, imageMap);
+                if (replaced < totalMermaid) {
+                  vscode.window.showWarningMessage(
+                    `${totalMermaid - replaced} of ${totalMermaid} Mermaid diagram(s) could not be embedded (still rendering or parse error). They will appear as code in the export.`,
+                  );
+                }
 
                 if (exportFormat === "pdf") {
                   const exportPdfPath = require("path").join(__dirname, "export-pdf.js");
                   const { exportToPdf: doExport } = require(exportPdfPath);
-                  await doExport(mdast, document.uri, fontFamily);
+                  await doExport(mdast, document.uri, fontFamily, pageSize);
                 } else {
                   const exportDocxPath = require("path").join(__dirname, "export-docx.js");
                   const { exportToDocx: doExport } = require(exportDocxPath);
-                  await doExport(mdast, document.uri, fontFamily);
+                  await doExport(mdast, document.uri, fontFamily, pageSize);
                 }
 
                 // Notify webview on success so the button can re-enable without

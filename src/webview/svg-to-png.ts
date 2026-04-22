@@ -8,9 +8,20 @@
 const LOAD_IMAGE_TIMEOUT_MS = 5000;
 const TO_BLOB_TIMEOUT_MS = 5000;
 
+/**
+ * Convert SVG markup to a PNG Blob.
+ *
+ * @param svgString  SVG markup.
+ * @param scale      Pixel scale multiplier (2 = retina).
+ * @param background CSS color for the canvas behind the SVG. Defaults to
+ *                   white so exported/copied mermaid diagrams are readable
+ *                   on any target (Word, Slack, PDF, email). Pass `null`
+ *                   to keep the canvas transparent.
+ */
 export async function svgToPngBlob(
     svgString: string,
     scale: number = 2,
+    background: string | null = "#ffffff",
 ): Promise<Blob> {
     // Mermaid with securityLevel:"loose" emits foreignObject containing HTML
     // (e.g. unclosed <br>, <div>) which breaks strict XML parsing.
@@ -69,6 +80,10 @@ export async function svgToPngBlob(
     canvas.height = Math.max(1, Math.round(height * scale));
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Canvas 2D context unavailable");
+    if (background) {
+        ctx.fillStyle = background;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
     return await new Promise<Blob>((resolve, reject) => {
         const timeoutId = window.setTimeout(

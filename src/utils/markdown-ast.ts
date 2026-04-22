@@ -28,13 +28,17 @@ export async function parseMarkdownToMdast(markdown: string): Promise<Root> {
  * djb2 hash (32-bit unsigned, hex).
  *
  * Used to correlate mermaid code blocks with pre-rendered images sent from
- * the webview. Both sides pipe through this function so the CRLF/LF line
- * ending the user's file happens to carry does not cause a miss between
- * `node.textContent` (ProseMirror in the webview) and `node.value`
- * (remark-parse in the extension host).
+ * the webview. Normalizes line endings (CRLF/CR), strips zero-width and
+ * bidi formatting chars, and applies Unicode NFC so ProseMirror's
+ * `node.textContent` and remark-parse's `node.value` hash identically
+ * regardless of platform or invisible-char pastes.
  */
 export function hashMermaidCode(code: string): string {
-  const normalized = code.replace(/\r\n?/g, "\n").trim();
+  const normalized = code
+    .replace(/\r\n?/g, "\n")
+    .replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/g, "")
+    .normalize("NFC")
+    .trim();
   let h = 5381;
   for (let i = 0; i < normalized.length; i++) {
     h = (h << 5) + h + normalized.charCodeAt(i);
@@ -43,9 +47,32 @@ export function hashMermaidCode(code: string): string {
 }
 
 /**
+ * Count mermaid code blocks in the tree. Used by the caller to detect
+ * when some diagrams did not make it through (render race, parse error,
+ * or hash mismatch) and surface a warning.
+ */
+export function countMermaidBlocks(mdast: Root): number {
+  let count = 0;
+  walkCodeNodes(mdast, (node) => {
+    if (node.lang === "mermaid") count++;
+  });
+  return count;
+}
+
+function walkCodeNodes(root: Root, visit: (node: Code) => void): void {
+  const stack: unknown[] = [root];
+  while (stack.length) {
+    const node = stack.pop() as { type?: string; children?: unknown[] } & Partial<Code>;
+    if (!node || typeof node !== "object") continue;
+    if (node.type === "code") visit(node as Code);
+    if (Array.isArray(node.children)) stack.push(...node.children);
+  }
+}
+
+/**
  * Walk the tree and swap `code` nodes with lang="mermaid" for
  * `image` nodes pointing at the matching base64 data URL.
- * Mutates in place.
+ * Mutates in place. Returns the number of blocks successfully replaced.
  *
  * Mermaid blocks without a matching rendered image stay as code
  * blocks (graceful degradation for parse errors in the webview).
@@ -53,10 +80,12 @@ export function hashMermaidCode(code: string): string {
 export async function replaceMermaidBlocks(
   mdast: Root,
   imageMap: Map<string, string>,
-): Promise<void> {
-  if (imageMap.size === 0) return;
+): Promise<number> {
+  if (imageMap.size === 0) return 0;
 
   const { visit, SKIP } = await import("unist-util-visit");
+
+  let replaced = 0;
 
   visit(mdast, "code", (node: Code, index, parent: Parent | null | undefined) => {
     if (!parent || index === undefined || node.lang !== "mermaid") return;
@@ -76,6 +105,9 @@ export async function replaceMermaidBlocks(
       children: [imageNode],
     };
     parent.children[index] = paragraphNode;
+    replaced++;
     return SKIP;
   });
+
+  return replaced;
 }

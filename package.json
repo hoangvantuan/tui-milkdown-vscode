@@ -113,6 +113,12 @@
           "type": "string",
           "default": "",
           "description": "Absolute path to a Chrome/Chromium/Edge/Brave executable used for PDF export. Leave empty to auto-detect."
+        },
+        "tuiMarkdown.exportPageSize": {
+          "type": "string",
+          "enum": ["A4", "Letter"],
+          "default": "A4",
+          "description": "Page size for PDF and DOCX export"
         }
       }
     },

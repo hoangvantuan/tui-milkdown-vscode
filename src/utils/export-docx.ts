@@ -3,6 +3,8 @@ import * as path from "path";
 import * as fs from "fs/promises";
 import type { Root } from "mdast";
 
+export type PageSize = "A4" | "Letter";
+
 /**
  * Export an MDAST tree to a DOCX file.
  *
@@ -16,6 +18,7 @@ export async function exportToDocx(
   mdast: Root,
   documentUri: vscode.Uri,
   fontFamily?: string,
+  pageSize?: PageSize,
 ): Promise<void> {
   const docName = path.basename(documentUri.fsPath, path.extname(documentUri.fsPath));
   const defaultUri = vscode.Uri.joinPath(
@@ -57,36 +60,22 @@ export async function exportToDocx(
           import("image-size"),
         ]);
 
-        const imageResolver = createNodeImageResolver(baseDir, imageSize);
+        const imageResolver = createNodeImageResolver(baseDir, imageSize, pageSize);
 
-        const docxProps: Record<string, unknown> = { title: docName };
-        if (fontFamily) {
-          docxProps.styles = {
-            default: {
-              document: {
-                run: { font: fontFamily },
-              },
-            },
-          };
-        }
+        const docxProps = buildDocxProps(docName, fontFamily);
+        const sectionProps = buildSectionProps(pageSize, [
+          blockquotePlugin(),
+          htmlPlugin(),
+          imagePlugin({
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            imageResolver: imageResolver as any,
+            cacheConfig: { cacheMode: "memory" },
+          }),
+          tablePlugin(),
+          listPlugin(),
+        ]);
 
-        const result = await toDocx(
-          mdast,
-          docxProps,
-          {
-            plugins: [
-              htmlPlugin(),
-              imagePlugin({
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                imageResolver: imageResolver as any,
-                cacheConfig: { cacheMode: "memory" },
-              }),
-              tablePlugin(),
-              listPlugin(),
-            ],
-          },
-          "uint8array",
-        );
+        const result = await toDocx(mdast, docxProps, sectionProps, "uint8array");
 
         const buffer = Buffer.from(result as Uint8Array);
         await vscode.workspace.fs.writeFile(saveUri, buffer);
@@ -110,6 +99,203 @@ export async function exportToDocx(
     vscode.window.showErrorMessage(`Export failed: ${message}`);
     console.error("[Export DOCX]", err);
   }
+}
+
+// Page size constants. DXA (twips): 1440 DXA = 1 inch.
+const PAGE_SIZES = {
+  A4: { width: 11906, height: 16838 },
+  Letter: { width: 12240, height: 15840 },
+} as const;
+
+const DEFAULT_MARGIN_DXA = 1440; // 1 inch
+
+function contentWidthPx(pageSize?: PageSize): number {
+  const size = pageSize === "Letter" ? PAGE_SIZES.Letter : PAGE_SIZES.A4;
+  const contentDxa = size.width - DEFAULT_MARGIN_DXA * 2;
+  return Math.round((contentDxa / 1440) * 96);
+}
+
+function contentHeightPx(pageSize?: PageSize): number {
+  const size = pageSize === "Letter" ? PAGE_SIZES.Letter : PAGE_SIZES.A4;
+  const contentDxa = size.height - DEFAULT_MARGIN_DXA * 2;
+  return Math.round((contentDxa / 1440) * 96);
+}
+
+/**
+ * Document styles.
+ *
+ * Heading scale mirrors the PDF export (GitHub-like): H1=2x body, H2=1.5x,
+ * H3=1.25x, H4=1.1x, H5=1x, H6=0.9x. Body is 12pt, so H1 lands at 24pt.
+ * This keeps DOCX and PDF visually aligned for the same document.
+ *
+ * Units:
+ *   - `size`: half-points (24 = 12pt).
+ *   - `spacing.before/after`: twips (240 = 12pt; 1440 = 1 inch).
+ *   - `spacing.line`: twips; 240 = single (1.0x), 276 ≈ 1.15x, 360 = 1.5x.
+ *
+ * Heading IDs MUST be `Heading1..Heading6`. mdast2docx maps markdown depth N
+ * directly to `Heading${N}` only when section props set `useTitle: false`
+ * (see buildSectionProps). Without that, H1 falls through to built-in "Title"
+ * and every level is shifted by 1.
+ */
+function buildDocxProps(
+  title: string,
+  fontFamily?: string,
+): Record<string, unknown> {
+  const font = fontFamily || "Arial";
+  const monoFont = "Consolas";
+
+  const headingStyles = [
+    { id: "Heading1", name: "Heading 1", size: 48, spacing: { before: 480, after: 240 }, outlineLevel: 0 }, // 24pt
+    { id: "Heading2", name: "Heading 2", size: 36, spacing: { before: 360, after: 180 }, outlineLevel: 1 }, // 18pt
+    { id: "Heading3", name: "Heading 3", size: 30, spacing: { before: 300, after: 150 }, outlineLevel: 2 }, // 15pt
+    { id: "Heading4", name: "Heading 4", size: 26, spacing: { before: 240, after: 120 }, outlineLevel: 3 }, // 13pt
+    { id: "Heading5", name: "Heading 5", size: 24, spacing: { before: 240, after: 120 }, outlineLevel: 4 }, // 12pt
+    { id: "Heading6", name: "Heading 6", size: 22, spacing: { before: 240, after: 120 }, outlineLevel: 5 }, // 11pt
+  ];
+
+  return {
+    title,
+    styles: {
+      default: {
+        document: {
+          run: { font, size: 24 }, // 12pt body
+          paragraph: {
+            // mdast2docx's built-in default is `alignment: "thaiDistribute"`,
+            // which Word renders as odd wide spacing for Latin/Vietnamese.
+            // Force left alignment and a normal Western gap between paragraphs.
+            alignment: "left",
+            spacing: { before: 120, after: 0, line: 276 }, // 6pt before, 1.15x line
+          },
+        },
+      },
+      paragraphStyles: [
+        ...headingStyles.map((h) => ({
+          id: h.id,
+          name: h.name,
+          basedOn: "Normal",
+          next: "Normal",
+          quickFormat: true,
+          run: { size: h.size, bold: true, font },
+          paragraph: {
+            spacing: h.spacing,
+            outlineLevel: h.outlineLevel,
+            // Keep heading on the same page as the next paragraph so a
+            // heading is never left dangling at the bottom of a page.
+            keepNext: true,
+          },
+        })),
+        // mdast2docx emits code blocks with `style: "blockCode"`. Define it
+        // so fenced code blocks share a consistent mono font + smaller size.
+        {
+          id: "blockCode",
+          name: "Code Block",
+          basedOn: "Normal",
+          next: "Normal",
+          quickFormat: false,
+          run: { font: monoFont, size: 20 }, // 10pt
+          paragraph: {
+            spacing: { before: 120, after: 120, line: 260 },
+            alignment: "left",
+          },
+        },
+      ],
+      characterStyles: [
+        // mdast2docx emits `inlineCode` with `style: "code"` (lowercase,
+        // hardcoded in @m2d/core). Match that id so the shading/color apply.
+        {
+          id: "code",
+          name: "Inline Code",
+          basedOn: "DefaultParagraphFont",
+          run: {
+            font: monoFont,
+            size: 20, // 10pt (slightly smaller than body)
+            color: "C7254E",
+            shading: { type: "clear", fill: "F9F2F4" },
+          },
+        },
+      ],
+    },
+  };
+}
+
+/**
+ * Custom blockquote handler. mdast2docx's built-in renderer applies
+ * `indent: { left: 720, hanging: 360 }` which indents wrapped lines MORE
+ * than the first line (bibliography-style), and omits `spacing.before`,
+ * so blockquotes sit flush against the preceding paragraph/list.
+ *
+ * We override both: no hanging indent (all lines align), and a 12pt top
+ * gap so the quote breathes away from neighbouring blocks. Setting
+ * `node.type = ""` disables the default case in @m2d/core.
+ */
+function blockquotePlugin(): Record<string, unknown> {
+  return {
+    block: (
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      docx: any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      node: any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      paraProps: any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      blockChildrenProcessor: any,
+    ) => {
+      if (node.type !== "blockquote") return [];
+
+      const quoteProps = {
+        ...paraProps,
+        indent: { left: 720 }, // 0.5 inch left, uniform across all lines
+        border: {
+          ...(paraProps.border || {}),
+          left: {
+            style: docx.BorderStyle.SINGLE,
+            size: 12,
+            space: 14,
+            color: "CCCCCC",
+          },
+        },
+        spacing: {
+          ...(paraProps.spacing || {}),
+          before: 240, // 12pt gap above the quote
+          after: 120,  // 6pt gap below
+        },
+      };
+
+      const paragraphs = blockChildrenProcessor(node, quoteProps);
+      node.type = ""; // Prevent @m2d/core's default blockquote branch
+      return paragraphs;
+    },
+  };
+}
+
+/**
+ * Section props. This is the argument 3 of toDocx, NOT docxProps. Page size
+ * and margins belong here because `IDocxProps = Omit<..., "sections" | ...>`.
+ *
+ * `useTitle: false` so markdown depth N maps directly to `Heading${N}`,
+ * aligning with the paragraphStyles in buildDocxProps.
+ */
+function buildSectionProps(
+  pageSize: PageSize | undefined,
+  plugins: unknown[],
+): Record<string, unknown> {
+  const size = pageSize === "Letter" ? PAGE_SIZES.Letter : PAGE_SIZES.A4;
+  return {
+    useTitle: false,
+    plugins,
+    properties: {
+      page: {
+        size: { width: size.width, height: size.height },
+        margin: {
+          top: DEFAULT_MARGIN_DXA,
+          right: DEFAULT_MARGIN_DXA,
+          bottom: DEFAULT_MARGIN_DXA,
+          left: DEFAULT_MARGIN_DXA,
+        },
+      },
+    },
+  };
 }
 
 type ImageResolver = (
@@ -151,7 +337,10 @@ function safeDecodeURIComponent(s: string): string {
 function createNodeImageResolver(
   baseDir: string,
   imageSize: (input: Uint8Array) => { width?: number; height?: number },
+  pageSize?: PageSize,
 ): ImageResolver {
+  const maxWidth = contentWidthPx(pageSize);
+  const maxHeight = contentHeightPx(pageSize);
   return async (src) => {
     try {
       let buffer: Buffer;
@@ -218,7 +407,7 @@ function createNodeImageResolver(
       return {
         data: dataForDocx,
         type,
-        transformation: { width, height },
+        transformation: clampImageSize(width, height, maxWidth, maxHeight),
       };
     } catch (err) {
       console.warn(`[Export DOCX] Skip image "${src.slice(0, 60)}":`, err);
@@ -232,4 +421,27 @@ function normalizeImageType(raw: string): string {
   if (lower === "jpeg") return "jpg";
   if (lower === "svg+xml") return "svg";
   return lower;
+}
+
+/**
+ * Scale image to fit within maxWidth AND maxHeight.
+ * Uses the smaller scale factor to ensure the image fits both dimensions.
+ * Images smaller than both limits are kept at original size.
+ */
+function clampImageSize(
+  width: number,
+  height: number,
+  maxWidth: number,
+  maxHeight: number,
+): { width: number; height: number } {
+  if (width <= maxWidth && height <= maxHeight) return { width, height };
+
+  const scaleW = width > maxWidth ? maxWidth / width : 1;
+  const scaleH = height > maxHeight ? maxHeight / height : 1;
+  const scale = Math.min(scaleW, scaleH);
+
+  return {
+    width: Math.round(width * scale),
+    height: Math.round(height * scale),
+  };
 }

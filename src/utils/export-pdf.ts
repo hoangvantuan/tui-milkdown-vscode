@@ -17,11 +17,15 @@ export { clearChromiumCache };
  * Bundled as `out/export-pdf.js` (lazy-loaded on demand).
  */
 
+export type PageSize = "A4" | "Letter";
+
 export async function exportToPdf(
   mdast: Root,
   documentUri: vscode.Uri,
   fontFamily?: string,
+  pageSize?: PageSize,
 ): Promise<void> {
+  const format: PageSize = pageSize === "Letter" ? "Letter" : "A4";
   const docName = path.basename(documentUri.fsPath, path.extname(documentUri.fsPath));
   const defaultUri = vscode.Uri.joinPath(
     vscode.Uri.joinPath(documentUri, ".."),
@@ -62,7 +66,7 @@ export async function exportToPdf(
         const baseDir = path.dirname(documentUri.fsPath);
         const bodyHtml = await mdastToHtml(mdast, baseDir);
         const sanitizedBody = stripDangerousHtmlTags(bodyHtml);
-        const fullHtml = buildHtmlDocument(sanitizedBody, docName, fontFamily);
+        const fullHtml = buildHtmlDocument(sanitizedBody, docName, fontFamily, format);
 
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const puppeteer = require("puppeteer-core");
@@ -88,7 +92,7 @@ export async function exportToPdf(
             timeout: 30_000,
           });
           const pdfBuffer: Uint8Array = await page.pdf({
-            format: "A4",
+            format,
             printBackground: true,
             preferCSSPageSize: false,
             margin: { top: "20mm", right: "15mm", bottom: "20mm", left: "15mm" },
@@ -249,9 +253,13 @@ function buildHtmlDocument(
   bodyHtml: string,
   title: string,
   fontFamily?: string,
+  pageSize?: PageSize,
 ): string {
   const safeTitle = escapeHtml(title);
   const userFont = cssFontFamilyToken(fontFamily);
+  // Page size is set via puppeteer `page.pdf({ format })` with
+  // `preferCSSPageSize: false`. We only use @page here for orphans/widows.
+  void pageSize;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -259,7 +267,9 @@ function buildHtmlDocument(
 <meta charset="utf-8">
 <title>${safeTitle}</title>
 <style>
+${pageCss()}
 ${baseCss(userFont)}
+${printEnhancementsCss()}
 ${codeHighlightCss()}
 </style>
 </head>
@@ -282,6 +292,81 @@ function cssFontFamilyToken(fontFamily: string | undefined): string {
   const sanitized = fontFamily.trim().replace(/[^A-Za-z0-9 _\-]/g, "");
   if (!sanitized) return "";
   return `"${sanitized}", `;
+}
+
+function pageCss(): string {
+  // Page size comes from puppeteer page.pdf({ format }), not CSS, to keep
+  // a single source of truth. @page here only carries print-quality hints.
+  return `
+@page {
+  orphans: 3;
+  widows: 3;
+}
+`;
+}
+
+function printEnhancementsCss(): string {
+  return `
+/* First heading on page — no top margin */
+.markdown-body > h1:first-child,
+.markdown-body > h2:first-child,
+.markdown-body > h3:first-child {
+  margin-top: 0;
+}
+/* Page break helpers */
+h1, h2, h3, h4, h5, h6 {
+  page-break-after: avoid;
+  break-after: avoid;
+}
+p, li, blockquote {
+  orphans: 3;
+  widows: 3;
+}
+table, pre, figure, .alert {
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+/* Print-friendly links: show URL after link text (skip links wrapping images) */
+@media print {
+  a[href^="http"]:not(:has(img))::after {
+    content: " (" attr(href) ")";
+    font-size: 0.8em;
+    color: #57606a;
+    word-break: break-all;
+  }
+}
+/* GFM-style alert / admonition blocks */
+.alert, blockquote:has(> p:first-child > strong:first-child) {
+  border-left: 4px solid #0969da;
+  background: #ddf4ff;
+  padding: 0.6em 1em;
+  margin: 0.5em 0 1em;
+  border-radius: 4px;
+}
+blockquote:has(> p:first-child > strong:first-child:where(
+  :is([data-type="warning"], .warning)
+)) {
+  border-left-color: #d1242f;
+  background: #ffebe9;
+}
+/* Images — ensure they fit within a single page.
+   No explicit height: browsers keep intrinsic aspect-ratio when
+   max-width/max-height clip; explicit height:auto + object-fit can
+   collapse rasterised SVG with missing intrinsic dims. */
+img {
+  max-width: 100%;
+  max-height: 90vh;
+  display: block;
+  margin: 0.5em auto;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+/* Task list checkboxes — print-friendly */
+input[type="checkbox"] {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+`;
 }
 
 function baseCss(userFont: string): string {

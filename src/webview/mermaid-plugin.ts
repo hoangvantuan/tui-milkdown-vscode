@@ -277,47 +277,54 @@ export const MermaidDiagram = Extension.create({
                     // decorations (they can be outside editorView.dom in the DOM tree)
                     document.addEventListener("dblclick", handleDblClick);
 
+                    function scanAndSchedule(view: any): void {
+                        const isDark = document.body.classList.contains("dark-theme");
+                        if (!mermaidInitialized) ensureMermaidInit(isDark);
+
+                        // Skip expensive scan when no mermaid blocks exist
+                        if (mermaidBlockCount === 0) return;
+
+                        // After decorations are applied, find preview containers and render
+                        requestAnimationFrame(() => {
+                            const doc = view.state.doc;
+                            doc.descendants((node: any, pos: number) => {
+                                if (node.type.name !== "codeBlock" || node.attrs.language !== "mermaid") return;
+
+                                const code = node.textContent.trim();
+                                if (!code) return;
+
+                                const endPos = pos + node.nodeSize;
+                                const widget = document.querySelector(
+                                    `.mermaid-preview[data-pos="${endPos}"]`
+                                ) as HTMLElement | null;
+                                if (!widget) return;
+
+                                if (widget.getAttribute("data-mermaid-src") === code) return;
+
+                                widget.setAttribute("data-mermaid-src", code);
+
+                                const prev = pendingTimers.get(endPos);
+                                if (prev) clearTimeout(prev);
+
+                                const timer = setTimeout(() => {
+                                    renderMermaid(widget, code);
+                                    pendingTimers.delete(endPos);
+                                }, RENDER_DEBOUNCE_MS);
+
+                                pendingTimers.set(endPos, timer);
+                            });
+                        });
+                    }
+
+                    // Initial scan: ProseMirror does NOT call plugin view's update() on
+                    // view creation, only on subsequent transactions. Without this, mermaid
+                    // blocks present in the initial content stay stuck at "Rendering…" until
+                    // the user triggers another transaction (e.g. clicks inside a block).
+                    scanAndSchedule(editorView);
+
                     return {
                         update(view) {
-                            const isDark = document.body.classList.contains("dark-theme");
-                            if (!mermaidInitialized) ensureMermaidInit(isDark);
-
-                            // Skip expensive scan when no mermaid blocks exist
-                            if (mermaidBlockCount === 0) return;
-
-                            // After decorations are applied, find preview containers and render
-                            requestAnimationFrame(() => {
-                                const doc = view.state.doc;
-                                doc.descendants((node, pos) => {
-                                    if (node.type.name !== "codeBlock" || node.attrs.language !== "mermaid") return;
-
-                                    const code = node.textContent.trim();
-                                    if (!code) return;
-
-                                    const endPos = pos + node.nodeSize;
-                                    // Find the widget element for this position
-                                    const widget = document.querySelector(
-                                        `.mermaid-preview[data-pos="${endPos}"]`
-                                    ) as HTMLElement | null;
-                                    if (!widget) return;
-
-                                    // Check if already rendered with same code
-                                    if (widget.getAttribute("data-mermaid-src") === code) return;
-
-                                    widget.setAttribute("data-mermaid-src", code);
-
-                                    // Cancel previous pending render for this position
-                                    const prev = pendingTimers.get(endPos);
-                                    if (prev) clearTimeout(prev);
-
-                                    const timer = setTimeout(() => {
-                                        renderMermaid(widget, code);
-                                        pendingTimers.delete(endPos);
-                                    }, RENDER_DEBOUNCE_MS);
-
-                                    pendingTimers.set(endPos, timer);
-                                });
-                            });
+                            scanAndSchedule(view);
                         },
 
                         destroy() {

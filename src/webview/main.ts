@@ -1412,7 +1412,10 @@ function setupToolbarHandlers(): void {
       const formatSelect = document.getElementById("export-format") as HTMLSelectElement | null;
       const format = formatSelect?.value || "docx";
 
-      // Collect all rendered mermaid diagrams as PNG base64
+      // Collect all rendered mermaid diagrams as PNG base64.
+      // Only previews with data-rendered='true' have a usable SVG; the
+      // extension will warn the user about blocks that fall through
+      // (race with 500ms render debounce, or mermaid parse errors).
       const mermaidImages: { code: string; base64: string }[] = [];
       let skippedMermaidCount = 0;
       const previews = Array.from(document.querySelectorAll<HTMLElement>(".mermaid-preview[data-rendered='true']"));
