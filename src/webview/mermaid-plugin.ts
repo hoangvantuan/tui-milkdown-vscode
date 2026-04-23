@@ -103,7 +103,10 @@ const ID_REF_ATTRS = [
 /**
  * Rewrite all `id` attributes inside a host element with a unique prefix
  * so that duplicate mermaid diagrams don't collide on getElementById.
- * Also updates url(#...) references in presentation attributes and style.
+ * Also updates url(#...) references in presentation attributes, inline styles,
+ * and CSS selectors inside nested <style> blocks. Mermaid scopes its CSS by
+ * the root SVG id, so renaming the id without rewriting the <style> content
+ * makes selectors miss and the diagram falls back to default SVG styling.
  */
 function uniquifySvgIds(host: HTMLElement): void {
     const preview = host.closest(".mermaid-preview");
@@ -114,8 +117,9 @@ function uniquifySvgIds(host: HTMLElement): void {
     const elements = host.querySelectorAll("[id]");
     for (const el of Array.from(elements)) {
         const oldId = el.getAttribute("id")!;
-        // Skip if already prefixed (re-render of same widget)
-        if (oldId.startsWith(prefix)) continue;
+        // Skip empty id (would produce invalid regex) and already-prefixed ids
+        // (re-render of same widget).
+        if (!oldId || oldId.startsWith(prefix)) continue;
         const newId = prefix + oldId;
         idMap.set(oldId, newId);
         el.setAttribute("id", newId);
@@ -147,6 +151,35 @@ function uniquifySvgIds(host: HTMLElement): void {
             el.setAttribute("style", rewriteUrlRefs(style, idMap));
         }
     }
+
+    // Rewrite CSS selectors (#oldId) and url(#oldId) inside <style> blocks.
+    // Mermaid embeds scoped CSS like `#mermaid-render-1 .nodeLabel { ... }`.
+    // Without this pass, renaming the root id orphans every rule.
+    const styleEls = host.querySelectorAll("style");
+    if (styleEls.length > 0) {
+        // Longest first so we don't accidentally prefix-match a shorter id.
+        const sortedKeys = Array.from(idMap.keys()).sort(
+            (a, b) => b.length - a.length,
+        );
+        const idSelectorRegex = new RegExp(
+            `#(${sortedKeys.map(escapeRegExp).join("|")})(?![\\w-])`,
+            "g",
+        );
+        for (const styleEl of Array.from(styleEls)) {
+            const css = styleEl.textContent;
+            if (!css) continue;
+            let updated = css.replace(idSelectorRegex, (_match, oldId) => {
+                const newId = idMap.get(oldId);
+                return newId ? `#${newId}` : `#${oldId}`;
+            });
+            updated = rewriteUrlRefs(updated, idMap);
+            if (updated !== css) styleEl.textContent = updated;
+        }
+    }
+}
+
+function escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function rewriteUrlRefs(value: string, idMap: Map<string, string>): string {
