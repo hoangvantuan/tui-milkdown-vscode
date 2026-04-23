@@ -120,6 +120,69 @@ export function reportCopyError(message: string): void {
     );
 }
 
+const DEFAULT_COPY_SCALE = 2;
+const COPY_FEEDBACK_MS = 1500;
+
+export interface CopySvgAsPngOptions {
+    scale?: number;
+    feedbackMs?: number;
+}
+
+/**
+ * Copy an SVG diagram as PNG to clipboard via a button element.
+ * Handles the full flow: disable button → convert → copy → flash
+ * "copied" visual + aria feedback → re-enable. On error, dispatches
+ * a mermaid-copy-error CustomEvent.
+ *
+ * Consolidates the identical pattern from mermaid-plugin and lightbox.
+ */
+export async function copySvgAsPng(
+    button: HTMLElement,
+    getSvgMarkup: () => string | null,
+    options?: CopySvgAsPngOptions,
+): Promise<void> {
+    const svgMarkup = getSvgMarkup();
+    if (!svgMarkup) return;
+
+    const pngScale = options?.scale ?? DEFAULT_COPY_SCALE;
+    const feedbackMs = options?.feedbackMs ?? COPY_FEEDBACK_MS;
+    const btn = button as HTMLButtonElement;
+
+    btn.disabled = true;
+    try {
+        const blob = await svgToPngBlob(svgMarkup, pngScale);
+        await copyPngBlobToClipboard(blob);
+        if (btn.isConnected) flashCopiedState(btn, feedbackMs);
+    } catch (err) {
+        reportCopyError(
+            `Failed to copy diagram: ${err instanceof Error ? err.message : String(err)}`,
+        );
+    } finally {
+        if (btn.isConnected) btn.disabled = false;
+    }
+}
+
+/** Visual + aria feedback: swap icon to check, announce "Copied" to screen readers. */
+function flashCopiedState(button: HTMLElement, feedbackMs: number): void {
+    if (!button.isConnected) return;
+    button.classList.add("is-copied");
+
+    // Screen reader: temporarily change aria-label so aria-live region announces it
+    const originalLabel = button.getAttribute("aria-label") || "";
+    button.setAttribute("aria-label", "Copied");
+
+    const host = button as HTMLElement & { __copyTimer?: number };
+    if (host.__copyTimer !== undefined) {
+        window.clearTimeout(host.__copyTimer);
+    }
+    host.__copyTimer = window.setTimeout(() => {
+        if (button.isConnected) {
+            button.classList.remove("is-copied");
+            button.setAttribute("aria-label", originalLabel);
+        }
+    }, feedbackMs);
+}
+
 function resolveSvgSize(svg: SVGSVGElement): {
     width: number;
     height: number;

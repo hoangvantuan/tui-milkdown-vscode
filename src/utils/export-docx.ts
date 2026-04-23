@@ -66,6 +66,7 @@ export async function exportToDocx(
         const docxProps = buildDocxProps(docName, fontFamily);
         const sectionProps = buildSectionProps(pageSize, [
           blockquotePlugin(),
+          tableSpacingPlugin(),
           htmlPlugin(),
           imagePlugin({
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -259,13 +260,55 @@ function blockquotePlugin(): Record<string, unknown> {
         spacing: {
           ...(paraProps.spacing || {}),
           before: 240, // 12pt gap above the quote
-          after: 120,  // 6pt gap below
+          after: 240,  // 12pt gap below
         },
       };
 
       const paragraphs = blockChildrenProcessor(node, quoteProps);
       node.type = ""; // Prevent @m2d/core's default blockquote branch
       return paragraphs;
+    },
+  };
+}
+
+/**
+ * Add breathing room after tables. DOCX Table elements have no inherent
+ * "spacing after" property — the gap depends entirely on the paragraph that
+ * follows. When the next paragraph uses the document default
+ * (spacing.before = 0) it sits flush against the table bottom, making the
+ * document feel cramped.
+ *
+ * This plugin runs in `postprocess` (after all nodes are converted) and
+ * inserts a zero-height spacer Paragraph with `spacing.before = 240`
+ * (12pt) after every Table element, giving tables the same visual
+ * breathing room that headings and blockquotes enjoy.
+ */
+function tableSpacingPlugin(): Record<string, unknown> {
+  return {
+    postprocess: async (sections: { children: unknown[] }[]) => {
+      // Dynamic import so docx classes resolve at call-time (lazy-loaded).
+      const { Paragraph, Table } = await import("docx");
+
+      for (const section of sections) {
+        const original = section.children;
+        const patched: unknown[] = [];
+
+        for (let i = 0; i < original.length; i++) {
+          patched.push(original[i]);
+
+          if (original[i] instanceof Table) {
+            // Insert a spacer paragraph right after the table.
+            patched.push(
+              new Paragraph({
+                spacing: { before: 240 }, // 12pt gap
+                children: [],
+              }),
+            );
+          }
+        }
+
+        section.children = patched;
+      }
     },
   };
 }

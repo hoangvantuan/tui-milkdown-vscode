@@ -17,11 +17,7 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import mermaid from "mermaid";
 import elkLayouts from "@mermaid-js/layout-elk";
 import { openMermaidLightbox } from "./image-lightbox-plugin";
-import {
-    copyPngBlobToClipboard,
-    reportCopyError,
-    svgToPngBlob,
-} from "./svg-to-png";
+import { copySvgAsPng } from "./svg-to-png";
 
 // Register ELK layout engine for better subgraph/edge routing
 let elkAvailable = false;
@@ -35,8 +31,6 @@ try {
 const EXPAND_ICON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`;
 const COPY_ICON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
 const CHECK_ICON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
-const COPY_FEEDBACK_MS = 1500;
-const PNG_SCALE = 2;
 
 const MERMAID_KEY = new PluginKey("mermaidDiagram");
 const RENDER_DEBOUNCE_MS = 500;
@@ -100,12 +94,108 @@ function getSvgHost(preview: HTMLElement): HTMLElement {
     return host;
 }
 
+/** Attrs that may reference SVG element IDs via url(#id) or direct #id. */
+const ID_REF_ATTRS = [
+    "fill", "stroke", "clip-path", "mask", "filter",
+    "marker-start", "marker-mid", "marker-end",
+];
+
+/**
+ * Rewrite all `id` attributes inside a host element with a unique prefix
+ * so that duplicate mermaid diagrams don't collide on getElementById.
+ * Also updates url(#...) references in presentation attributes, inline styles,
+ * and CSS selectors inside nested <style> blocks. Mermaid scopes its CSS by
+ * the root SVG id, so renaming the id without rewriting the <style> content
+ * makes selectors miss and the diagram falls back to default SVG styling.
+ */
+function uniquifySvgIds(host: HTMLElement): void {
+    const preview = host.closest(".mermaid-preview");
+    const pos = preview?.getAttribute("data-pos") || String(renderCounter);
+    const prefix = `m${pos}-`;
+
+    const idMap = new Map<string, string>();
+    const elements = host.querySelectorAll("[id]");
+    for (const el of Array.from(elements)) {
+        const oldId = el.getAttribute("id")!;
+        // Skip empty id (would produce invalid regex) and already-prefixed ids
+        // (re-render of same widget).
+        if (!oldId || oldId.startsWith(prefix)) continue;
+        const newId = prefix + oldId;
+        idMap.set(oldId, newId);
+        el.setAttribute("id", newId);
+    }
+
+    if (idMap.size === 0) return;
+
+    // Update url(#oldId) → url(#newId) in relevant attributes
+    const allEls = host.querySelectorAll("*");
+    for (const el of Array.from(allEls)) {
+        for (const attr of ID_REF_ATTRS) {
+            const val = el.getAttribute(attr);
+            if (val && val.includes("url(#")) {
+                el.setAttribute(attr, rewriteUrlRefs(val, idMap));
+            }
+        }
+        // href/xlink:href can reference #id directly
+        for (const hrefAttr of ["href", "xlink:href"]) {
+            const href = el.getAttribute(hrefAttr);
+            if (href && href.startsWith("#")) {
+                const oldId = href.slice(1);
+                const newId = idMap.get(oldId);
+                if (newId) el.setAttribute(hrefAttr, `#${newId}`);
+            }
+        }
+        // Inline style may contain url(#id)
+        const style = el.getAttribute("style");
+        if (style && style.includes("url(#")) {
+            el.setAttribute("style", rewriteUrlRefs(style, idMap));
+        }
+    }
+
+    // Rewrite CSS selectors (#oldId) and url(#oldId) inside <style> blocks.
+    // Mermaid embeds scoped CSS like `#mermaid-render-1 .nodeLabel { ... }`.
+    // Without this pass, renaming the root id orphans every rule.
+    const styleEls = host.querySelectorAll("style");
+    if (styleEls.length > 0) {
+        // Longest first so we don't accidentally prefix-match a shorter id.
+        const sortedKeys = Array.from(idMap.keys()).sort(
+            (a, b) => b.length - a.length,
+        );
+        const idSelectorRegex = new RegExp(
+            `#(${sortedKeys.map(escapeRegExp).join("|")})(?![\\w-])`,
+            "g",
+        );
+        for (const styleEl of Array.from(styleEls)) {
+            const css = styleEl.textContent;
+            if (!css) continue;
+            let updated = css.replace(idSelectorRegex, (_match, oldId) => {
+                const newId = idMap.get(oldId);
+                return newId ? `#${newId}` : `#${oldId}`;
+            });
+            updated = rewriteUrlRefs(updated, idMap);
+            if (updated !== css) styleEl.textContent = updated;
+        }
+    }
+}
+
+function escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function rewriteUrlRefs(value: string, idMap: Map<string, string>): string {
+    return value.replace(/url\(#([^)]+)\)/g, (match, oldId) => {
+        const newId = idMap.get(oldId);
+        return newId ? `url(#${newId})` : match;
+    });
+}
+
 async function renderToEl(preview: HTMLElement, code: string): Promise<void> {
     const host = getSvgHost(preview);
     const id = `mermaid-render-${++renderCounter}`;
     try {
         const { svg } = await mermaid.render(id, code);
         host.innerHTML = svg;
+        uniquifySvgIds(host);
         preview.classList.remove("mermaid-error");
         preview.setAttribute("data-rendered", "true");
     } catch (err) {
@@ -130,6 +220,7 @@ async function renderMermaid(preview: HTMLElement, code: string): Promise<void> 
     const cached = renderCache.get(code);
     if (cached) {
         host.innerHTML = cached;
+        uniquifySvgIds(host);
         preview.classList.remove("mermaid-error");
         preview.setAttribute("data-rendered", "true");
         return;
@@ -151,6 +242,7 @@ async function renderMermaid(preview: HTMLElement, code: string): Promise<void> 
         }
         renderCache.set(code, svg);
         host.innerHTML = svg;
+        uniquifySvgIds(host);
         preview.classList.remove("mermaid-error");
         preview.setAttribute("data-rendered", "true");
     } catch (err) {
@@ -214,7 +306,10 @@ export const MermaidDiagram = Extension.create({
                         const newActivePos = getActiveMermaidPos(newState);
 
                         if (tr.docChanged) {
-                            // Content changed: rebuild everything (widgets + node decos)
+                            // Content changed: cancel stale timers (widgets will be recreated)
+                            for (const timer of pendingTimers.values()) clearTimeout(timer);
+                            pendingTimers.clear();
+                            // Rebuild everything (widgets + node decos)
                             prevActivePos = newActivePos;
                             return buildDecorations(newState.doc, newActivePos);
                         }
@@ -416,27 +511,13 @@ function buildDecorations(doc: any, activeMermaidPos: number): DecorationSet {
                 e.preventDefault();
                 e.stopPropagation();
             });
-            copyBtn.addEventListener("click", async (e) => {
+            copyBtn.addEventListener("click", (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                if (copyBtn.disabled) return;
-                const svgEl = host.querySelector("svg");
-                if (!svgEl) return;
-                const svgMarkup = svgEl.outerHTML;
-                copyBtn.disabled = true;
-                try {
-                    const blob = await svgToPngBlob(svgMarkup, PNG_SCALE);
-                    await copyPngBlobToClipboard(blob);
-                    if (copyBtn.isConnected) flashCopiedState(copyBtn);
-                } catch (err) {
-                    reportCopyError(
-                        `Failed to copy mermaid diagram: ${
-                            err instanceof Error ? err.message : String(err)
-                        }`,
-                    );
-                } finally {
-                    if (copyBtn.isConnected) copyBtn.disabled = false;
-                }
+                void copySvgAsPng(copyBtn, () => {
+                    const svgEl = host.querySelector("svg");
+                    return svgEl ? svgEl.outerHTML : null;
+                });
             });
             el.appendChild(copyBtn);
             return el;
@@ -497,14 +578,3 @@ function rebuildNodeDecosOnly(
     return decos;
 }
 
-function flashCopiedState(button: HTMLElement): void {
-    if (!button.isConnected) return;
-    button.classList.add("is-copied");
-    const host = button as HTMLElement & { __copyTimer?: number };
-    if (host.__copyTimer !== undefined) {
-        window.clearTimeout(host.__copyTimer);
-    }
-    host.__copyTimer = window.setTimeout(() => {
-        if (button.isConnected) button.classList.remove("is-copied");
-    }, COPY_FEEDBACK_MS);
-}
