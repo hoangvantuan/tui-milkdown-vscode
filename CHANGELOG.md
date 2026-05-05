@@ -2,6 +2,12 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## [2.8.9] - 2026-05-05
+
+### Fixed
+
+- **Search scroll to match (#52)**: Clicking "Search Down/Up" buttons or pressing Enter in search bar now scrolls the matched keyword to the center of the viewport. Previously, matches were found and highlighted but the page didn't scroll because ProseMirror's `scrollToSelection` bails when DOM focus is outside the editor.
+
 ## [2.8.8] - 2026-05-05
 
 ### Fixed
