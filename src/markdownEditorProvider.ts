@@ -3066,6 +3066,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             justify-content: center;
             flex-direction: column;
             gap: 12px;
+            touch-action: none;
           }
           #lightbox-overlay.active { display: flex; }
           .lightbox-backdrop {
