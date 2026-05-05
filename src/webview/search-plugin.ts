@@ -47,13 +47,35 @@ export function clearSearch(editor: Editor): void {
 /** Navigate to the next match (ProseMirror command) */
 export function searchNext(editor: Editor): void {
   const { state, dispatch } = editor.view;
-  findNext(state, dispatch);
+  if (findNext(state, dispatch)) {
+    scrollSearchMatchIntoView(editor);
+  }
 }
 
 /** Navigate to the previous match (ProseMirror command) */
 export function searchPrev(editor: Editor): void {
   const { state, dispatch } = editor.view;
-  findPrev(state, dispatch);
+  if (findPrev(state, dispatch)) {
+    scrollSearchMatchIntoView(editor);
+  }
+}
+
+function scrollSearchMatchIntoView(editor: Editor): void {
+  requestAnimationFrame(() => {
+    try {
+      const { head } = editor.view.state.selection;
+      const coords = editor.view.coordsAtPos(head);
+      const container = editor.view.dom.closest("#editor-container") ??
+        document.getElementById("editor-container");
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const centerY = rect.top + rect.height / 2;
+      const offset = coords.top - centerY;
+      if (Math.abs(offset) > 10) {
+        container.scrollTop += offset;
+      }
+    } catch { /* position may be invalid during concurrent edits */ }
+  });
 }
 
 /** Get current match count and active match index */
