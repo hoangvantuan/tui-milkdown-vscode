@@ -366,8 +366,9 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 * Shared fullscreen overlay for both images and mermaid diagrams
 * Dark backdrop, zoom (0.5x–4x), pan by dragging when `scale > 1`
 * Zoom via buttons (+/−), mouse wheel, or keyboard (`+`/`-` step, `0` reset, `Esc` close)
+* Touch: 2-finger drag pans image (when zoomed in); `touch-action: none` on overlay disables browser default pinch-to-zoom
 * Caption from image alt text or explicit string
-* Close via Escape, backdrop click, or close button
+* Close via Escape, click outside image/controls, or close button (overlay-level click handler checks target)
 * Internal state `currentTarget: HTMLElement` switches between `#lightbox-image` and `#lightbox-svg` wrapper; `applyTransform()` writes to whichever is active
 * Exported API:
   * `openLightbox(src, alt)` — image path → `<img>`

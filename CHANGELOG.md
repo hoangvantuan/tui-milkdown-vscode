@@ -2,6 +2,13 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## [2.8.8] - 2026-05-05
+
+### Fixed
+
+- **Lightbox touch gestures**: Two-finger drag now pans the image (when zoomed in) instead of triggering browser's default pinch-to-zoom. Disabled native touch gestures on lightbox overlay via `touch-action: none`.
+- **Lightbox tap-outside-to-close**: Tapping anywhere outside the image/SVG and controls now closes the lightbox. Works for both mouse click and touch tap.
+
 ## [2.8.6] - 2026-04-22
 
 ### Added

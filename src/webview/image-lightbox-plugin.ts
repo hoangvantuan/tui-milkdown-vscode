@@ -10,6 +10,12 @@ let dragStartTX = 0;
 let dragStartTY = 0;
 let currentTarget: HTMLElement | null = null;
 
+let isTouchPanning = false;
+let touchStartMidX = 0;
+let touchStartMidY = 0;
+let touchStartTX = 0;
+let touchStartTY = 0;
+
 const MIN_SCALE = 0.5;
 const MAX_SCALE = 4;
 const SCALE_STEP = 0.25;
@@ -67,6 +73,7 @@ function resetState() {
   translateX = 0;
   translateY = 0;
   isDragging = false;
+  isTouchPanning = false;
   if (currentTarget) {
     currentTarget.style.transform = '';
     currentTarget.classList.remove('grabbable', 'grabbing');
@@ -154,10 +161,18 @@ let initialized = false;
 export function initLightbox(): void {
   if (initialized) return;
   initialized = true;
-  const { close, backdrop, zoomIn, zoomOut, content, copy } = getElements();
+  const { close, zoomIn, zoomOut, content, copy } = getElements();
 
   close?.addEventListener('click', closeLightbox);
-  backdrop?.addEventListener('click', closeLightbox);
+
+  const controls = document.querySelector('.lightbox-controls');
+  document.getElementById('lightbox-overlay')?.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
+    if (target === currentTarget) return;
+    if (currentTarget?.contains(target)) return;
+    if (controls?.contains(target)) return;
+    closeLightbox();
+  });
   zoomIn?.addEventListener('click', () => setScale(scale + SCALE_STEP));
   zoomOut?.addEventListener('click', () => setScale(scale - SCALE_STEP));
   copy?.addEventListener('click', (e) => {
@@ -211,4 +226,36 @@ export function initLightbox(): void {
     isDragging = false;
     currentTarget?.classList.remove('grabbing');
   });
+
+  const overlay = document.getElementById('lightbox-overlay');
+  overlay?.addEventListener('touchstart', (e) => {
+    if (!isActive() || !currentTarget) return;
+    if (e.touches.length === 2 && scale > 1) {
+      e.preventDefault();
+      isTouchPanning = true;
+      touchStartMidX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      touchStartMidY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      touchStartTX = translateX;
+      touchStartTY = translateY;
+      currentTarget.classList.add('grabbing');
+    }
+  }, { passive: false });
+
+  overlay?.addEventListener('touchmove', (e) => {
+    if (!isTouchPanning || !currentTarget || e.touches.length < 2) return;
+    e.preventDefault();
+    const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+    const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+    translateX = touchStartTX + (midX - touchStartMidX);
+    translateY = touchStartTY + (midY - touchStartMidY);
+    applyTransform();
+  }, { passive: false });
+
+  overlay?.addEventListener('touchend', (e) => {
+    if (!isTouchPanning) return;
+    if (e.touches.length < 2) {
+      isTouchPanning = false;
+      currentTarget?.classList.remove('grabbing');
+    }
+  }, { passive: true });
 }
