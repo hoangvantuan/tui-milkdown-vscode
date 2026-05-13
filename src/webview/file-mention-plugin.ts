@@ -110,6 +110,7 @@ export const FileMention = Extension.create({
           let selectedIndex = 0;
           let commandFn: ((props: FileItem) => void) | null = null;
           let resultListener: (() => void) | null = null;
+          let currentQuery = "";
 
           function createPopup(): HTMLDivElement {
             const el = document.createElement("div");
@@ -209,6 +210,7 @@ export const FileMention = Extension.create({
               commandFn = props.command;
               items = props.items;
               selectedIndex = 0;
+              currentQuery = props.query;
 
               popup = createPopup();
               positionPopup(props.clientRect);
@@ -219,10 +221,7 @@ export const FileMention = Extension.create({
 
               // Listen for results arriving
               const handler = () => {
-                items = filterFiles(
-                  props.query,
-                  cachedFiles,
-                );
+                items = filterFiles(currentQuery, cachedFiles);
                 selectedIndex = 0;
                 renderItems();
               };
@@ -234,6 +233,7 @@ export const FileMention = Extension.create({
 
             onUpdate(props: SuggestionProps<FileItem, FileItem>) {
               commandFn = props.command;
+              currentQuery = props.query;
               items = props.items;
               // Clamp selectedIndex to valid range
               if (selectedIndex >= items.length) {
