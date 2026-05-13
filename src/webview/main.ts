@@ -51,6 +51,7 @@ import { SearchPlugin, performSearch, clearSearch, searchNext, searchPrev, getMa
 import { initFontSelector, type FontSelectorAPI, sanitizeFontName } from "./font-selector";
 import { initLightbox } from "./image-lightbox-plugin";
 import { svgToPngBlob } from "./svg-to-png";
+import { FileMention, setFileMentionFiles } from "./file-mention-plugin";
 
 // Fix: @tiptap/markdown v3.19.0 drops `escape` tokens from marked parser,
 // causing escaped characters like \_ to be silently lost during roundtrip.
@@ -984,6 +985,7 @@ function initEditor(initialContent: string = ""): Editor | null {
         MermaidDiagram,
         TableContextMenu,
         SearchPlugin,
+        FileMention,
         ...conditionalExtensions,
       ],
       content: initialContent,
@@ -1823,7 +1825,17 @@ window.addEventListener("message", async (event) => {
         handleLinkEditResponse(message.editId, message.newUrl ?? null);
       }
       break;
+    case "fileSearchResults":
+      if (Array.isArray(message.files)) {
+        setFileMentionFiles(message.files);
+      }
+      break;
   }
+});
+
+// File mention: forward popup's search request to extension
+document.addEventListener("file-mention-search", () => {
+  vscode.postMessage({ type: "fileSearch" });
 });
 
 // TOC sidebar setup — registers toggle button handler

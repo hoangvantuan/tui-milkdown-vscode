@@ -912,6 +912,22 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             })();
             break;
           }
+          case "fileSearch": {
+            const files = await vscode.workspace.findFiles(
+              "**/*",
+              "{**/node_modules/**,**/.git/**,**/.vscode/**,**/out/**,**/dist/**,**/.DS_Store}",
+              1000,
+            );
+            const fileList = files.map((uri) => ({
+              name: path.basename(uri.fsPath),
+              path: vscode.workspace.asRelativePath(uri),
+            }));
+            webviewPanel.webview.postMessage({
+              type: "fileSearchResults",
+              files: fileList,
+            });
+            break;
+          }
           case "export": {
             const exportMsg = msg as {
               format?: string;
@@ -2928,6 +2944,74 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             .toolbar-separator { opacity: 0.3; }
             .tiptap a { text-decoration: underline; }
             .tiptap img { border: 1px solid var(--vscode-panel-border); }
+          }
+
+          /* File mention popup */
+          .file-mention-popup {
+            position: absolute;
+            z-index: 1000;
+            width: 320px;
+            max-height: 280px;
+            overflow-y: auto;
+            background: rgba(var(--toolbar-bg-rgb), 0.85);
+            border: 1px solid rgba(var(--border-rgb), 0.2);
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            padding: 4px;
+          }
+          @supports (backdrop-filter: blur(12px)) {
+            .file-mention-popup {
+              backdrop-filter: blur(12px);
+              -webkit-backdrop-filter: blur(12px);
+              background: rgba(var(--toolbar-bg-rgb), 0.7);
+            }
+          }
+          .file-mention-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.1s ease;
+          }
+          .file-mention-item:hover,
+          .file-mention-item.is-selected {
+            background: rgba(var(--accent-rgb), 0.1);
+          }
+          .file-mention-item.is-selected {
+            background: rgba(var(--accent-rgb), 0.15);
+          }
+          .file-mention-icon {
+            flex-shrink: 0;
+            width: 14px;
+            height: 14px;
+            opacity: 0.5;
+          }
+          .file-mention-icon svg {
+            display: block;
+            stroke: var(--toolbar-fg);
+          }
+          .file-mention-name {
+            font-weight: 600;
+            font-size: 13px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          }
+          .file-mention-path {
+            font-size: 11px;
+            opacity: 0.5;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-left: auto;
+          }
+          .file-mention-empty {
+            padding: 12px 8px;
+            text-align: center;
+            font-size: 12px;
+            opacity: 0.5;
           }
 
           /* Search bar */
