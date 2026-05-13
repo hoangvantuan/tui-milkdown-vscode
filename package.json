@@ -116,7 +116,10 @@
         },
         "tuiMarkdown.exportPageSize": {
           "type": "string",
-          "enum": ["A4", "Letter"],
+          "enum": [
+            "A4",
+            "Letter"
+          ],
           "default": "A4",
           "description": "Page size for PDF and DOCX export"
         }
@@ -176,6 +179,7 @@
     "@tiptap/markdown": "^3.19.0",
     "@tiptap/pm": "^3.19.0",
     "@tiptap/starter-kit": "^3.19.0",
+    "@tiptap/suggestion": "^3.23.2",
     "image-size": "^2.0.2",
     "js-yaml": "^4.1.1",
     "lowlight": "^3.3.0",
