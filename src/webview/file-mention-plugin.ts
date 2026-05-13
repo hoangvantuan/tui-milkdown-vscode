@@ -80,10 +80,13 @@ export const FileMention = Extension.create({
         char: "@",
         allowSpaces: false,
 
-        // Prevent trigger inside code blocks
+        // Prevent trigger inside code blocks and after word chars (e.g. email@)
         allow({ state, range }) {
           const $from = state.doc.resolve(range.from);
-          return $from.parent.type.name !== "codeBlock";
+          if ($from.parent.type.name === "codeBlock") return false;
+          const textBefore = $from.parent.textBetween(0, $from.parentOffset, undefined, "￼");
+          if (textBefore.length > 0 && /\w$/.test(textBefore)) return false;
+          return true;
         },
 
         // Return filtered items from cache
@@ -93,8 +96,8 @@ export const FileMention = Extension.create({
 
         // On selection: delete @query range, insert markdown link text
         command({ editor, range, props }) {
-          const { name, path } = props;
-          const linkText = `[${name}](${path})`;
+          const escapedName = props.name.replace(/\]/g, "\\]");
+          const linkText = `[${escapedName}](<${props.path}>)`;
 
           editor
             .chain()
