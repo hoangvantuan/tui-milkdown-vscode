@@ -54,6 +54,7 @@ Resizable tables with multi-line cell content. Right-click context menu for row/
 - **Metadata Panel** — Collapsible YAML frontmatter editor with validation
 - **Reading Progress Bar** — Fixed top bar tracking scroll position
 - **Word Count** — Subtle indicator in bottom-right corner
+- **File Mention (@)** — Type `@` to autocomplete workspace filenames, inserts markdown link
 - **Toolbar Auto-hide** — Opt-in, reveals on hover
 
 ## Usage

@@ -2,7 +2,7 @@
   "name": "tui-milkdown-vscode",
   "displayName": "TUI Markdown Editor",
   "description": "A beautiful WYSIWYG Markdown editor powered by Tiptap. Edit markdown files with rich text experience and theme selection.",
-  "version": "2.8.9",
+  "version": "2.9.0",
   "publisher": "tuanhv",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -116,7 +116,10 @@
         },
         "tuiMarkdown.exportPageSize": {
           "type": "string",
-          "enum": ["A4", "Letter"],
+          "enum": [
+            "A4",
+            "Letter"
+          ],
           "default": "A4",
           "description": "Page size for PDF and DOCX export"
         }
@@ -176,6 +179,7 @@
     "@tiptap/markdown": "^3.19.0",
     "@tiptap/pm": "^3.19.0",
     "@tiptap/starter-kit": "^3.19.0",
+    "@tiptap/suggestion": "^3.19.0",
     "image-size": "^2.0.2",
     "js-yaml": "^4.1.1",
     "lowlight": "^3.3.0",

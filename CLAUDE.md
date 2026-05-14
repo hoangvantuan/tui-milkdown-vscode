@@ -82,6 +82,7 @@ src/
     ├── table-cell-content-parser.ts # Post-parse transformer for table cell lists/breaks
     ├── table-context-menu.ts # Right-click context menu for table operations
     ├── search-plugin.ts      # Cmd+F search via prosemirror-search (highlight, next/prev, match count)
+    ├── file-mention-plugin.ts # @-mention file autocomplete via @tiptap/suggestion (popup, fuzzy filter, link insert)
     ├── font-selector.ts      # Searchable font combobox (system font enumeration, live preview, CSS sanitization)
     ├── toc-sidebar.ts        # Table of Contents sidebar (extract, tree, render, active tracking)
     └── themes/               # Theme CSS files (scoped by body class)
@@ -120,7 +121,7 @@ Extension provides these settings via `tuiMarkdown.*` namespace:
 
 Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for markdown roundtrip.
 
-**Extensions:** StarterKit (includes Link with `autolink: true, linkOnPaste: true`), Image, Highlight, Table (resizable + custom `renderMarkdown` hook), CodeBlockLowlight (syntax highlighting via lowlight/highlight.js), TaskList + TaskItem, Placeholder, Markdown (GFM + configurable indentation), AlertNode (GitHub-style alerts), MermaidDiagram (SVG preview), TableContextMenu (right-click menu), CodeBlockEnhancement (language badge + copy button), SearchPlugin (Cmd+F via prosemirror-search).
+**Extensions:** StarterKit (includes Link with `autolink: true, linkOnPaste: true`), Image, Highlight, Table (resizable + custom `renderMarkdown` hook), CodeBlockLowlight (syntax highlighting via lowlight/highlight.js), TaskList + TaskItem, Placeholder, Markdown (GFM + configurable indentation), AlertNode (GitHub-style alerts), MermaidDiagram (SVG preview), TableContextMenu (right-click menu), CodeBlockEnhancement (language badge + copy button), SearchPlugin (Cmd+F via prosemirror-search), FileMention (@-mention file autocomplete via @tiptap/suggestion).
 
 **Markdown API:**
 
@@ -634,6 +635,35 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 * Only overrides `--crepe-font-default` — never touches `--crepe-font-code`
 * Font override survives theme changes (inline style > CSS class)
 * `try/catch` around async `postMessage` to handle webview disposed during font enum
+
+## File Mention (@)
+
+**Plugin** (`src/webview/file-mention-plugin.ts`):
+
+* Tiptap Extension using `@tiptap/suggestion` addon
+* `char: "@"` trigger opens popup with workspace file list
+* `allow()` blocks trigger inside `codeBlock` and after word characters (prevents email `user@domain`)
+* Fuzzy filter: prefix match priority > contains, case-insensitive, max 20 results
+* Insert: `[escapedName](<path>)` — angle brackets handle spaces, `]` escaped in filename
+* Popup appended to `#editor-container` (not `.tiptap`) — avoids CSS zoom issues
+
+**Cache strategy:**
+
+* `onStart`: dispatch `file-mention-search` CustomEvent → main.ts forwards as `fileSearch` postMessage → extension calls `findFiles("**/*", excludePattern, 1000)` → returns `fileSearchResults`
+* main.ts calls `setFileMentionFiles(files)` to populate module-level cache
+* Subsequent typing filters locally from cache (no round-trip)
+* Cache cleared on `onExit` (popup close), refetched on next open
+
+**Extension side** (`src/markdownEditorProvider.ts`):
+
+* Case `"fileSearch"`: calls `vscode.workspace.findFiles()` with exclude `{**/node_modules/**,**/.git/**,**/.vscode/**,**/out/**,**/dist/**,**/.DS_Store}`, max 1000 results
+* Returns `{ type: "fileSearchResults", files: [{name, path}] }`
+
+**Message types**: `fileSearch` (webview → extension), `fileSearchResults` (extension → webview)
+
+**CSS**: `.file-mention-popup`, `.file-mention-item`, `.file-mention-icon`, `.file-mention-name`, `.file-mention-path`, `.file-mention-empty`. Glassmorphic style matching toolbar.
+
+**Dependencies**: `@tiptap/suggestion@^3.19.0`
 
 ## Link Click Navigation
 
