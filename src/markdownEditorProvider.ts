@@ -3014,6 +3014,33 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             opacity: 0.5;
           }
 
+          /* Wiki link inline node */
+          .wiki-link {
+            color: var(--accent-color, #4a9eff);
+            cursor: default;
+            text-decoration: underline dotted;
+            text-underline-offset: 3px;
+            white-space: nowrap;
+          }
+          .wiki-link:hover {
+            text-decoration: underline solid;
+          }
+          .wiki-link-icon {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            vertical-align: -2px;
+            margin-right: 2px;
+            opacity: 0.6;
+          }
+          .wiki-link-icon svg {
+            display: block;
+            stroke: currentColor;
+          }
+          body.ctrl-held .wiki-link {
+            cursor: pointer;
+          }
+
           /* Search bar */
           #search-bar {
             display: flex;

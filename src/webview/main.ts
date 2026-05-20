@@ -52,6 +52,7 @@ import { initFontSelector, type FontSelectorAPI, sanitizeFontName } from "./font
 import { initLightbox } from "./image-lightbox-plugin";
 import { svgToPngBlob } from "./svg-to-png";
 import { FileMention, setFileMentionFiles } from "./file-mention-plugin";
+import { WikiLink } from "./wiki-link-plugin";
 
 // Fix: @tiptap/markdown v3.19.0 drops `escape` tokens from marked parser,
 // causing escaped characters like \_ to be silently lost during roundtrip.
@@ -986,6 +987,7 @@ function initEditor(initialContent: string = ""): Editor | null {
         TableContextMenu,
         SearchPlugin,
         FileMention,
+        WikiLink,
         ...conditionalExtensions,
       ],
       content: initialContent,
