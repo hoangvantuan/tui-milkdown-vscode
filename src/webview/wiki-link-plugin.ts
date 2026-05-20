@@ -9,6 +9,44 @@ export const WikiLink = Node.create({
   inline: true,
   atom: true,
 
+  // Tell @tiptap/markdown which MarkedJS token type this extension handles
+  markdownTokenName: "wikiLink",
+
+  // Register custom inline tokenizer with MarkedJS via @tiptap/markdown bridge
+  markdownTokenizer: {
+    name: "wikiLink",
+    level: "inline" as const,
+    start: "[[",
+    tokenize(src: string) {
+      const match = src.match(/^\[\[([^\]|]+?)(?:\|([^\]]+?))?\]\]/);
+      if (!match) return undefined;
+
+      return {
+        type: "wikiLink",
+        raw: match[0],
+        filename: match[1].trim(),
+        alias: match[2]?.trim() || null,
+        tokens: [],
+      };
+    },
+  },
+
+  // Parse MarkedJS token -> ProseMirror node
+  parseMarkdown(token: any, helpers: any) {
+    return helpers.createNode("wikiLink", {
+      filename: token.filename || "",
+      alias: token.alias || null,
+    });
+  },
+
+  // Serialize ProseMirror node -> markdown string
+  renderMarkdown(node: any) {
+    const filename = node.attrs?.filename || "";
+    const alias = node.attrs?.alias;
+    if (alias) return `[[${filename}|${alias}]]`;
+    return `[[${filename}]]`;
+  },
+
   addAttributes() {
     return {
       filename: { default: null },
