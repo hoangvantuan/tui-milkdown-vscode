@@ -34,6 +34,7 @@ import {
   parseContent,
   reconstructContent,
   validateYaml,
+  type FrontmatterFormat,
 } from "./frontmatter";
 import { LineHighlight } from "./line-highlight-plugin";
 import { HeadingLevel } from "./heading-level-plugin";
@@ -206,6 +207,7 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let globalThemeReceived: ThemeName | null = null;
 let currentFrontmatter: string | null = null;
 let currentBody: string = "";
+let currentFormat: FrontmatterFormat = "none";
 let lastSentState: string | null = null;
 let highlightCurrentLine = true;
 let currentImageMap: Record<string, string> = {};
@@ -507,7 +509,7 @@ function replaceInlineImage(
     setImageMap(currentImageMap);
   }
 
-  const fullContent = reconstructContent(currentFrontmatter, currentBody);
+  const fullContent = reconstructContent(currentFrontmatter, currentBody, currentFormat);
   lastSentState = serializeStateForEcho(fullContent, currentImageMap);
   vscode.postMessage({ type: "edit", content: fullContent });
 
@@ -534,7 +536,7 @@ function debouncedPostEdit(): void {
     // Serialize only once per debounce window (300ms after last keystroke)
     const markdown = editor.getMarkdown();
     currentBody = transformForSave(markdown, currentImageMap);
-    const content = reconstructContent(currentFrontmatter, currentBody);
+    const content = reconstructContent(currentFrontmatter, currentBody, currentFormat);
 
     const hasPendingBlobs = await processInlineImages(content);
     if (hasPendingBlobs) {
@@ -632,7 +634,7 @@ async function sendFullContent(): Promise<void> {
   if (hasPendingBlobs) {
     return;
   }
-  const fullContent = reconstructContent(currentFrontmatter, currentBody);
+  const fullContent = reconstructContent(currentFrontmatter, currentBody, currentFormat);
   lastSentState = serializeStateForEcho(fullContent, currentImageMap);
   vscode.postMessage({ type: "edit", content: fullContent });
 }
@@ -1674,6 +1676,7 @@ window.addEventListener("message", async (event) => {
           const parsed = parseContent(message.content);
           currentFrontmatter = parsed.frontmatter;
           currentBody = parsed.body;
+          currentFormat = parsed.format;
 
           updateMetadataPanel(parsed.frontmatter, parsed.isValid, parsed.error);
 

@@ -35,12 +35,13 @@ npm run package    # Package extension as .vsix
 
 ```
 src/
-├── extension.ts              # Entry point, registers MarkdownEditorProvider
+├── extension.ts              # Entry point, registers MarkdownEditorProvider + viewSource/viewRichText commands
 ├── markdownEditorProvider.ts # CustomTextEditorProvider + HTML/CSS template
 ├── constants.ts              # Shared constants (MAX_FILE_SIZE)
 ├── utils/
 │   ├── getNonce.ts           # CSP nonce generator
 │   ├── clean-image-path.ts   # Shared image path cleaning utility (removes titles, angle brackets)
+│   ├── frontmatter-parser.ts # Shared frontmatter parse/reconstruct (standard + implicit format)
 │   ├── image-rename-handler.ts # Image rename/delete detection, execution, workspace reference updates
 │   ├── markdown-ast.ts       # Shared MDAST pipeline (parse + mermaid image substitution)
 │   ├── export-docx.ts        # MDAST → DOCX via mdast2docx (lazy-loaded bundle)
@@ -178,7 +179,7 @@ After every development cycle (new feature, bug fix, refactor), update these fil
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **tui-milkdown-vscode** (1817 symbols, 2814 relationships, 126 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **tui-milkdown-vscode** (1912 symbols, 2928 relationships, 126 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 

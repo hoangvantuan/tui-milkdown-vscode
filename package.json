@@ -2,7 +2,7 @@
   "name": "tui-milkdown-vscode",
   "displayName": "TUI Markdown Editor",
   "description": "A beautiful WYSIWYG Markdown editor powered by Tiptap. Edit markdown files with rich text experience and theme selection.",
-  "version": "2.10.0",
+  "version": "2.11.0",
   "publisher": "tuanhv",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -145,6 +145,32 @@
         "{git,gitlens,git-graph}:/**/*.md": "default",
         "{git,gitlens,git-graph}:/**/*.markdown": "default"
       }
+    },
+    "commands": [
+      {
+        "command": "tuiMarkdown.viewSource",
+        "title": "View Source",
+        "icon": "$(code)"
+      },
+      {
+        "command": "tuiMarkdown.viewRichText",
+        "title": "View Rich Text (WYSIWYG)",
+        "icon": "$(eye)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "tuiMarkdown.viewSource",
+          "when": "activeCustomEditorId == 'tuiMarkdown.editor'",
+          "group": "navigation"
+        },
+        {
+          "command": "tuiMarkdown.viewRichText",
+          "when": "(resourceExtname == '.md' || resourceExtname == '.markdown') && activeCustomEditorId != 'tuiMarkdown.editor'",
+          "group": "navigation"
+        }
+      ]
     }
   },
   "scripts": {
