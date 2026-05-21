@@ -1,46 +1,31 @@
-// src/webview/wiki-link-plugin.ts
 import { Node, mergeAttributes, Extension } from "@tiptap/core";
 import Suggestion, {
   type SuggestionProps,
   type SuggestionKeyDownProps,
 } from "@tiptap/suggestion";
 import { PluginKey } from "@tiptap/pm/state";
+import {
+  type FileItem,
+  type FileSearchResult,
+  searchFiles,
+  getFileIcon,
+  getFolderPath,
+  highlightMatches,
+} from "./file-search-utils";
 
-export interface WikiFileItem {
-  name: string;
-  path: string;
-}
+let cachedFiles: FileItem[] = [];
+let currentDocFolder: string | undefined;
 
-let cachedFiles: WikiFileItem[] = [];
-
-export function setWikiLinkFiles(files: WikiFileItem[]): void {
+export function setWikiLinkFiles(
+  files: FileItem[],
+  docFolder?: string,
+): void {
   cachedFiles = files;
+  currentDocFolder = docFolder;
   document.dispatchEvent(new CustomEvent("wiki-link-results"));
 }
 
 const wikiLinkPluginKey = new PluginKey("wikiLinkSuggestion");
-
-function filterMdFiles(query: string, files: WikiFileItem[]): WikiFileItem[] {
-  if (!query) return files.slice(0, 20);
-  const q = query.toLowerCase();
-  const prefixMatches: WikiFileItem[] = [];
-  const containsMatches: WikiFileItem[] = [];
-
-  for (const file of files) {
-    const nameLower = file.name.toLowerCase();
-    if (nameLower.startsWith(q)) {
-      prefixMatches.push(file);
-    } else if (nameLower.includes(q)) {
-      containsMatches.push(file);
-    }
-  }
-  return [...prefixMatches, ...containsMatches].slice(0, 20);
-}
-
-function getFolderPath(filePath: string): string {
-  const lastSlash = filePath.lastIndexOf("/");
-  return lastSlash > 0 ? filePath.substring(0, lastSlash) : "";
-}
 
 export const WIKI_LINK_ICON_SVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>`;
 
@@ -49,18 +34,24 @@ export const WikiLinkSuggestion = Extension.create({
 
   addProseMirrorPlugins() {
     return [
-      Suggestion<WikiFileItem, WikiFileItem>({
+      Suggestion<FileSearchResult, FileSearchResult>({
         pluginKey: wikiLinkPluginKey,
         editor: this.editor,
 
         findSuggestionMatch({ $position }) {
-          const text = $position.parent.textBetween(0, $position.parentOffset, undefined, "￼");
+          const text = $position.parent.textBetween(
+            0,
+            $position.parentOffset,
+            undefined,
+            "￼",
+          );
           if (!text) return null;
 
           const match = text.match(/\[\[([^\]]*?)$/);
           if (!match || match.index === undefined) return null;
 
-          const from = $position.pos - $position.parentOffset + match.index;
+          const from =
+            $position.pos - $position.parentOffset + match.index;
           const to = $position.pos;
           if (from >= $position.pos) return null;
 
@@ -75,17 +66,26 @@ export const WikiLinkSuggestion = Extension.create({
           const $from = state.doc.resolve(range.from);
           if ($from.parent.type.name === "codeBlock") return false;
 
-          const textBefore = $from.parent.textBetween(0, $from.parentOffset, undefined, "￼");
+          const textBefore = $from.parent.textBetween(
+            0,
+            $from.parentOffset,
+            undefined,
+            "￼",
+          );
           if (textBefore.length > 0 && /\w$/.test(textBefore)) return false;
           return true;
         },
 
         items({ query }) {
-          return filterMdFiles(query, cachedFiles);
+          return searchFiles({
+            query,
+            files: cachedFiles,
+            currentDocFolder,
+          });
         },
 
         command({ editor, range, props }) {
-          const filename = props.name.replace(/\.md$/i, "");
+          const filename = props.file.name.replace(/\.md$/i, "");
           editor
             .chain()
             .focus()
@@ -99,9 +99,9 @@ export const WikiLinkSuggestion = Extension.create({
 
         render() {
           let popup: HTMLDivElement | null = null;
-          let items: WikiFileItem[] = [];
+          let items: FileSearchResult[] = [];
           let selectedIndex = 0;
-          let commandFn: ((props: WikiFileItem) => void) | null = null;
+          let commandFn: ((props: FileSearchResult) => void) | null = null;
           let resultListener: (() => void) | null = null;
           let currentQuery = "";
 
@@ -125,23 +125,42 @@ export const WikiLinkSuggestion = Extension.create({
               return;
             }
 
-            items.forEach((file, index) => {
+            items.forEach((result, index) => {
               const row = document.createElement("div");
               row.className = "wiki-link-item";
               if (index === selectedIndex) row.classList.add("is-selected");
 
               const icon = document.createElement("span");
               icon.className = "wiki-link-item-icon";
-              icon.innerHTML = WIKI_LINK_ICON_SVG;
+              icon.innerHTML = getFileIcon(result.file.name);
+
+              const displayName = result.file.name.replace(/\.md$/i, "");
+              const displayIndexes = result.nameIndexes
+                ? result.nameIndexes.filter((i) => i < displayName.length)
+                : null;
 
               const nameSpan = document.createElement("span");
               nameSpan.className = "wiki-link-item-name";
-              nameSpan.textContent = file.name.replace(/\.md$/i, "");
+              nameSpan.innerHTML = highlightMatches(
+                displayName,
+                displayIndexes && displayIndexes.length > 0
+                  ? displayIndexes
+                  : null,
+              );
 
-              const folder = getFolderPath(file.path);
+              const folder = getFolderPath(result.file.path);
+              const folderIndexes = result.pathIndexes
+                ? result.pathIndexes.filter((i) => i < folder.length)
+                : null;
+
               const pathSpan = document.createElement("span");
               pathSpan.className = "wiki-link-item-path";
-              pathSpan.textContent = folder;
+              pathSpan.innerHTML = highlightMatches(
+                folder,
+                folderIndexes && folderIndexes.length > 0
+                  ? folderIndexes
+                  : null,
+              );
 
               row.appendChild(icon);
               row.appendChild(nameSpan);
@@ -149,7 +168,7 @@ export const WikiLinkSuggestion = Extension.create({
 
               row.addEventListener("mousedown", (e) => {
                 e.preventDefault();
-                commandFn?.(file);
+                commandFn?.(result);
               });
 
               row.addEventListener("mouseenter", () => {
@@ -173,12 +192,14 @@ export const WikiLinkSuggestion = Extension.create({
 
           function scrollSelectedIntoView() {
             if (!popup) return;
-            const selected = popup.querySelector(".wiki-link-item.is-selected");
+            const selected = popup.querySelector(
+              ".wiki-link-item.is-selected",
+            );
             selected?.scrollIntoView({ block: "nearest" });
           }
 
           function positionPopup(
-            clientRect: (() => DOMRect | null) | null | undefined
+            clientRect: (() => DOMRect | null) | null | undefined,
           ) {
             if (!popup || !clientRect) return;
             const rect = clientRect();
@@ -192,7 +213,9 @@ export const WikiLinkSuggestion = Extension.create({
           }
 
           return {
-            onStart(props: SuggestionProps<WikiFileItem, WikiFileItem>) {
+            onStart(
+              props: SuggestionProps<FileSearchResult, FileSearchResult>,
+            ) {
               commandFn = props.command;
               items = props.items;
               selectedIndex = 0;
@@ -205,7 +228,11 @@ export const WikiLinkSuggestion = Extension.create({
               document.dispatchEvent(new CustomEvent("wiki-link-search"));
 
               const handler = () => {
-                items = filterMdFiles(currentQuery, cachedFiles);
+                items = searchFiles({
+                  query: currentQuery,
+                  files: cachedFiles,
+                  currentDocFolder,
+                });
                 selectedIndex = 0;
                 renderItems();
               };
@@ -215,7 +242,9 @@ export const WikiLinkSuggestion = Extension.create({
               };
             },
 
-            onUpdate(props: SuggestionProps<WikiFileItem, WikiFileItem>) {
+            onUpdate(
+              props: SuggestionProps<FileSearchResult, FileSearchResult>,
+            ) {
               commandFn = props.command;
               currentQuery = props.query;
               items = props.items;
@@ -240,7 +269,8 @@ export const WikiLinkSuggestion = Extension.create({
               if (event.key === "ArrowUp") {
                 event.preventDefault();
                 if (items.length > 0) {
-                  selectedIndex = (selectedIndex - 1 + items.length) % items.length;
+                  selectedIndex =
+                    (selectedIndex - 1 + items.length) % items.length;
                   updateSelected();
                 }
                 return true;
@@ -276,6 +306,8 @@ export const WikiLinkSuggestion = Extension.create({
     ];
   },
 });
+
+// --- WikiLink Node Definition (unchanged) ---
 
 export const WikiLink = Node.create({
   name: "wikiLink",
