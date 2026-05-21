@@ -53,15 +53,14 @@ export const WikiLinkSuggestion = Extension.create({
         pluginKey: wikiLinkPluginKey,
         editor: this.editor,
 
-        // Custom findSuggestionMatch for [[ trigger (two characters)
         findSuggestionMatch({ $position }) {
-          const text = $position.nodeBefore?.isText ? $position.nodeBefore.text : null;
+          const text = $position.parent.textBetween(0, $position.parentOffset, undefined, "￼");
           if (!text) return null;
 
           const match = text.match(/\[\[([^\]]*?)$/);
           if (!match || match.index === undefined) return null;
 
-          const from = $position.pos - text.length + match.index;
+          const from = $position.pos - $position.parentOffset + match.index;
           const to = $position.pos;
           if (from >= $position.pos) return null;
 
@@ -72,20 +71,12 @@ export const WikiLinkSuggestion = Extension.create({
           };
         },
 
-        // Block inside codeBlock and inline code, and after word chars
         allow({ state, range }) {
           const $from = state.doc.resolve(range.from);
           if ($from.parent.type.name === "codeBlock") return false;
 
-          const marks = $from.marks();
-          if (marks.some((m) => m.type.name === "code")) return false;
-
-          const offset = $from.parentOffset;
-          if (offset > 0) {
-            const textBefore = $from.parent.textBetween(0, offset, undefined, "￼");
-            const charBefore = textBefore[textBefore.length - 1];
-            if (/\w/.test(charBefore)) return false;
-          }
+          const textBefore = $from.parent.textBetween(0, $from.parentOffset, undefined, "￼");
+          if (textBefore.length > 0 && /\w$/.test(textBefore)) return false;
           return true;
         },
 
@@ -325,6 +316,7 @@ export const WikiLink = Node.create({
   // Serialize ProseMirror node -> markdown string
   renderMarkdown(node: any) {
     const filename = node.attrs?.filename || "";
+    if (!filename) return "";
     const alias = node.attrs?.alias;
     if (alias) return `[[${filename}|${alias}]]`;
     return `[[${filename}]]`;
