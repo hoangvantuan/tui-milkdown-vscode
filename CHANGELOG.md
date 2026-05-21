@@ -2,12 +2,17 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## [2.10.0] - 2026-05-21
+
+### Added
+
+- **Wiki Link (`[[...]]`)**: Obsidian-style wiki links with `[[` trigger popup, `.md` file autocomplete, inline node rendering with file icon, Ctrl/Cmd+Click to open file, markdown roundtrip via custom MarkedJS tokenizer, DOCX/PDF export support (strips to plain text)
+
 ## [2.9.0] - 2026-05-14
 
 ### Added
 
 - **File Mention (@)**: Type `@` in the editor to open an autocomplete popup listing workspace files. Select a file to insert a markdown link `[filename](path)` at cursor. Fuzzy search with prefix priority, keyboard navigation (Arrow keys, Enter, Escape), glassmorphic popup matching toolbar style. Blocked inside code blocks and email addresses.
-- Wiki Link (`[[...]]`) support: Obsidian-style wiki links with `[[` trigger popup, `.md` file autocomplete, inline node rendering, Ctrl/Cmd+Click to open file, markdown roundtrip, DOCX/PDF export
 
 ## [2.8.9] - 2026-05-05
 
@@ -28,33 +33,33 @@ All notable changes to "TUI Markdown Editor" extension.
 
 - **Export to DOCX**: Export documents to Word `.docx` via `mdast2docx` + plugins (`@m2d/html`, `@m2d/image`, `@m2d/table`, `@m2d/list`). Preserves headings, lists, tables, code blocks, and images. DOCX font inherits the editor's currently selected font.
 - **Export to PDF**: Export documents to WYSIWYG PDF using headless Chromium (`puppeteer-core`). Requires Chrome/Edge/Chromium/Brave installed on the system; no binary bundled with the extension. Auto-detects common paths, falls back to `tuiMarkdown.chromiumPath` or env `PUPPETEER_EXECUTABLE_PATH`.
-- **Setting `tuiMarkdown.chromiumPath`**: Allows manually specifying the Chrome/Edge/Chromium/Brave path for PDF export when auto-detection does not find the correct binary.
+- **Setting `tuiMarkdown.chromiumPath**`: Allows manually specifying the Chrome/Edge/Chromium/Brave path for PDF export when auto-detection does not find the correct binary.
 
 ### Changed
 
 - **PDF export rewritten with puppeteer-core**: Removed `pdfmake` + custom 339-line markdown parser + bundled Roboto font. New pipeline: MDAST → HTML (`remark-rehype` + `rehype-highlight` + `rehype-stringify`) → Chromium `page.pdf()`, delivering WYSIWYG quality matching the preview (syntax-highlighted code, GitHub tables, alerts, mermaid base64). Requires Chrome/Edge/Chromium/Brave installed on the user's machine, auto-detected via `tuiMarkdown.chromiumPath` → `PUPPETEER_EXECUTABLE_PATH` → well-known system paths. Bundle `out/export-pdf.js` tree-shakes puppeteer-core to ~2.5MB, total VSIX ~5.4MB.
 - **Removed MDAST→markdown bridge for PDF**: Call sites now pass MDAST directly to both `exportToPdf` and `exportToDocx`, eliminating serialize/parse drift risk. `mdastToMarkdown` function + `remark-stringify` dependency removed.
-- **Mermaid `securityLevel` changed to `"loose"`**: Required for ELK + `foreignObject` to render HTML inside labels. Trade-off: generated SVG may contain raw HTML from markdown; treat mermaid from untrusted sources as potentially executable. PDF export disables JavaScript in Chromium to prevent escalation.
+- **Mermaid `securityLevel` changed to `"loose"**`: Required for ELK + `foreignObject` to render HTML inside labels. Trade-off: generated SVG may contain raw HTML from markdown; treat mermaid from untrusted sources as potentially executable. PDF export disables JavaScript in Chromium to prevent escalation.
 
 ### Fixed
 
 - **PDF render relative image**: Local images (`./img.png`) are now inlined as base64 before entering Chromium instead of loading from `about:blank` (which silently 404s). New pipeline walks HAST, reads files, encodes data URLs.
-- **Safe frontmatter handling**: Removed manual regex stripping, using `remark-frontmatter` in the MDAST pipeline for proper frontmatter parsing. BOM `﻿` is still stripped before parsing.
+- **Safe frontmatter handling**: Removed manual regex stripping, using `remark-frontmatter` in the MDAST pipeline for proper frontmatter parsing. BOM ``﻿ is still stripped before parsing.
 - **Mermaid hash CRLF/LF mismatch**: `hashMermaidCode` normalizes line endings `\r\n|\r` → `\n` before trimming, ensuring CRLF files do not miss mermaid export.
 - **DOCX remote fetch timeout**: `AbortController` 30s + `content-length` / `arrayBuffer.byteLength` check capped at 10MB. Failed fetches (timeout, HTTP error, oversized) → placeholder 1x1 PNG instead of aborting the entire export.
 - **DOCX missing local image**: `fs.readFile` failure no longer crashes the entire export; replaced with placeholder + log warning. SVG images also fall back to placeholder instead of throwing.
-- **DOCX filename with literal `%`**: `decodeURIComponent("50%_off.png")` throwing `URIError` no longer crashes export; wrapped with try/catch, falls back to raw path.
+- **DOCX filename with literal `%**`: `decodeURIComponent("50%_off.png")` throwing `URIError` no longer crashes export; wrapped with try/catch, falls back to raw path.
 - **Export button race duplicate**: Extension tracks `exportInProgress` flag; a second request while exporting is rejected with dialog "Export in progress, please wait". Webview re-enables button via `exportDone` message instead of relying on a fixed 3s timeout.
 - **Empty document warning**: Exporting an empty file or one with only frontmatter shows warning "Document is empty, nothing to export" instead of silently generating an empty file.
 - **PDF font-family CSS context**: User-selected font is now sanitized via whitelist `[A-Za-z0-9 _-]` instead of `escapeHtml` (CSS `<style>` does not decode HTML entities; previously fonts with `"` made the declaration invalid).
 - **PDF Chromium sandbox conditional**: `--no-sandbox` only passed on Linux + root; macOS/Windows/Linux users keep default Chromium isolation.
 - **PDF strip dangerous HTML**: Removes `<script>`, `<iframe>`, `<object>`, `<embed>`, `<link>`, `<base>`, `<meta http-equiv>` before feeding to Chromium (supplements `setJavaScriptEnabled(false)`).
-- **PDF `waitUntil: "networkidle0"`**: Changed from `"load"` to `"networkidle0"` to wait for all images to load before `page.pdf()` runs.
-- **PDF `rehype-highlight` `detect: false`**: Only syntax-highlights code blocks with a language specified. Reduces CPU on large documents.
+- **PDF `waitUntil: "networkidle0"**`: Changed from `"load"` to `"networkidle0"` to wait for all images to load before `page.pdf()` runs.
+- **PDF `rehype-highlight` `detect: false**`: Only syntax-highlights code blocks with a language specified. Reduces CPU on large documents.
 - **Open Folder after export**: Uses `vscode.commands.executeCommand("revealFileInOS", ...)` instead of `openExternal(folder)` to reveal the correct file in Finder/Explorer cross-platform.
 - **More robust Chromium discovery**: Checks `fs.constants.X_OK` in addition to `isFile()` to filter non-executable paths; strips extra quotes around `chromiumPath` if user pastes `"C:\...\chrome.exe"` verbatim.
 - **Chromium cache invalidation on setting change**: `onDidChangeConfiguration` listens for `tuiMarkdown.chromiumPath` → calls `clearChromiumCache()`, no window reload needed.
-- **Friendly Puppeteer launch error message**: Wraps launch error as "Failed to launch Chromium at `<path>`: <original>. Check execute permission or configure tuiMarkdown.chromiumPath."
+- **Friendly Puppeteer launch error message**: Wraps launch error as "Failed to launch Chromium at `<path>`: . Check execute permission or configure tuiMarkdown.chromiumPath."
 - **SVG zero-dimension fallback**: `svgToPngBlob` uses 800×600 fallback + console.warn when SVG has no width/height/viewBox, instead of throwing silently.
 - **Git Graph diff blocked ([#48](https://github.com/hoangvantuan/tui-milkdown-vscode/issues/48))**: Added `git-graph` scheme to `configurationDefaults.workbench.editorAssociations` so TUI Markdown does not block opening markdown files when viewing diffs from Git Graph plugin. Previously only `git` and `gitlens` were excluded.
 
