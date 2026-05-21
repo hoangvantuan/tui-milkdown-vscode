@@ -64,6 +64,7 @@ src/
     ├── table-cell-content-parser.ts # Post-parse transformer for table cell lists/breaks
     ├── table-context-menu.ts # Right-click context menu for table operations
     ├── search-plugin.ts      # Cmd+F search via prosemirror-search (highlight, next/prev, match count)
+    ├── file-search-utils.ts  # Shared: fuzzy search (fuzzysort), proximity scoring, file type icons, highlight helpers
     ├── file-mention-plugin.ts # @-mention file autocomplete via @tiptap/suggestion (popup, fuzzy filter, link insert)
     ├── wiki-link-plugin.ts   # Wiki link [[...]] autocomplete via @tiptap/suggestion (popup, filter, node insert)
     ├── font-selector.ts      # Searchable font combobox (system font enumeration, live preview, CSS sanitization)
