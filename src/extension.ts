@@ -12,7 +12,20 @@ export function activate(context: vscode.ExtensionContext) {
         webviewOptions: { retainContextWhenHidden: true },
         supportsMultipleEditorsPerDocument: false,
       }
-    )
+    ),
+    vscode.commands.registerCommand("tuiMarkdown.viewSource", () => {
+      const uri = vscode.window.tabGroups.activeTabGroup.activeTab
+        ?.input as { uri?: vscode.Uri } | undefined;
+      if (uri?.uri) {
+        vscode.commands.executeCommand("vscode.openWith", uri.uri, "default");
+      }
+    }),
+    vscode.commands.registerCommand("tuiMarkdown.viewRichText", () => {
+      const uri = vscode.window.activeTextEditor?.document.uri;
+      if (uri) {
+        vscode.commands.executeCommand("vscode.openWith", uri, "tuiMarkdown.editor");
+      }
+    })
   );
 }
 
