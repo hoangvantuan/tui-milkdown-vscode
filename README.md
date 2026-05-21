@@ -6,7 +6,7 @@
   *A beautiful WYSIWYG Markdown editor for VS Code, powered by Tiptap*
 
   [![VS Code](https://img.shields.io/badge/VS_Code-%3E%3D1.85.0-007ACC?style=flat-square&logo=visual-studio-code)](https://code.visualstudio.com/)
-  [![Version](https://img.shields.io/badge/version-2.8.6-blue?style=flat-square)](CHANGELOG.md)
+  [![Version](https://img.shields.io/badge/version-2.11.0-blue?style=flat-square)](CHANGELOG.md)
   [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
   [Features](#features) · [Usage](#usage) · [Configuration](#configuration) · [Themes](#themes) · [Export](#export)
@@ -19,7 +19,7 @@
 
 ### Rich Text Editing
 
-Full WYSIWYG markdown editing with Tiptap + `@tiptap/markdown` (GFM support via MarkedJS). Format text using the glassmorphic toolbar or keyboard shortcuts. Toggle between WYSIWYG and source view with `Ctrl/Cmd+Shift+M`.
+Full WYSIWYG markdown editing with Tiptap + `@tiptap/markdown` (GFM support via MarkedJS). Format text using the glassmorphic toolbar or keyboard shortcuts. Toggle between WYSIWYG and source view with `Ctrl/Cmd+Shift+M` or editor title bar icons.
 
 ### Code & Diagrams
 
@@ -55,6 +55,8 @@ Resizable tables with multi-line cell content. Right-click context menu for row/
 - **Reading Progress Bar** — Fixed top bar tracking scroll position
 - **Word Count** — Subtle indicator in bottom-right corner
 - **File Mention (@)** — Type `@` to autocomplete workspace filenames, inserts markdown link
+- **Wiki Link ([[...]])** — Obsidian-style `[[filename]]` with autocomplete, inline node, Ctrl/Cmd+Click to open
+- **Implicit Frontmatter** — YAML metadata at file start without opening `---` delimiter, auto-detected
 - **Toolbar Auto-hide** — Opt-in, reveals on hover
 
 ## Usage
