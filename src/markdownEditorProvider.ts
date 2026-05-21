@@ -961,8 +961,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             if (results.length === 0) {
               vscode.window.showWarningMessage(`Wiki link: file "${wikiFilename}.md" not found`);
             } else if (results.length === 1) {
-              const doc = await vscode.workspace.openTextDocument(results[0]);
-              vscode.window.showTextDocument(doc);
+              await vscode.commands.executeCommand("vscode.open", results[0]);
             } else {
               const picks = results.map((uri) => ({
                 label: path.basename(uri.fsPath),
@@ -973,8 +972,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
                 placeHolder: `Multiple files match "${wikiFilename}.md"`,
               });
               if (chosen) {
-                const doc = await vscode.workspace.openTextDocument(chosen.uri);
-                vscode.window.showTextDocument(doc);
+                await vscode.commands.executeCommand("vscode.open", chosen.uri);
               }
             }
             break;
