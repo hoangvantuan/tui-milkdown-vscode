@@ -780,8 +780,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
               }
 
               const targetUri = vscode.Uri.file(targetPath);
-              vscode.workspace.openTextDocument(targetUri).then(
-                (doc) => vscode.window.showTextDocument(doc),
+              vscode.commands.executeCommand("vscode.open", targetUri).then(
+                undefined,
                 () => vscode.window.showWarningMessage(`Cannot open file: ${linkHref}`)
               );
             }
@@ -928,6 +928,80 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             });
             break;
           }
+          case "wikiLinkSearch": {
+            const mdFiles = await vscode.workspace.findFiles(
+              "**/*.md",
+              "{**/node_modules/**,**/.git/**,**/.vscode/**,**/out/**,**/dist/**,**/.DS_Store}",
+              1000,
+            );
+            const fileList = mdFiles.map((uri) => ({
+              name: path.basename(uri.fsPath),
+              path: vscode.workspace.asRelativePath(uri),
+            }));
+            webviewPanel.webview.postMessage({
+              type: "wikiLinkSearchResults",
+              files: fileList,
+            });
+            break;
+          }
+          case "openWikiLink": {
+            const wikiFilename = (msg as { filename?: string }).filename;
+            if (!wikiFilename) break;
+
+            const slugified = wikiFilename.trim().replace(/\s+/g, "-");
+            const candidates = [wikiFilename, slugified];
+            const patterns = candidates.flatMap((name) =>
+              name.includes("/")
+                ? [`${name}.md`]
+                : [`**/${name}.md`]
+            );
+
+            let results: vscode.Uri[] = [];
+            for (const pattern of patterns) {
+              const found = await vscode.workspace.findFiles(
+                pattern,
+                "{**/node_modules/**,**/.git/**}",
+                10,
+              );
+              for (const uri of found) {
+                if (!results.some((r) => r.fsPath === uri.fsPath)) {
+                  results.push(uri);
+                }
+              }
+            }
+
+            if (results.length === 0) {
+              const mdFiles = await vscode.workspace.findFiles(
+                "**/*.md",
+                "{**/node_modules/**,**/.git/**}",
+                5000,
+              );
+              const needle = slugified.toLowerCase();
+              results = mdFiles.filter((uri) => {
+                const stem = path.basename(uri.fsPath, ".md").toLowerCase();
+                return stem === needle || stem === wikiFilename.toLowerCase();
+              });
+            }
+
+            if (results.length === 0) {
+              vscode.window.showWarningMessage(`Wiki link: file "${wikiFilename}.md" not found`);
+            } else if (results.length === 1) {
+              await vscode.commands.executeCommand("vscode.open", results[0]);
+            } else {
+              const picks = results.map((uri) => ({
+                label: path.basename(uri.fsPath),
+                description: vscode.workspace.asRelativePath(uri),
+                uri,
+              }));
+              const chosen = await vscode.window.showQuickPick(picks, {
+                placeHolder: `Multiple files match "${wikiFilename}.md"`,
+              });
+              if (chosen) {
+                await vscode.commands.executeCommand("vscode.open", chosen.uri);
+              }
+            }
+            break;
+          }
           case "export": {
             const exportMsg = msg as {
               format?: string;
@@ -973,6 +1047,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
                   replaceMermaidBlocks,
                   hashMermaidCode,
                   countMermaidBlocks,
+                  stripWikiLinks,
                 } = require(markdownAstPath);
 
                 const mdast = await parseMarkdownToMdast(normalized);
@@ -1005,6 +1080,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
                     `${totalMermaid - replaced} of ${totalMermaid} Mermaid diagram(s) could not be embedded (still rendering or parse error). They will appear as code in the export.`,
                   );
                 }
+
+                stripWikiLinks(mdast);
 
                 if (exportFormat === "pdf") {
                   const exportPdfPath = require("path").join(__dirname, "export-pdf.js");
@@ -2376,11 +2453,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             color: var(--crepe-color-primary, #37618e);
             text-decoration: none;
             border-bottom: 1px solid transparent;
-          }
-          /* Ctrl/Cmd held: pointer cursor + underline on links */
-          body.ctrl-held .tiptap a {
             cursor: pointer;
-            text-decoration: underline;
           }
           /* Placeholder styling */
           .tiptap p.is-editor-empty:first-child::before {
@@ -2954,6 +3027,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             max-height: 280px;
             overflow-y: auto;
             background: rgba(var(--toolbar-bg-rgb), 0.85);
+            color: var(--toolbar-fg);
             border: 1px solid rgba(var(--border-rgb), 0.2);
             border-radius: 8px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
@@ -3008,6 +3082,98 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             margin-left: auto;
           }
           .file-mention-empty {
+            padding: 12px 8px;
+            text-align: center;
+            font-size: 12px;
+            opacity: 0.5;
+          }
+
+          /* Wiki link inline node */
+          .wiki-link {
+            color: var(--crepe-color-primary, #37618e);
+            cursor: pointer;
+            text-decoration: underline dotted;
+            text-underline-offset: 3px;
+            white-space: nowrap;
+          }
+          .wiki-link:hover {
+            text-decoration: underline solid;
+          }
+          .wiki-link-icon {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            vertical-align: -2px;
+            margin-right: 2px;
+            opacity: 0.6;
+          }
+          .wiki-link-icon svg {
+            display: block;
+            stroke: currentColor;
+          }
+          /* Wiki link suggestion popup */
+          .wiki-link-popup {
+            position: absolute;
+            z-index: 1000;
+            width: 320px;
+            max-height: 280px;
+            overflow-y: auto;
+            background: rgba(var(--toolbar-bg-rgb), 0.85);
+            color: var(--toolbar-fg);
+            border: 1px solid rgba(var(--border-rgb), 0.2);
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            padding: 4px;
+          }
+          @supports (backdrop-filter: blur(12px)) {
+            .wiki-link-popup {
+              backdrop-filter: blur(12px);
+              -webkit-backdrop-filter: blur(12px);
+              background: rgba(var(--toolbar-bg-rgb), 0.7);
+            }
+          }
+          .wiki-link-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.1s ease;
+          }
+          .wiki-link-item:hover,
+          .wiki-link-item.is-selected {
+            background: rgba(var(--accent-rgb), 0.1);
+          }
+          .wiki-link-item.is-selected {
+            background: rgba(var(--accent-rgb), 0.15);
+          }
+          .wiki-link-item-icon {
+            flex-shrink: 0;
+            width: 14px;
+            height: 14px;
+            opacity: 0.5;
+          }
+          .wiki-link-item-icon svg {
+            display: block;
+            stroke: var(--toolbar-fg);
+          }
+          .wiki-link-item-name {
+            font-weight: 600;
+            font-size: 13px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          }
+          .wiki-link-item-path {
+            font-size: 11px;
+            opacity: 0.5;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-left: auto;
+          }
+          .wiki-link-empty {
             padding: 12px 8px;
             text-align: center;
             font-size: 12px;
