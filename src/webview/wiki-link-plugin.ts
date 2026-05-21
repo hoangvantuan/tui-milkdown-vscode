@@ -201,20 +201,15 @@ export const WikiLinkSuggestion = Extension.create({
           function positionPopup(
             clientRect: (() => DOMRect | null) | null | undefined,
           ) {
-            if (!popup) return;
-            let rect: DOMRect | null = null;
-            if (clientRect) rect = clientRect();
-            if (!rect) {
-              const sel = window.getSelection();
-              if (sel && sel.rangeCount > 0) {
-                rect = sel.getRangeAt(0).getBoundingClientRect();
-              }
-            }
+            if (!popup || !clientRect) return;
+            const rect = clientRect();
             if (!rect) return;
-
-            popup.style.position = "fixed";
-            popup.style.left = `${rect.left}px`;
-            popup.style.top = `${rect.bottom + 4}px`;
+            const container = document.getElementById("editor-container");
+            if (!container) return;
+            const containerRect = container.getBoundingClientRect();
+            popup.style.position = "absolute";
+            popup.style.left = `${rect.left - containerRect.left}px`;
+            popup.style.top = `${rect.bottom - containerRect.top + container.scrollTop}px`;
           }
 
           return {
