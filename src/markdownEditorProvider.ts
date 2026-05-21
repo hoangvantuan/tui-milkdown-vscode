@@ -3027,6 +3027,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             max-height: 280px;
             overflow-y: auto;
             background: rgba(var(--toolbar-bg-rgb), 0.85);
+            color: var(--toolbar-fg);
             border: 1px solid rgba(var(--border-rgb), 0.2);
             border-radius: 8px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
@@ -3118,6 +3119,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             max-height: 280px;
             overflow-y: auto;
             background: rgba(var(--toolbar-bg-rgb), 0.85);
+            color: var(--toolbar-fg);
             border: 1px solid rgba(var(--border-rgb), 0.2);
             border-radius: 8px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
