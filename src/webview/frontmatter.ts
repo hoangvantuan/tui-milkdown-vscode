@@ -1,91 +1,13 @@
+// src/webview/frontmatter.ts
 import yaml from "js-yaml";
-import { MAX_FILE_SIZE } from "../constants";
 
-export interface ParsedContent {
-  frontmatter: string | null;
-  body: string;
-  isValid: boolean;
-  error?: string;
-}
-
-// Regex to match frontmatter block: starts with ---, ends with ---
-const FRONTMATTER_REGEX = /^---[ \t]*\n([\s\S]*?)\n---[ \t]*(?:\n|$)/;
-const EMPTY_FRONTMATTER_REGEX = /^---[ \t]*\n---[ \t]*(?:\n|$)/;
-
-
-/**
- * Parse markdown content, extracting frontmatter
- */
-export function parseContent(markdown: string): ParsedContent {
-  // Input validation
-  if (!markdown || typeof markdown !== "string") {
-    return { frontmatter: null, body: "", isValid: true };
-  }
-
-  // Size guard to prevent regex performance issues
-  if (markdown.length > MAX_FILE_SIZE) {
-    return {
-      frontmatter: null,
-      body: markdown,
-      isValid: false,
-      error: "Content too large for frontmatter parsing",
-    };
-  }
-
-  // Check for empty frontmatter (---\n---)
-  const emptyMatch = markdown.match(EMPTY_FRONTMATTER_REGEX);
-  if (emptyMatch) {
-    return {
-      frontmatter: "",
-      body: markdown.slice(emptyMatch[0].length),
-      isValid: true,
-    };
-  }
-
-  // Check for frontmatter with content
-  const match = markdown.match(FRONTMATTER_REGEX);
-  if (!match) {
-    return { frontmatter: null, body: markdown, isValid: true };
-  }
-
-  const rawYaml = match[1];
-  const body = markdown.slice(match[0].length);
-
-  // Validate YAML syntax
-  try {
-    yaml.load(rawYaml);
-    return {
-      frontmatter: rawYaml,
-      body,
-      isValid: true,
-    };
-  } catch (err) {
-    return {
-      frontmatter: rawYaml,
-      body,
-      isValid: false,
-      error: err instanceof Error ? err.message : "Invalid YAML",
-    };
-  }
-}
-
-/**
- * Reconstruct markdown from frontmatter and body
- */
-export function reconstructContent(
-  frontmatter: string | null,
-  body: unknown
-): string {
-  // Validate body parameter - ensure it's a string
-  const safeBody = typeof body === "string" ? body : String(body ?? "");
-  if (frontmatter === null || frontmatter.trim() === "") {
-    return safeBody;
-  }
-
-  const yamlContent = frontmatter.trim();
-  const bodyTrimmed = safeBody.replace(/^\n+/, "");
-  return `---\n${yamlContent}\n---\n\n${bodyTrimmed}`;
-}
+// Re-export shared logic so existing imports in main.ts keep working
+export {
+  parseContent,
+  reconstructContent,
+  type ParseResult,
+  type FrontmatterFormat,
+} from "../utils/frontmatter-parser";
 
 export interface ValidationResult {
   isValid: boolean;
@@ -93,12 +15,9 @@ export interface ValidationResult {
   line?: number;
 }
 
-/**
- * Validate YAML content syntax
- */
 export function validateYaml(content: string): ValidationResult {
   if (!content || content.trim() === "") {
-    return { isValid: true }; // Empty is valid (will remove frontmatter)
+    return { isValid: true };
   }
 
   try {
