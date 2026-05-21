@@ -3057,6 +3057,74 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             cursor: pointer;
           }
 
+          /* Wiki link suggestion popup */
+          .wiki-link-popup {
+            position: absolute;
+            z-index: 1000;
+            width: 320px;
+            max-height: 280px;
+            overflow-y: auto;
+            background: rgba(var(--toolbar-bg-rgb), 0.85);
+            border: 1px solid rgba(var(--border-rgb), 0.2);
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            padding: 4px;
+          }
+          @supports (backdrop-filter: blur(12px)) {
+            .wiki-link-popup {
+              backdrop-filter: blur(12px);
+              -webkit-backdrop-filter: blur(12px);
+              background: rgba(var(--toolbar-bg-rgb), 0.7);
+            }
+          }
+          .wiki-link-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.1s ease;
+          }
+          .wiki-link-item:hover,
+          .wiki-link-item.is-selected {
+            background: rgba(var(--accent-rgb), 0.1);
+          }
+          .wiki-link-item.is-selected {
+            background: rgba(var(--accent-rgb), 0.15);
+          }
+          .wiki-link-item-icon {
+            flex-shrink: 0;
+            width: 14px;
+            height: 14px;
+            opacity: 0.5;
+          }
+          .wiki-link-item-icon svg {
+            display: block;
+            stroke: var(--toolbar-fg);
+          }
+          .wiki-link-item-name {
+            font-weight: 600;
+            font-size: 13px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          }
+          .wiki-link-item-path {
+            font-size: 11px;
+            opacity: 0.5;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-left: auto;
+          }
+          .wiki-link-empty {
+            padding: 12px 8px;
+            text-align: center;
+            font-size: 12px;
+            opacity: 0.5;
+          }
+
           /* Search bar */
           #search-bar {
             display: flex;
