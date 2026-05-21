@@ -7,6 +7,7 @@ All notable changes to "TUI Markdown Editor" extension.
 ### Added
 
 - **File Mention (@)**: Type `@` in the editor to open an autocomplete popup listing workspace files. Select a file to insert a markdown link `[filename](path)` at cursor. Fuzzy search with prefix priority, keyboard navigation (Arrow keys, Enter, Escape), glassmorphic popup matching toolbar style. Blocked inside code blocks and email addresses.
+- Wiki Link (`[[...]]`) support: Obsidian-style wiki links with `[[` trigger popup, `.md` file autocomplete, inline node rendering, Ctrl/Cmd+Click to open file, markdown roundtrip, DOCX/PDF export
 
 ## [2.8.9] - 2026-05-05
 
