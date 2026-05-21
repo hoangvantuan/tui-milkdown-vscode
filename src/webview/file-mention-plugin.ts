@@ -36,7 +36,7 @@ export const FileMention = Extension.create({
         pluginKey: fileMentionPluginKey,
         editor: this.editor,
         char: "@",
-        allowSpaces: false,
+        allowSpaces: true,
 
         allow({ state, range }) {
           const $from = state.doc.resolve(range.from);
