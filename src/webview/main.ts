@@ -52,7 +52,7 @@ import { initFontSelector, type FontSelectorAPI, sanitizeFontName } from "./font
 import { initLightbox } from "./image-lightbox-plugin";
 import { svgToPngBlob } from "./svg-to-png";
 import { FileMention, setFileMentionFiles } from "./file-mention-plugin";
-import { WikiLink } from "./wiki-link-plugin";
+import { WikiLink, WikiLinkSuggestion, setWikiLinkFiles } from "./wiki-link-plugin";
 
 // Fix: @tiptap/markdown v3.19.0 drops `escape` tokens from marked parser,
 // causing escaped characters like \_ to be silently lost during roundtrip.
@@ -988,6 +988,7 @@ function initEditor(initialContent: string = ""): Editor | null {
         SearchPlugin,
         FileMention,
         WikiLink,
+        WikiLinkSuggestion,
         ...conditionalExtensions,
       ],
       content: initialContent,
@@ -1832,12 +1833,22 @@ window.addEventListener("message", async (event) => {
         setFileMentionFiles(message.files);
       }
       break;
+    case "wikiLinkSearchResults":
+      if (Array.isArray(message.files)) {
+        setWikiLinkFiles(message.files);
+      }
+      break;
   }
 });
 
 // File mention: forward popup's search request to extension
 document.addEventListener("file-mention-search", () => {
   vscode.postMessage({ type: "fileSearch" });
+});
+
+// Wiki link: forward popup's search request to extension
+document.addEventListener("wiki-link-search", () => {
+  vscode.postMessage({ type: "wikiLinkSearch" });
 });
 
 // TOC sidebar setup — registers toggle button handler

@@ -928,6 +928,22 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             });
             break;
           }
+          case "wikiLinkSearch": {
+            const mdFiles = await vscode.workspace.findFiles(
+              "**/*.md",
+              "{**/node_modules/**,**/.git/**,**/.vscode/**,**/out/**,**/dist/**,**/.DS_Store}",
+              1000,
+            );
+            const fileList = mdFiles.map((uri) => ({
+              name: path.basename(uri.fsPath),
+              path: vscode.workspace.asRelativePath(uri),
+            }));
+            webviewPanel.webview.postMessage({
+              type: "wikiLinkSearchResults",
+              files: fileList,
+            });
+            break;
+          }
           case "export": {
             const exportMsg = msg as {
               format?: string;
