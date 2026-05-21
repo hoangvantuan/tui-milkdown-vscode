@@ -13,6 +13,7 @@ import {
   normalizePath,
 } from "./utils/image-rename-handler";
 import { cleanImagePath } from "./utils/clean-image-path";
+import { parseContent } from "./utils/frontmatter-parser";
 
 // Image URL helpers
 function isRemoteUrl(url: string): boolean {
@@ -1032,11 +1033,10 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             const pageSize: "A4" | "Letter" =
               configuredPageSize === "Letter" ? "Letter" : "A4";
 
-            // Strip only the BOM. Frontmatter is handled by remark-frontmatter
-            // inside parseMarkdownToMdast, so avoid a regex that could eat a
-            // legitimate `---` horizontal rule at the top of the document.
             const rawText = document.getText();
-            const normalized = rawText.replace(/^﻿/, "");
+            const stripped = rawText.replace(/^﻿/, "");
+            const parsedFm = parseContent(stripped);
+            const normalized = parsedFm.body;
 
             exportInProgress = true;
             (async () => {
