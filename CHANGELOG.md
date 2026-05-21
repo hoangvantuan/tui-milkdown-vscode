@@ -2,6 +2,18 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## [Unreleased]
+
+### Improved
+
+- **File Search**: Fuzzy matching cho @ mention và [[ wiki link (fuzzysort)
+- **File Search**: Proximity scoring ưu tiên file gần document đang mở
+- **File Search**: File type icons (10 nhóm) trong popup
+- **File Search**: Wiki link giờ filter cả path, không chỉ filename
+- **File Search**: Dùng VSCode `files.exclude` setting thay vì exclude cố định
+- **File Search**: Nâng giới hạn từ 1000 lên 5000 files
+- **File Search**: Highlight matched characters trong popup
+
 ## [2.11.0] - 2026-05-21
 
 ### Added
