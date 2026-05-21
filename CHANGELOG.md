@@ -7,6 +7,7 @@ All notable changes to "TUI Markdown Editor" extension.
 ### Added
 
 - **Implicit Frontmatter**: Support frontmatter without opening `---` delimiter. YAML key-value pairs at file start terminated by `---` are now detected and parsed into the metadata panel. Detection uses heuristic (valid YAML object, 2+ keys, at least 1 known metadata key). File format preserved on save: implicit stays implicit, standard stays standard.
+- **Editor Title Bar Toggle**: Toggle icons on VSCode editor title bar to switch between WYSIWYG and source view. `$(code)` icon when in WYSIWYG, `$(eye)` icon when in text editor. Works for `.md` and `.markdown` files.
 
 ### Changed
 

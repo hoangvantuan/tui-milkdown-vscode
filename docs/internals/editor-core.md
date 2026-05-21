@@ -7,6 +7,7 @@ Toolbar, appearance, zoom, search, line highlight, reading progress, page break.
 **Layout** (in `src/markdownEditorProvider.ts` HTML + CSS):
 
 * Sticky toolbar at top with formatting buttons, heading select, theme select, and View Source
+* VSCode editor title bar: `$(code)` icon (WYSIWYG → Source) and `$(eye)` icon (Source → WYSIWYG) via `tuiMarkdown.viewSource` / `tuiMarkdown.viewRichText` commands
 * Buttons grouped by category with separators: Text formatting | Heading | Lists | Blocks | Table & Link | Source & Appearance
 * Table context buttons (add/delete column/row, delete table) appear only when cursor is inside a table
 * Active state highlighting: buttons show `is-active` class based on current selection
