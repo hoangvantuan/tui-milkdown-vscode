@@ -175,8 +175,15 @@ export const FileMention = Extension.create({
           function positionPopup(
             clientRect: (() => DOMRect | null) | null | undefined,
           ) {
-            if (!popup || !clientRect) return;
-            const rect = clientRect();
+            if (!popup) return;
+            let rect: DOMRect | null = null;
+            if (clientRect) rect = clientRect();
+            if (!rect) {
+              const sel = window.getSelection();
+              if (sel && sel.rangeCount > 0) {
+                rect = sel.getRangeAt(0).getBoundingClientRect();
+              }
+            }
             if (!rect) return;
 
             const container = document.getElementById("editor-container");
