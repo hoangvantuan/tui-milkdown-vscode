@@ -74,6 +74,17 @@ function getProximityBonus(
   return 0;
 }
 
+// --- Normalization (diacritics-insensitive, hyphen-insensitive) ---
+
+function normalizeText(text: string): string {
+  return text
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .replace(/-/g, " ");
+}
+
 // --- Search ---
 
 export function searchFiles(options: FileSearchOptions): FileSearchResult[] {
@@ -94,24 +105,52 @@ export function searchFiles(options: FileSearchOptions): FileSearchResult[] {
       .slice(0, maxResults);
   }
 
-  const results = fuzzysort.go(query, files, {
+  const resultMap = new Map<string, FileSearchResult>();
+
+  const primaryResults = fuzzysort.go(query, files, {
     keys: ["name", "path"],
     threshold: -1000,
     limit: maxResults * 3,
   });
 
-  return results
-    .map((result) => {
-      const bonus = getProximityBonus(result.obj.path, currentDocFolder);
-      return {
-        file: result.obj,
-        score: result.score + bonus,
-        nameIndexes:
-          (result[0]?.indexes as readonly number[] | undefined) ?? null,
-        pathIndexes:
-          (result[1]?.indexes as readonly number[] | undefined) ?? null,
-      };
-    })
+  for (const r of primaryResults) {
+    const bonus = getProximityBonus(r.obj.path, currentDocFolder);
+    resultMap.set(r.obj.path, {
+      file: r.obj,
+      score: r.score + bonus,
+      nameIndexes:
+        (r[0]?.indexes as readonly number[] | undefined) ?? null,
+      pathIndexes:
+        (r[1]?.indexes as readonly number[] | undefined) ?? null,
+    });
+  }
+
+  const normQuery = normalizeText(query);
+  const normTargets = files.map((f, i) => ({
+    name: normalizeText(f.name),
+    path: normalizeText(f.path),
+    _idx: i,
+  }));
+  const normResults = fuzzysort.go(normQuery, normTargets, {
+    keys: ["name", "path"],
+    threshold: -1000,
+    limit: maxResults * 3,
+  });
+
+  for (const r of normResults) {
+    const file = files[r.obj._idx];
+    if (!resultMap.has(file.path)) {
+      const bonus = getProximityBonus(file.path, currentDocFolder);
+      resultMap.set(file.path, {
+        file,
+        score: r.score + bonus,
+        nameIndexes: null,
+        pathIndexes: null,
+      });
+    }
+  }
+
+  return Array.from(resultMap.values())
     .sort((a, b) => b.score - a.score)
     .slice(0, maxResults);
 }
