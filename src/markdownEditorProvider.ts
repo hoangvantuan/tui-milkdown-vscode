@@ -2428,9 +2428,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             color: var(--crepe-color-primary, #37618e);
             text-decoration: none;
             border-bottom: 1px solid transparent;
-          }
-          /* Links: always pointer cursor + underline (click opens directly) */
-          .tiptap a {
             cursor: pointer;
           }
           /* Placeholder styling */
@@ -3067,7 +3064,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
           /* Wiki link inline node */
           .wiki-link {
-            color: var(--accent-color, #4a9eff);
+            color: var(--crepe-color-primary, #37618e);
             cursor: pointer;
             text-decoration: underline dotted;
             text-underline-offset: 3px;
