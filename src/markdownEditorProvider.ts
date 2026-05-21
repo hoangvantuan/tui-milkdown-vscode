@@ -914,11 +914,15 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             break;
           }
           case "fileSearch": {
+            const excludePattern = this.buildExcludePattern();
+            const currentDocFolder = this.getDocFolder(document.uri);
+
             const files = await vscode.workspace.findFiles(
               "**/*",
-              "{**/node_modules/**,**/.git/**,**/.vscode/**,**/out/**,**/dist/**,**/.DS_Store}",
-              1000,
+              excludePattern,
+              5000,
             );
+
             const fileList = files.map((uri) => ({
               name: path.basename(uri.fsPath),
               path: vscode.workspace.asRelativePath(uri),
@@ -926,15 +930,20 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             webviewPanel.webview.postMessage({
               type: "fileSearchResults",
               files: fileList,
+              currentDocFolder,
             });
             break;
           }
           case "wikiLinkSearch": {
+            const excludePattern = this.buildExcludePattern();
+            const currentDocFolder = this.getDocFolder(document.uri);
+
             const mdFiles = await vscode.workspace.findFiles(
               "**/*.md",
-              "{**/node_modules/**,**/.git/**,**/.vscode/**,**/out/**,**/dist/**,**/.DS_Store}",
-              1000,
+              excludePattern,
+              5000,
             );
+
             const fileList = mdFiles.map((uri) => ({
               name: path.basename(uri.fsPath),
               path: vscode.workspace.asRelativePath(uri),
@@ -942,6 +951,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             webviewPanel.webview.postMessage({
               type: "wikiLinkSearchResults",
               files: fileList,
+              currentDocFolder,
             });
             break;
           }
@@ -1204,6 +1214,24 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       if (updateDebounceTimer) clearTimeout(updateDebounceTimer);
       disposables.forEach((d) => d.dispose());
     });
+  }
+
+  private buildExcludePattern(): string {
+    const filesExclude = vscode.workspace
+      .getConfiguration("files")
+      .get<Record<string, unknown>>("exclude", {});
+    const userExcludes = Object.entries(filesExclude)
+      .filter(([, v]) => v === true)
+      .map(([glob]) => glob);
+    const defaultExcludes = ["**/node_modules/**", "**/.git/**"];
+    const allExcludes = [...new Set([...defaultExcludes, ...userExcludes])];
+    return `{${allExcludes.join(",")}}`;
+  }
+
+  private getDocFolder(docUri: vscode.Uri): string {
+    const docPath = vscode.workspace.asRelativePath(docUri);
+    const lastSlash = docPath.lastIndexOf("/");
+    return lastSlash > 0 ? docPath.substring(0, lastSlash) : "";
   }
 
   private getHtmlForWebview(webview: vscode.Webview): string {
@@ -3086,6 +3114,13 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             text-align: center;
             font-size: 12px;
             opacity: 0.5;
+          }
+          .file-mention-popup mark,
+          .wiki-link-popup mark {
+            background: rgba(var(--accent-rgb), 0.25);
+            color: inherit;
+            border-radius: 2px;
+            padding: 0 1px;
           }
 
           /* Wiki link inline node */
