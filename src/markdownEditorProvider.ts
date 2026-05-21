@@ -914,28 +914,14 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             break;
           }
           case "fileSearch": {
-            const filesExclude = vscode.workspace
-              .getConfiguration("files")
-              .get<Record<string, boolean>>("exclude", {});
-            const userExcludes = Object.entries(filesExclude)
-              .filter(([, enabled]) => enabled)
-              .map(([glob]) => glob);
-            const defaultExcludes = ["**/node_modules/**", "**/.git/**"];
-            const allExcludes = [
-              ...new Set([...defaultExcludes, ...userExcludes]),
-            ];
-            const excludePattern = `{${allExcludes.join(",")}}`;
+            const excludePattern = this.buildExcludePattern();
+            const currentDocFolder = this.getDocFolder(document.uri);
 
             const files = await vscode.workspace.findFiles(
               "**/*",
               excludePattern,
               5000,
             );
-
-            const docPath = vscode.workspace.asRelativePath(document.uri);
-            const lastSlash = docPath.lastIndexOf("/");
-            const currentDocFolder =
-              lastSlash > 0 ? docPath.substring(0, lastSlash) : "";
 
             const fileList = files.map((uri) => ({
               name: path.basename(uri.fsPath),
@@ -949,28 +935,14 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             break;
           }
           case "wikiLinkSearch": {
-            const filesExclude = vscode.workspace
-              .getConfiguration("files")
-              .get<Record<string, boolean>>("exclude", {});
-            const userExcludes = Object.entries(filesExclude)
-              .filter(([, enabled]) => enabled)
-              .map(([glob]) => glob);
-            const defaultExcludes = ["**/node_modules/**", "**/.git/**"];
-            const allExcludes = [
-              ...new Set([...defaultExcludes, ...userExcludes]),
-            ];
-            const excludePattern = `{${allExcludes.join(",")}}`;
+            const excludePattern = this.buildExcludePattern();
+            const currentDocFolder = this.getDocFolder(document.uri);
 
             const mdFiles = await vscode.workspace.findFiles(
               "**/*.md",
               excludePattern,
               5000,
             );
-
-            const docPath = vscode.workspace.asRelativePath(document.uri);
-            const lastSlash = docPath.lastIndexOf("/");
-            const currentDocFolder =
-              lastSlash > 0 ? docPath.substring(0, lastSlash) : "";
 
             const fileList = mdFiles.map((uri) => ({
               name: path.basename(uri.fsPath),
@@ -1242,6 +1214,24 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       if (updateDebounceTimer) clearTimeout(updateDebounceTimer);
       disposables.forEach((d) => d.dispose());
     });
+  }
+
+  private buildExcludePattern(): string {
+    const filesExclude = vscode.workspace
+      .getConfiguration("files")
+      .get<Record<string, unknown>>("exclude", {});
+    const userExcludes = Object.entries(filesExclude)
+      .filter(([, v]) => v === true)
+      .map(([glob]) => glob);
+    const defaultExcludes = ["**/node_modules/**", "**/.git/**"];
+    const allExcludes = [...new Set([...defaultExcludes, ...userExcludes])];
+    return `{${allExcludes.join(",")}}`;
+  }
+
+  private getDocFolder(docUri: vscode.Uri): string {
+    const docPath = vscode.workspace.asRelativePath(docUri);
+    const lastSlash = docPath.lastIndexOf("/");
+    return lastSlash > 0 ? docPath.substring(0, lastSlash) : "";
   }
 
   private getHtmlForWebview(webview: vscode.Webview): string {

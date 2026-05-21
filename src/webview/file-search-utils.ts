@@ -68,9 +68,9 @@ function getProximityBonus(
 ): number {
   if (!currentDocFolder) return 0;
   const fileFolder = getFolderPath(filePath);
-  if (fileFolder === currentDocFolder) return 50;
+  if (fileFolder === currentDocFolder) return 20;
   const parentFolder = getFolderPath(currentDocFolder);
-  if (parentFolder && fileFolder === parentFolder) return 25;
+  if (parentFolder && fileFolder === parentFolder) return 10;
   return 0;
 }
 
@@ -126,27 +126,29 @@ export function searchFiles(options: FileSearchOptions): FileSearchResult[] {
   }
 
   const normQuery = normalizeText(query);
-  const normTargets = files.map((f, i) => ({
-    name: normalizeText(f.name),
-    path: normalizeText(f.path),
-    _idx: i,
-  }));
-  const normResults = fuzzysort.go(normQuery, normTargets, {
-    keys: ["name", "path"],
-    threshold: -1000,
-    limit: maxResults * 3,
-  });
+  if (normQuery !== query.toLowerCase()) {
+    const normTargets = files.map((f, i) => ({
+      name: normalizeText(f.name),
+      path: normalizeText(f.path),
+      _idx: i,
+    }));
+    const normResults = fuzzysort.go(normQuery, normTargets, {
+      keys: ["name", "path"],
+      threshold: -1000,
+      limit: maxResults * 3,
+    });
 
-  for (const r of normResults) {
-    const file = files[r.obj._idx];
-    if (!resultMap.has(file.path)) {
-      const bonus = getProximityBonus(file.path, currentDocFolder);
-      resultMap.set(file.path, {
-        file,
-        score: r.score + bonus,
-        nameIndexes: null,
-        pathIndexes: null,
-      });
+    for (const r of normResults) {
+      const file = files[r.obj._idx];
+      if (!resultMap.has(file.path)) {
+        const bonus = getProximityBonus(file.path, currentDocFolder);
+        resultMap.set(file.path, {
+          file,
+          score: r.score + bonus,
+          nameIndexes: null,
+          pathIndexes: null,
+        });
+      }
     }
   }
 
