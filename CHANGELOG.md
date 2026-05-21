@@ -2,6 +2,16 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## [2.11.0] - 2026-05-21
+
+### Added
+
+- **Implicit Frontmatter**: Support frontmatter without opening `---` delimiter. YAML key-value pairs at file start terminated by `---` are now detected and parsed into the metadata panel. Detection uses heuristic (valid YAML object, 2+ keys, at least 1 known metadata key). File format preserved on save: implicit stays implicit, standard stays standard.
+
+### Changed
+
+- **Shared frontmatter parser**: Extracted parse/reconstruct logic from `src/webview/frontmatter.ts` into `src/utils/frontmatter-parser.ts`, shared by both webview and extension bundles. Export pipeline (DOCX/PDF) now strips frontmatter via shared parser before MDAST processing.
+
 ## [2.10.0] - 2026-05-21
 
 ### Added
