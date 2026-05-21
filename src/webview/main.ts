@@ -1834,12 +1834,12 @@ window.addEventListener("message", async (event) => {
       break;
     case "fileSearchResults":
       if (Array.isArray(message.files)) {
-        setFileMentionFiles(message.files);
+        setFileMentionFiles(message.files, message.currentDocFolder);
       }
       break;
     case "wikiLinkSearchResults":
       if (Array.isArray(message.files)) {
-        setWikiLinkFiles(message.files);
+        setWikiLinkFiles(message.files, message.currentDocFolder);
       }
       break;
   }

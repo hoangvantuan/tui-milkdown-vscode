@@ -914,11 +914,29 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             break;
           }
           case "fileSearch": {
+            const filesExclude = vscode.workspace
+              .getConfiguration("files")
+              .get<Record<string, boolean>>("exclude", {});
+            const userExcludes = Object.entries(filesExclude)
+              .filter(([, enabled]) => enabled)
+              .map(([glob]) => glob);
+            const defaultExcludes = ["**/node_modules/**", "**/.git/**"];
+            const allExcludes = [
+              ...new Set([...defaultExcludes, ...userExcludes]),
+            ];
+            const excludePattern = `{${allExcludes.join(",")}}`;
+
             const files = await vscode.workspace.findFiles(
               "**/*",
-              "{**/node_modules/**,**/.git/**,**/.vscode/**,**/out/**,**/dist/**,**/.DS_Store}",
-              1000,
+              excludePattern,
+              5000,
             );
+
+            const docPath = vscode.workspace.asRelativePath(document.uri);
+            const lastSlash = docPath.lastIndexOf("/");
+            const currentDocFolder =
+              lastSlash > 0 ? docPath.substring(0, lastSlash) : "";
+
             const fileList = files.map((uri) => ({
               name: path.basename(uri.fsPath),
               path: vscode.workspace.asRelativePath(uri),
@@ -926,15 +944,34 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             webviewPanel.webview.postMessage({
               type: "fileSearchResults",
               files: fileList,
+              currentDocFolder,
             });
             break;
           }
           case "wikiLinkSearch": {
+            const filesExclude = vscode.workspace
+              .getConfiguration("files")
+              .get<Record<string, boolean>>("exclude", {});
+            const userExcludes = Object.entries(filesExclude)
+              .filter(([, enabled]) => enabled)
+              .map(([glob]) => glob);
+            const defaultExcludes = ["**/node_modules/**", "**/.git/**"];
+            const allExcludes = [
+              ...new Set([...defaultExcludes, ...userExcludes]),
+            ];
+            const excludePattern = `{${allExcludes.join(",")}}`;
+
             const mdFiles = await vscode.workspace.findFiles(
               "**/*.md",
-              "{**/node_modules/**,**/.git/**,**/.vscode/**,**/out/**,**/dist/**,**/.DS_Store}",
-              1000,
+              excludePattern,
+              5000,
             );
+
+            const docPath = vscode.workspace.asRelativePath(document.uri);
+            const lastSlash = docPath.lastIndexOf("/");
+            const currentDocFolder =
+              lastSlash > 0 ? docPath.substring(0, lastSlash) : "";
+
             const fileList = mdFiles.map((uri) => ({
               name: path.basename(uri.fsPath),
               path: vscode.workspace.asRelativePath(uri),
@@ -942,6 +979,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             webviewPanel.webview.postMessage({
               type: "wikiLinkSearchResults",
               files: fileList,
+              currentDocFolder,
             });
             break;
           }
@@ -3086,6 +3124,13 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             text-align: center;
             font-size: 12px;
             opacity: 0.5;
+          }
+          .file-mention-popup mark,
+          .wiki-link-popup mark {
+            background: rgba(var(--accent-rgb), 0.25);
+            color: inherit;
+            border-radius: 2px;
+            padding: 0 1px;
           }
 
           /* Wiki link inline node */
