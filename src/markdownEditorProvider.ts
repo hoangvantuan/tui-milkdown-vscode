@@ -944,6 +944,41 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             });
             break;
           }
+          case "openWikiLink": {
+            const wikiFilename = (msg as { filename?: string }).filename;
+            if (!wikiFilename) break;
+
+            const pattern = wikiFilename.includes("/")
+              ? `${wikiFilename}.md`
+              : `**/${wikiFilename}.md`;
+
+            const results = await vscode.workspace.findFiles(
+              pattern,
+              "{**/node_modules/**,**/.git/**}",
+              10,
+            );
+
+            if (results.length === 0) {
+              vscode.window.showWarningMessage(`Wiki link: file "${wikiFilename}.md" not found`);
+            } else if (results.length === 1) {
+              const doc = await vscode.workspace.openTextDocument(results[0]);
+              vscode.window.showTextDocument(doc);
+            } else {
+              const picks = results.map((uri) => ({
+                label: path.basename(uri.fsPath),
+                description: vscode.workspace.asRelativePath(uri),
+                uri,
+              }));
+              const chosen = await vscode.window.showQuickPick(picks, {
+                placeHolder: `Multiple files match "${wikiFilename}.md"`,
+              });
+              if (chosen) {
+                const doc = await vscode.workspace.openTextDocument(chosen.uri);
+                vscode.window.showTextDocument(doc);
+              }
+            }
+            break;
+          }
           case "export": {
             const exportMsg = msg as {
               format?: string;

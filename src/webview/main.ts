@@ -1574,6 +1574,18 @@ function setupToolbarHandlers(): void {
   document.addEventListener("click", (e) => {
     const isModHeld = isMac ? e.metaKey : e.ctrlKey;
     if (!isModHeld) return;
+
+    const wikiLink = (e.target as HTMLElement).closest<HTMLElement>(".wiki-link");
+    if (wikiLink) {
+      e.preventDefault();
+      e.stopPropagation();
+      const filename = wikiLink.getAttribute("data-filename");
+      if (filename) {
+        vscode.postMessage({ type: "openWikiLink", filename });
+      }
+      return;
+    }
+
     const anchor = (e.target as HTMLElement).closest<HTMLAnchorElement>("a[href]");
     if (!anchor || !editor) return;
 
