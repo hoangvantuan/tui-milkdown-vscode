@@ -1570,11 +1570,8 @@ function setupToolbarHandlers(): void {
     }
   });
 
-  // Link click navigation: Cmd+Click (macOS) or Ctrl+Click (Windows/Linux) opens links
+  // Click on wiki link or markdown link opens target directly (no Ctrl/Cmd required)
   document.addEventListener("click", (e) => {
-    const isModHeld = isMac ? e.metaKey : e.ctrlKey;
-    if (!isModHeld) return;
-
     const wikiLink = (e.target as HTMLElement).closest<HTMLElement>(".wiki-link");
     if (wikiLink) {
       e.preventDefault();
@@ -1600,14 +1597,6 @@ function setupToolbarHandlers(): void {
     }
   });
 
-  // Mod key held → pointer cursor on links (Cmd on macOS, Ctrl on Windows/Linux)
-  document.addEventListener("keydown", (e) => {
-    if (isMac ? e.metaKey : e.ctrlKey) document.body.classList.add("ctrl-held");
-  });
-  document.addEventListener("keyup", (e) => {
-    if (isMac ? !e.metaKey : !e.ctrlKey) document.body.classList.remove("ctrl-held");
-  });
-  window.addEventListener("blur", () => document.body.classList.remove("ctrl-held"));
 }
 
 /** Scroll editor to heading matching GitHub-style slug */

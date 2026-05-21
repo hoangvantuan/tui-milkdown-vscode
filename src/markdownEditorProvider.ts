@@ -780,8 +780,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
               }
 
               const targetUri = vscode.Uri.file(targetPath);
-              vscode.workspace.openTextDocument(targetUri).then(
-                (doc) => vscode.window.showTextDocument(doc),
+              vscode.commands.executeCommand("vscode.open", targetUri).then(
+                undefined,
                 () => vscode.window.showWarningMessage(`Cannot open file: ${linkHref}`)
               );
             }
@@ -2429,10 +2429,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             text-decoration: none;
             border-bottom: 1px solid transparent;
           }
-          /* Ctrl/Cmd held: pointer cursor + underline on links */
-          body.ctrl-held .tiptap a {
+          /* Links: always pointer cursor + underline (click opens directly) */
+          .tiptap a {
             cursor: pointer;
-            text-decoration: underline;
           }
           /* Placeholder styling */
           .tiptap p.is-editor-empty:first-child::before {
@@ -3069,7 +3068,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           /* Wiki link inline node */
           .wiki-link {
             color: var(--accent-color, #4a9eff);
-            cursor: default;
+            cursor: pointer;
             text-decoration: underline dotted;
             text-underline-offset: 3px;
             white-space: nowrap;
@@ -3089,10 +3088,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             display: block;
             stroke: currentColor;
           }
-          body.ctrl-held .wiki-link {
-            cursor: pointer;
-          }
-
           /* Wiki link suggestion popup */
           .wiki-link-popup {
             position: absolute;
