@@ -111,3 +111,21 @@ export async function replaceMermaidBlocks(
 
   return replaced;
 }
+
+export function stripWikiLinks(mdast: Root): void {
+  const WIKI_LINK_RE = /\[\[([^\]|]+?)(?:\|([^\]]+?))?\]\]/g;
+
+  const stack: unknown[] = [mdast];
+  while (stack.length) {
+    const node = stack.pop() as { type?: string; value?: string; children?: unknown[] };
+    if (!node || typeof node !== "object") continue;
+
+    if (node.type === "text" && typeof node.value === "string" && node.value.includes("[[")) {
+      node.value = node.value.replace(WIKI_LINK_RE, (_match, filename, alias) => {
+        return alias?.trim() || filename?.trim() || "";
+      });
+    }
+
+    if (Array.isArray(node.children)) stack.push(...node.children);
+  }
+}

@@ -1024,6 +1024,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
                   replaceMermaidBlocks,
                   hashMermaidCode,
                   countMermaidBlocks,
+                  stripWikiLinks,
                 } = require(markdownAstPath);
 
                 const mdast = await parseMarkdownToMdast(normalized);
@@ -1056,6 +1057,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
                     `${totalMermaid - replaced} of ${totalMermaid} Mermaid diagram(s) could not be embedded (still rendering or parse error). They will appear as code in the export.`,
                   );
                 }
+
+                stripWikiLinks(mdast);
 
                 if (exportFormat === "pdf") {
                   const exportPdfPath = require("path").join(__dirname, "export-pdf.js");
