@@ -41,6 +41,7 @@ src/
 ├── utils/
 │   ├── getNonce.ts           # CSP nonce generator
 │   ├── clean-image-path.ts   # Shared image path cleaning utility (removes titles, angle brackets)
+│   ├── frontmatter-parser.ts # Shared frontmatter parse/reconstruct (standard + implicit format)
 │   ├── image-rename-handler.ts # Image rename/delete detection, execution, workspace reference updates
 │   ├── markdown-ast.ts       # Shared MDAST pipeline (parse + mermaid image substitution)
 │   ├── export-docx.ts        # MDAST → DOCX via mdast2docx (lazy-loaded bundle)

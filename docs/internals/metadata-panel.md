@@ -21,6 +21,33 @@ Frontmatter YAML editing panel.
 * "Add Metadata" button when no frontmatter exists
 * Panel integrates seamlessly below toolbar, above editor
 
+## Implicit Frontmatter Format
+
+Some Markdown files omit the opening `---` delimiter. Implicit frontmatter is YAML key-value pairs at the very start of the file, terminated by a lone `---` line.
+
+**Example:**
+
+```
+title: My Page
+date: 2024-01-01
+---
+
+# Content here
+```
+
+**Detection heuristic** (in `src/utils/frontmatter-parser.ts`):
+
+1. Parse candidate block (lines before first `---`) as YAML
+2. Result must be a plain object (not array, not scalar)
+3. Must have ≥2 keys
+4. Must contain ≥1 known key
+
+**Known keys:** `title`, `date`, `tags`, `author`, `description`, `draft`, `layout`, `slug`, `category`, `categories`, `permalink`, `weight`, `summary`, `image`, `cover`, `published`, `updated`, `created`, `aliases`, `keywords`, `series`, `toc`
+
+**Format preservation:** file opened as implicit saves as implicit (no opening `---` added). File opened as standard (with opening `---`) saves as standard.
+
+**Shared utility:** `src/utils/frontmatter-parser.ts` exports `parseFrontmatter(content)` and `reconstructMarkdown(data, body, format)` used by both extension and webview.
+
 ## Bidirectional Sync
 
 1. Document opens → Parse content → Show metadata panel (or "Add Metadata" button)
