@@ -211,12 +211,10 @@ export const WikiLinkSuggestion = Extension.create({
               }
             }
             if (!rect) return;
-            const container = document.getElementById("editor-container");
-            if (!container) return;
-            const containerRect = container.getBoundingClientRect();
-            popup.style.position = "absolute";
-            popup.style.left = `${rect.left - containerRect.left}px`;
-            popup.style.top = `${rect.bottom - containerRect.top + container.scrollTop}px`;
+
+            popup.style.position = "fixed";
+            popup.style.left = `${rect.left}px`;
+            popup.style.top = `${rect.bottom + 4}px`;
           }
 
           return {
