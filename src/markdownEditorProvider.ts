@@ -948,15 +948,40 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             const wikiFilename = (msg as { filename?: string }).filename;
             if (!wikiFilename) break;
 
-            const pattern = wikiFilename.includes("/")
-              ? `${wikiFilename}.md`
-              : `**/${wikiFilename}.md`;
-
-            const results = await vscode.workspace.findFiles(
-              pattern,
-              "{**/node_modules/**,**/.git/**}",
-              10,
+            const slugified = wikiFilename.trim().replace(/\s+/g, "-");
+            const candidates = [wikiFilename, slugified];
+            const patterns = candidates.flatMap((name) =>
+              name.includes("/")
+                ? [`${name}.md`]
+                : [`**/${name}.md`]
             );
+
+            let results: vscode.Uri[] = [];
+            for (const pattern of patterns) {
+              const found = await vscode.workspace.findFiles(
+                pattern,
+                "{**/node_modules/**,**/.git/**}",
+                10,
+              );
+              for (const uri of found) {
+                if (!results.some((r) => r.fsPath === uri.fsPath)) {
+                  results.push(uri);
+                }
+              }
+            }
+
+            if (results.length === 0) {
+              const mdFiles = await vscode.workspace.findFiles(
+                "**/*.md",
+                "{**/node_modules/**,**/.git/**}",
+                5000,
+              );
+              const needle = slugified.toLowerCase();
+              results = mdFiles.filter((uri) => {
+                const stem = path.basename(uri.fsPath, ".md").toLowerCase();
+                return stem === needle || stem === wikiFilename.toLowerCase();
+              });
+            }
 
             if (results.length === 0) {
               vscode.window.showWarningMessage(`Wiki link: file "${wikiFilename}.md" not found`);
