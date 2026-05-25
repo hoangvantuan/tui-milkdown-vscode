@@ -1,3 +1,17 @@
+/* Design system tokens */
+@import "./_tokens/palette.css";
+@import "./_tokens/typography.css";
+@import "./_tokens/motion.css";
+@import "./_tokens/elevation.css";
+@import "./_tokens/radius.css";
+
+/* Semantic defaults */
+@import "./_semantic/light.css";
+@import "./_semantic/dark.css";
+
+/* Legacy theme adapter */
+@import "./_adapter/legacy-aliases.css";
+
 /* Theme imports - CSS variables scoped by body class */
 @import "./frame.css";
 @import "./frame-dark.css";
