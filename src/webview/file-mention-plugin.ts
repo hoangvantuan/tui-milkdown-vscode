@@ -81,7 +81,7 @@ export const FileMention = Extension.create({
 
           function createPopup(): HTMLDivElement {
             const el = document.createElement("div");
-            el.className = "file-mention-popup";
+            el.className = "file-mention-popup glass-popover";
             const container = document.getElementById("editor-container");
             if (container) {
               container.appendChild(el);

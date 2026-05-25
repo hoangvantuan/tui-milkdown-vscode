@@ -1455,6 +1455,32 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
               border-bottom: 1px solid var(--border-subtle);
             }
           }
+          .glass-popover {
+            background: var(--surface-overlay);
+            backdrop-filter: blur(16px) saturate(180%);
+            -webkit-backdrop-filter: blur(16px) saturate(180%);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--elevation-popover);
+            padding: 8px;
+          }
+          @supports not (backdrop-filter: blur(16px)) {
+            .glass-popover { background: var(--surface-raised); }
+          }
+          .glass-popover-item {
+            padding: 8px 12px;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: background-color var(--duration-instant) var(--ease-standard);
+          }
+          .glass-popover-item:hover,
+          .glass-popover-item.highlighted {
+            background: var(--accent-soft);
+          }
+          .glass-popover-item.is-active {
+            background: var(--accent-soft);
+            color: var(--accent-strong, var(--accent-primary));
+          }
           .toolbar-group {
             display: flex;
             align-items: center;
@@ -2334,32 +2360,22 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .code-lang-dropdown {
             position: absolute;
             z-index: 1000;
-            background: var(--crepe-color-surface, #fff);
-            border: 1px solid rgba(0, 0, 0, 0.12);
-            border-radius: 6px;
-            padding: 4px 0;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
             max-height: 240px;
             overflow-y: auto;
             min-width: 120px;
-          }
-          body.dark-theme .code-lang-dropdown {
-            background: var(--crepe-color-surface, #1e1e2e);
-            border-color: rgba(255, 255, 255, 0.2);
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+            padding: 4px 0;
           }
           .code-lang-item {
             padding: 5px 12px;
             font-size: 12px;
             font-family: var(--crepe-font-code, monospace);
             cursor: pointer;
-            color: var(--crepe-color-on-surface, #333);
+            color: var(--text-primary);
+            border-radius: var(--radius-sm);
+            transition: background-color var(--duration-instant) var(--ease-standard);
           }
-          body.dark-theme .code-lang-item { color: rgba(255, 255, 255, 0.85); }
-          .code-lang-item:hover { background: rgba(0, 0, 0, 0.06); }
-          body.dark-theme .code-lang-item:hover { background: rgba(255, 255, 255, 0.12); }
-          .code-lang-item.active { color: var(--crepe-color-primary, #2563eb); font-weight: 600; }
-          body.dark-theme .code-lang-item.active { color: var(--crepe-color-primary, #89b4fa); }
+          .code-lang-item:hover { background: var(--accent-soft); }
+          .code-lang-item.active { color: var(--accent-strong, var(--accent-primary)); font-weight: 600; }
           .code-copy-btn {
             display: flex;
             align-items: center;
@@ -3050,19 +3066,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             width: 320px;
             max-height: 280px;
             overflow-y: auto;
-            background: rgba(var(--toolbar-bg-rgb), 0.85);
             color: var(--toolbar-fg);
-            border: 1px solid rgba(var(--border-rgb), 0.2);
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
             padding: 4px;
-          }
-          @supports (backdrop-filter: blur(12px)) {
-            .file-mention-popup {
-              backdrop-filter: blur(12px);
-              -webkit-backdrop-filter: blur(12px);
-              background: rgba(var(--toolbar-bg-rgb), 0.7);
-            }
           }
           .file-mention-item {
             display: flex;
@@ -3075,10 +3080,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           }
           .file-mention-item:hover,
           .file-mention-item.is-selected {
-            background: rgba(var(--accent-rgb), 0.1);
-          }
-          .file-mention-item.is-selected {
-            background: rgba(var(--accent-rgb), 0.15);
+            background: var(--accent-soft);
           }
           .file-mention-icon {
             flex-shrink: 0;
@@ -3149,19 +3151,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             width: 320px;
             max-height: 280px;
             overflow-y: auto;
-            background: rgba(var(--toolbar-bg-rgb), 0.85);
             color: var(--toolbar-fg);
-            border: 1px solid rgba(var(--border-rgb), 0.2);
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
             padding: 4px;
-          }
-          @supports (backdrop-filter: blur(12px)) {
-            .wiki-link-popup {
-              backdrop-filter: blur(12px);
-              -webkit-backdrop-filter: blur(12px);
-              background: rgba(var(--toolbar-bg-rgb), 0.7);
-            }
           }
           .wiki-link-item {
             display: flex;
@@ -3174,10 +3165,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           }
           .wiki-link-item:hover,
           .wiki-link-item.is-selected {
-            background: rgba(var(--accent-rgb), 0.1);
-          }
-          .wiki-link-item.is-selected {
-            background: rgba(var(--accent-rgb), 0.15);
+            background: var(--accent-soft);
           }
           .wiki-link-item-icon {
             flex-shrink: 0;

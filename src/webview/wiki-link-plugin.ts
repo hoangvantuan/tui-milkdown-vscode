@@ -107,7 +107,7 @@ export const WikiLinkSuggestion = Extension.create({
 
           function createPopup(): HTMLDivElement {
             const el = document.createElement("div");
-            el.className = "wiki-link-popup";
+            el.className = "wiki-link-popup glass-popover";
             const container = document.getElementById("editor-container");
             (container || document.body).appendChild(el);
             return el;

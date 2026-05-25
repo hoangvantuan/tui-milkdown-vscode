@@ -88,7 +88,7 @@ function showLangDropdown(badge: HTMLElement, header: HTMLElement, view: EditorV
   closeDropdown();
 
   const dropdown = document.createElement("div");
-  dropdown.className = "code-lang-dropdown";
+  dropdown.className = "code-lang-dropdown glass-popover";
   dropdown.setAttribute("role", "listbox");
   dropdown.setAttribute("aria-label", "Select language");
 
