@@ -1337,13 +1337,17 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .tiptap li,
           .tiptap blockquote { font-feature-settings: "liga" 1; }
           .tiptap blockquote {
-            border-left: 3px solid var(--border-subtle);
-            padding-left: 20px;
-            color: var(--text-secondary);
-            transition: border-color var(--duration-instant) var(--ease-standard);
+            border-left: 4px solid var(--accent-primary);
+            padding: 8px 20px;
+            margin-left: 0;
+            background: color-mix(in oklch, var(--accent-primary) 6%, transparent);
+            border-radius: 0 var(--radius-md) var(--radius-md) 0;
+            color: var(--text-primary);
+            transition: border-color var(--duration-instant) var(--ease-standard),
+                        background-color var(--duration-instant) var(--ease-standard);
           }
           .tiptap blockquote:hover {
-            border-left-color: var(--accent-primary);
+            background: color-mix(in oklch, var(--accent-primary) 10%, transparent);
           }
           .tiptap li {
             font-size: calc(16px * var(--editor-font-scale, 1));
@@ -1361,21 +1365,30 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .tiptap ul[data-type="taskList"] > li {
             display: flex;
             align-items: flex-start;
-            gap: calc(8px * var(--editor-font-scale, 1));
+            gap: calc(10px * var(--editor-font-scale, 1));
           }
           .tiptap ul[data-type="taskList"] > li > label {
             flex-shrink: 0;
-            margin-top: calc(4px * var(--editor-font-scale, 1));
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            /* Match first text line height so checkbox optical-centers with first line */
+            height: calc(26px * var(--editor-font-scale, 1));
             user-select: none;
           }
           .tiptap ul[data-type="taskList"] > li > label input[type="checkbox"] {
             cursor: pointer;
             width: calc(16px * var(--editor-font-scale, 1));
             height: calc(16px * var(--editor-font-scale, 1));
+            margin: 0;
             accent-color: var(--crepe-color-primary, var(--vscode-focusBorder));
           }
           .tiptap ul[data-type="taskList"] > li > div {
             flex: 1;
+            min-width: 0;
+          }
+          .tiptap ul[data-type="taskList"] > li > div > p:first-child {
+            margin-top: 0;
           }
           .tiptap ul[data-type="taskList"] > li[data-checked="true"] > div p {
             text-decoration: line-through;
@@ -2375,16 +2388,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .tiptap pre:hover .code-copy-btn { opacity: 0.6; }
           .code-copy-btn:hover { opacity: 1 !important; background: var(--accent-soft); }
           .code-copy-btn.copied { opacity: 1; color: #22c55e; }
-
-          .tiptap blockquote {
-            border-left: 3px solid var(--crepe-color-primary, #2563eb);
-            margin-left: 0;
-            padding: 4px 20px;
-            transition: border-left-width 0.15s ease-out, border-color 0.2s ease-out;
-          }
-          .tiptap blockquote:hover {
-            border-left-width: 4px;
-          }
 
           /* ─── Premium Alert Blocks ─── */
           .tiptap .alert {
