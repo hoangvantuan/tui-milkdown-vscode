@@ -1,0 +1,27 @@
+/* Default dark semantic tokens */
+.dark-theme {
+  --surface-base:    #1a1b1e;
+  --surface-raised:  #242529;
+  --surface-sunken:  #141518;
+  --surface-overlay: rgba(26,27,30,0.78);
+  --surface-scrim:   rgba(0,0,0,0.6);
+
+  --text-primary:    #e4e5e9;
+  --text-secondary:  var(--slate-300);
+  --text-muted:      var(--slate-500);
+  --text-inverse:    #1a1b1e;
+  --text-accent:     #60A5FA;
+
+  --accent-primary:  #60A5FA;
+  --accent-soft:     rgba(96, 165, 250, 0.15);
+  --accent-strong:   #3B82F6;
+
+  --border-subtle:   rgba(255,255,255,0.08);
+  --border-strong:   rgba(255,255,255,0.14);
+  --border-focus:    #60A5FA;
+
+  --state-success:   #34D399;
+  --state-warning:   #FBBF24;
+  --state-danger:    #FB7185;
+  --state-info:      #60A5FA;
+}

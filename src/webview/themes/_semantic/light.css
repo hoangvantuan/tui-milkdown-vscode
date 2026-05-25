@@ -1,0 +1,27 @@
+/* Default light semantic tokens */
+:root {
+  --surface-base:    #FFFFFF;
+  --surface-raised:  #FFFFFF;
+  --surface-sunken:  #F5F6F8;
+  --surface-overlay: rgba(255,255,255,0.78);
+  --surface-scrim:   rgba(15,23,42,0.4);
+
+  --text-primary:    #1a1b1e;
+  --text-secondary:  var(--slate-600);
+  --text-muted:      var(--slate-400);
+  --text-inverse:    #FFFFFF;
+  --text-accent:     #2563eb;
+
+  --accent-primary:  #3B82F6;
+  --accent-soft:     rgba(59, 130, 246, 0.12);
+  --accent-strong:   #2563eb;
+
+  --border-subtle:   #E2E8F0;
+  --border-strong:   #CBD5E1;
+  --border-focus:    #3B82F6;
+
+  --state-success:   var(--sage-500);
+  --state-warning:   var(--peach-500);
+  --state-danger:    var(--rose-500);
+  --state-info:      #3B82F6;
+}
