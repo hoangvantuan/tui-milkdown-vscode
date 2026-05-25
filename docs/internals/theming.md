@@ -4,7 +4,40 @@ Theme system, fonts, typography, micro-interactions, font selector.
 
 ## Theme System
 
-CSS variables loaded from `src/webview/themes/`, scoped by body class (e.g., `.theme-frame .tiptap`). Dark theme overrides use `body.dark-theme` selector (set by `applyTheme()`).
+CSS variables loaded from `src/webview/themes/`, scoped by body class (e.g., `.theme-frame .tiptap`). Semantic tokens auto-adapt to dark themes via `.dark-theme` selector, eliminating most `body.dark-theme` overrides in component CSS.
+
+## Token Architecture
+
+3-tier CSS custom property system:
+
+1. **Primitive** (`_tokens/`): Raw values (colors, sizes, curves). Never referenced by components directly.
+   * `palette.css`: Slate, cream, indigo, peach, sage, rose color scales
+   * `typography.css`: Font stacks (`--font-prose`, `--font-display`, `--font-serif`, `--font-mono`) + prose constraints
+   * `motion.css`: Easing curves + durations + `prefers-reduced-motion` guard
+   * `elevation.css`: 5-level shadow scale (flat, subtle, raised, floating, modal)
+   * `radius.css`: Border-radius scale (xs:4px to full:9999px)
+
+2. **Semantic** (`_semantic/`): Role-based mappings consumed by components.
+   * `light.css`: Default light tokens on `:root` (`--surface-*`, `--text-*`, `--accent-*`, `--border-*`, `--state-*`)
+   * `dark.css`: Dark overrides on `.dark-theme`
+
+3. **Component**: All component CSS in `markdownEditorProvider.ts` references only semantic tokens.
+
+### Adapter
+
+`_adapter/legacy-aliases.css` bridges legacy `--crepe-color-*` variables to semantic tokens inside `.tiptap`. Pattern: `--crepe-color-background: var(--surface-base)`. Existing themes keep working without changes.
+
+### Adding a new theme
+
+1. Create theme CSS file with `--crepe-color-*` vars + 8 semantic tokens (`--state-note`, `--state-tip`, `--state-important`, `--state-warning`, `--state-caution`, `--glass-bg`, `--glass-border`, `--glass-shadow`)
+2. Import in `themes/index.css`
+3. Add to `ThemeName` type, `THEMES` array, `DARK_THEMES` set (if dark) in `main.ts`
+4. Add `<option>` in `markdownEditorProvider.ts` theme select
+5. Add overlay CSS vars in `markdownEditorProvider.ts`
+
+### Glass popover
+
+Shared `.glass-popover` class provides `backdrop-filter: blur(16px) saturate(180%)` with `@supports` fallback. Applied via JS className in plugin files (`file-mention-plugin.ts`, `wiki-link-plugin.ts`, `code-block-plugin.ts`).
 
 ## Font Strategy
 
@@ -17,7 +50,7 @@ CSS variables loaded from `src/webview/themes/`, scoped by body class (e.g., `.t
 
 * Content max-width: 100% with fluid padding `clamp(24px, 5vw, 80px)`
 * Body line-height: 1.625 (26px/16px) for optimal readability
-* Heading scale: Perfect Fourth ratio (1.333) — H1:32, H2:24, H3:20, H4:16, H5:14, H6:13
+* Heading scale: Perfect Fourth ratio (1.333) — H1:32, H2:26, H3:20, H4:16, H5:14, H6:13
 * Heading margins: generous top (48-16px) for section grouping, tight bottom (16-6px) to pull toward content
 * Modern CSS: `text-wrap: balance` on headings, `text-wrap: pretty` on paragraphs, `font-feature-settings: "liga"`, `font-optical-sizing: auto`
 * Tables can overflow content width with horizontal scroll
@@ -30,9 +63,9 @@ CSS variables loaded from `src/webview/themes/`, scoped by body class (e.g., `.t
 * Images: 6px border-radius, hover shadow, accent outline on selection (`ProseMirror-selectednode`)
 * Links: underline slide-in via `background-size` transition
 * Table rows: hover highlight, zebra striping
-* Blockquotes: border thickens on hover (3px→4px)
+* Blockquotes: border color shifts on hover (no width change to avoid layout shift)
 * Heading badges: opacity increases on hover (0.5→0.8)
-* Line highlight: subtle 0.04/0.05 opacity (light/dark)
+* Line highlight: uses `--accent-soft` semantic token, unified light/dark
 
 ## Font Selector
 

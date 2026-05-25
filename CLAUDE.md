@@ -70,7 +70,10 @@ src/
     ├── font-selector.ts      # Searchable font combobox (system font enumeration, live preview, CSS sanitization)
     ├── toc-sidebar.ts        # Table of Contents sidebar (extract, tree, render, active tracking)
     └── themes/               # Theme CSS files (scoped by body class)
-        ├── index.css              # Imports all theme CSS
+        ├── index.css              # Imports all theme + token CSS
+        ├── _tokens/               # Primitive design tokens (palette, typography, motion, elevation, radius)
+        ├── _semantic/             # Semantic token defaults (light.css, dark.css)
+        ├── _adapter/              # Legacy --crepe-* → semantic token adapter
         ├── frame.css              # Frame light theme
         ├── frame-dark.css         # Frame dark theme
         ├── nord.css               # Nord light theme
@@ -82,7 +85,9 @@ src/
         ├── catppuccin-macchiato.css # Catppuccin Macchiato (dark)
         ├── catppuccin-mocha.css   # Catppuccin Mocha (dark)
         ├── paper.css              # Paper (light, warm serif)
-        └── midnight.css           # Midnight (dark, deep navy)
+        ├── midnight.css           # Midnight (dark, deep navy)
+        ├── soft-modular.css       # Soft Modular (light, flagship)
+        └── soft-modular-dark.css  # Soft Modular Dark (flagship)
 ```
 
 ## Configuration Settings
@@ -136,7 +141,7 @@ Implementation details for each feature area:
 | [`autocomplete-plugins.md`](docs/internals/autocomplete-plugins.md) | File mention (@), wiki link ([[...]]), cache strategy, click navigation |
 | [`export-system.md`](docs/internals/export-system.md) | DOCX/PDF export, MDAST pipeline, Chromium discovery, security notes |
 | [`metadata-panel.md`](docs/internals/metadata-panel.md) | Frontmatter YAML panel, bidirectional sync |
-| [`theming.md`](docs/internals/theming.md) | Theme system, font strategy, typography, micro-interactions, font selector |
+| [`theming.md`](docs/internals/theming.md) | Token architecture (3-tier), theme system, glass popover, font strategy, typography, micro-interactions, font selector |
 | [`alerts-codeblock.md`](docs/internals/alerts-codeblock.md) | GitHub-style alerts, code block language badge + copy |
 
 ## Development Guidelines
