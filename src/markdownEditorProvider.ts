@@ -1414,15 +1414,11 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             bottom: -4px;
             left: -4px;
             right: -4px;
-            border-radius: 4px;
-            background: rgba(0, 0, 0, 0.04);
+            border-radius: var(--radius-xs);
+            background: var(--accent-soft);
             pointer-events: none;
             z-index: -1;
-            transition: background 0.1s ease-out;
-          }
-          /* KEPT: dark line-highlight handled by Task 24 */
-          body.dark-theme .tiptap .line-highlight::after {
-            background: rgba(255, 255, 255, 0.05);
+            transition: background var(--duration-instant) var(--ease-standard);
           }
 
           /* ─── Glassmorphic Toolbar ─── */
@@ -3115,17 +3111,17 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             align-items: center;
             gap: 6px;
             padding: 4px 12px;
-            background: rgba(var(--toolbar-bg-rgb), 0.85);
-            border-bottom: 1px solid rgba(var(--border-rgb), 0.15);
+            background: var(--surface-overlay);
+            backdrop-filter: blur(16px) saturate(180%);
+            -webkit-backdrop-filter: blur(16px) saturate(180%);
+            border-bottom: 1px solid var(--border-subtle);
             max-height: 40px;
             overflow: hidden;
             transition: max-height 0.15s ease-out, padding 0.15s ease-out;
           }
-          @supports (backdrop-filter: blur(12px)) {
+          @supports not (backdrop-filter: blur(16px)) {
             #search-bar {
-              backdrop-filter: blur(12px);
-              -webkit-backdrop-filter: blur(12px);
-              background: rgba(var(--toolbar-bg-rgb), 0.7);
+              background: var(--surface-raised);
             }
           }
           #search-bar.hidden {
@@ -3148,18 +3144,19 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           #search-input {
             flex: 1;
             max-width: 300px;
-            background: rgba(var(--border-rgb), 0.1);
-            border: 1px solid rgba(var(--border-rgb), 0.2);
-            border-radius: 4px;
+            background: var(--surface-sunken);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
             padding: 3px 8px;
             font-size: 13px;
             font-family: inherit;
-            color: var(--toolbar-fg);
+            color: var(--text-primary);
             outline: none;
-            transition: border-color 0.15s ease;
+            transition: border-color var(--duration-instant) var(--ease-standard);
           }
           #search-input:focus {
-            border-color: rgba(var(--accent-rgb, 59, 130, 246), 0.5);
+            border-color: var(--border-focus);
+            box-shadow: 0 0 0 2px var(--accent-soft);
           }
           #search-input.no-results {
             border-color: rgba(220, 38, 38, 0.6);
