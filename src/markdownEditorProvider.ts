@@ -1439,24 +1439,20 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             align-items: center;
             gap: 2px;
             padding: 6px 12px;
-            background: rgba(var(--toolbar-bg-rgb, 255, 255, 255), 0.8);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border-bottom: 1px solid rgba(var(--border-rgb, 0, 0, 0), 0.08);
-            color: var(--toolbar-fg, var(--vscode-editor-foreground));
+            background: var(--surface-overlay);
+            backdrop-filter: blur(16px) saturate(180%);
+            -webkit-backdrop-filter: blur(16px) saturate(180%);
+            border-bottom: 1px solid var(--border-subtle);
+            color: var(--toolbar-fg, var(--text-secondary));
             position: sticky;
             top: 0;
             z-index: 100;
             flex-wrap: wrap;
           }
-          body.dark-theme #toolbar {
-            background: rgba(var(--toolbar-bg-rgb, 30, 30, 30), 0.85);
-            border-bottom-color: rgba(255, 255, 255, 0.08);
-          }
-          @supports not (backdrop-filter: blur(12px)) {
+          @supports not (backdrop-filter: blur(16px)) {
             #toolbar {
-              background: var(--vscode-editor-background);
-              border-bottom: 1px solid var(--vscode-panel-border);
+              background: var(--surface-raised);
+              border-bottom: 1px solid var(--border-subtle);
             }
           }
           .toolbar-group {
@@ -1466,7 +1462,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           }
           .toolbar-separator {
             width: 1px;
-            height: 16px;
+            height: 18px;
             background: currentColor;
             opacity: 0.12;
             margin: 0 4px;
@@ -1480,30 +1476,29 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             padding: 0;
             background: transparent;
             border: 1px solid transparent;
-            color: inherit;
+            color: var(--text-secondary);
             cursor: pointer;
-            border-radius: 6px;
-            transition: background 0.15s ease-out, opacity 0.15s ease-out, transform 0.1s ease-out;
-            opacity: 0.6;
+            border-radius: var(--radius-sm);
+            transition: color var(--duration-instant) var(--ease-standard),
+                        background-color var(--duration-instant) var(--ease-standard);
           }
           .toolbar-btn:hover {
-            background: var(--vscode-list-hoverBackground);
-            opacity: 1;
+            background: var(--accent-soft);
+            color: var(--text-primary);
           }
           .toolbar-btn:active {
-            transform: scale(0.93);
-            transition: transform 0.08s cubic-bezier(0.34, 1.56, 0.64, 1);
+            transform: scale(0.94);
+            transition: transform var(--duration-fast) var(--ease-emphasized);
           }
           .toolbar-btn.is-active {
-            background: rgba(var(--accent-rgb, 59, 130, 246), 0.15);
-            color: var(--accent-primary, var(--vscode-list-activeSelectionForeground));
-            opacity: 1;
+            background: var(--accent-soft);
+            color: var(--accent-strong, var(--accent-primary));
           }
           .toolbar-btn svg {
             width: 16px;
             height: 16px;
             stroke: currentColor;
-            stroke-width: 2;
+            stroke-width: 1.75;
             fill: none;
             stroke-linecap: round;
             stroke-linejoin: round;
@@ -1513,17 +1508,18 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           #theme-select {
             -webkit-appearance: none;
             appearance: none;
-            background-color: rgba(var(--border-rgb, 0, 0, 0), 0.05);
+            background-color: var(--accent-soft);
             background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
             background-repeat: no-repeat;
             background-position: right 8px center;
             padding: 4px 28px 4px 10px;
-            border: 1px solid rgba(var(--border-rgb, 0, 0, 0), 0.08);
-            border-radius: 6px;
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
             height: 30px;
             color: inherit;
             cursor: pointer;
-            transition: background-color 0.15s ease-out, border-color 0.15s ease-out;
+            transition: background-color var(--duration-instant) var(--ease-standard),
+                        border-color var(--duration-instant) var(--ease-standard);
           }
           #heading-select {
             font-size: 12px;
@@ -1534,8 +1530,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           }
           #heading-select:hover,
           #theme-select:hover {
-            background-color: rgba(var(--border-rgb, 0, 0, 0), 0.1);
-            border-color: rgba(var(--border-rgb, 0, 0, 0), 0.15);
+            background-color: var(--accent-soft);
+            border-color: var(--border-strong);
           }
           /* Font selector combobox */
           .font-selector {
