@@ -19,7 +19,16 @@
   --crepe-color-inline-code: #ffb4ab;
   --crepe-color-highlight: #3d3520;
 
+  --crepe-color-on-background-muted: #B8A99A;
+  --crepe-color-on-background-subtle: #8C7E6F;
+  --crepe-color-surface-raised: #2A241D;
+  --crepe-color-surface-overlay: rgba(31,27,22,0.78);
+  --crepe-color-state-info: #D4A574;
+  --crepe-color-state-success: #A3BE8C;
+  --crepe-color-state-warning: #E8C06A;
+  --crepe-color-state-danger: #E08080;
+
   /* ui-serif = New York on macOS (Apple reading font), falls back to Source Serif 4 if installed, then Georgia */
   --crepe-font-default: ui-serif, "Source Serif 4", "Source Serif Pro", Georgia, serif;
-  --crepe-font-code: "Cascadia Code", "Fira Code", Menlo, Monaco, "Courier New", monospace;
+  --crepe-font-code: var(--font-mono);
 }

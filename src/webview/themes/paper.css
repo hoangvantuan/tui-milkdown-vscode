@@ -18,6 +18,15 @@
   --crepe-color-primary: #6B4E12;
   --crepe-color-inline-code: #915930;
   --crepe-color-highlight: #f5ecd0;
+  --crepe-color-on-background-muted: #5C5647;
+  --crepe-color-on-background-subtle: #8A8370;
+  --crepe-color-surface-raised: #FFFFFF;
+  --crepe-color-surface-overlay: rgba(250,248,245,0.78);
+  --crepe-color-state-info: #7C6A4F;
+  --crepe-color-state-success: #5E7A4A;
+  --crepe-color-state-warning: #B8862A;
+  --crepe-color-state-danger: #A0503C;
+
   --crepe-font-default: ui-serif, "Source Serif 4", "Newsreader", Georgia, "Times New Roman", serif;
-  --crepe-font-code: "Cascadia Code", "JetBrains Mono", Menlo, Monaco, monospace;
+  --crepe-font-code: var(--font-mono);
 }

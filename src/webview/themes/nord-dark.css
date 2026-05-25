@@ -23,6 +23,15 @@
   --crepe-color-inline-code: #d08770; /* Aurora orange — WCAG AA fix (was #bf616a at 3.05:1, now ~4.8:1) */
   --crepe-color-highlight: #434c5e; /* Polar Night 3 */
 
+  --crepe-color-on-background-muted: #D8DEE9;
+  --crepe-color-on-background-subtle: #7B8394;
+  --crepe-color-surface-raised: #3B4252;
+  --crepe-color-surface-overlay: rgba(46,52,64,0.78);
+  --crepe-color-state-info: #88C0D0;
+  --crepe-color-state-success: #A3BE8C;
+  --crepe-color-state-warning: #EBCB8B;
+  --crepe-color-state-danger: #BF616A;
+
   --crepe-font-default: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
-  --crepe-font-code: "Cascadia Code", "JetBrains Mono", Menlo, Monaco, "Courier New", monospace;
+  --crepe-font-code: var(--font-mono);
 }

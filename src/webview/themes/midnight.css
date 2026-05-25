@@ -18,6 +18,15 @@
   --crepe-color-primary: #58A6FF;
   --crepe-color-inline-code: #E8C690;
   --crepe-color-highlight: #1c2d41;
+  --crepe-color-on-background-muted: #8B949E;
+  --crepe-color-on-background-subtle: #484F58;
+  --crepe-color-surface-raised: #161B22;
+  --crepe-color-surface-overlay: rgba(13,17,23,0.78);
+  --crepe-color-state-info: #58A6FF;
+  --crepe-color-state-success: #3FB950;
+  --crepe-color-state-warning: #D29922;
+  --crepe-color-state-danger: #F85149;
+
   --crepe-font-default: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
-  --crepe-font-code: "Cascadia Code", "Fira Code", "JetBrains Mono", Menlo, monospace;
+  --crepe-font-code: var(--font-mono);
 }
