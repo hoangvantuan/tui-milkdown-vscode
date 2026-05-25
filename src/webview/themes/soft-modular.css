@@ -1,0 +1,38 @@
+/* Soft Modular Light — Flagship theme (Craft x Notion blend) */
+.theme-soft-modular {
+  --accent-primary: #6366F1;
+  --accent-rgb: 99, 102, 241;
+  --toolbar-bg-rgb: 253, 252, 248;
+  --border-rgb: 15, 23, 42;
+  --toolbar-fg: var(--slate-900);
+  --canvas-bg: #F4EFE3;
+  --noise-opacity: 0.5;
+  --vignette-opacity: 0.04;
+  --selection-bg: rgba(99, 102, 241, 0.2);
+  --overlay-bg: #F4EFE3;
+  --overlay-fg: var(--slate-900);
+}
+.theme-soft-modular .tiptap {
+  --crepe-color-background: var(--cream-50);
+  --crepe-color-on-background: var(--slate-900);
+  --crepe-color-surface: var(--slate-100);
+  --crepe-color-outline: var(--slate-200);
+  --crepe-color-primary: var(--indigo-600);
+  --crepe-color-inline-code: var(--indigo-600);
+  --crepe-color-highlight: #FEF3C7;
+
+  --crepe-color-on-background-muted: var(--slate-600);
+  --crepe-color-on-background-subtle: var(--slate-400);
+  --crepe-color-surface-raised: #FFFFFF;
+  --crepe-color-surface-overlay: rgba(255,255,255,0.78);
+  --crepe-color-state-info: var(--indigo-500);
+  --crepe-color-state-success: var(--sage-500);
+  --crepe-color-state-warning: var(--peach-500);
+  --crepe-color-state-danger: var(--rose-500);
+
+  --crepe-font-default: var(--font-prose);
+  --crepe-font-code: var(--font-mono);
+
+  font-feature-settings: "ss01", "cv11", "calt", "liga";
+  font-optical-sizing: auto;
+}

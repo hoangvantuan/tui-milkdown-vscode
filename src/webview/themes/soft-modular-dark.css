@@ -1,0 +1,38 @@
+/* Soft Modular Dark — Flagship dark variant */
+.theme-soft-modular-dark {
+  --accent-primary: #818CF8;
+  --accent-rgb: 129, 140, 248;
+  --toolbar-bg-rgb: 2, 6, 23;
+  --border-rgb: 255, 255, 255;
+  --toolbar-fg: #F8FAFC;
+  --canvas-bg: #010409;
+  --noise-opacity: 0.4;
+  --vignette-opacity: 0.08;
+  --selection-bg: rgba(129, 140, 248, 0.25);
+  --overlay-bg: #0F172A;
+  --overlay-fg: #F8FAFC;
+}
+.theme-soft-modular-dark .tiptap {
+  --crepe-color-background: var(--slate-950);
+  --crepe-color-on-background: #F8FAFC;
+  --crepe-color-surface: var(--slate-900);
+  --crepe-color-outline: rgba(255,255,255,0.08);
+  --crepe-color-primary: #818CF8;
+  --crepe-color-inline-code: #818CF8;
+  --crepe-color-highlight: #312E81;
+
+  --crepe-color-on-background-muted: var(--slate-300);
+  --crepe-color-on-background-subtle: var(--slate-500);
+  --crepe-color-surface-raised: var(--slate-900);
+  --crepe-color-surface-overlay: rgba(15,23,42,0.78);
+  --crepe-color-state-info: #818CF8;
+  --crepe-color-state-success: #34D399;
+  --crepe-color-state-warning: #FBBF24;
+  --crepe-color-state-danger: #FB7185;
+
+  --crepe-font-default: var(--font-prose);
+  --crepe-font-code: var(--font-mono);
+
+  font-feature-settings: "ss01", "cv11", "calt", "liga";
+  font-optical-sizing: auto;
+}
