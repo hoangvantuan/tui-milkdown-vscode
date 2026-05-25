@@ -3538,6 +3538,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           /* ─── Phase 6: New Theme Overlay Vars ─── */
           body.theme-paper { --overlay-bg: #3d3929; --overlay-fg: #faf8f5; }
           body.theme-midnight { --overlay-bg: #c9d1d9; --overlay-fg: #0d1117; }
+          body.theme-soft-modular { --overlay-bg: #F4EFE3; --overlay-fg: #0F172A; }
+          body.theme-soft-modular-dark { --overlay-bg: #0F172A; --overlay-fg: #F8FAFC; }
 
           /* ─── Phase 7: Accessibility & Polish ─── */
           /* Word count indicator */
@@ -3753,6 +3755,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
                     <option value="catppuccin-mocha">Catppuccin Mocha</option>
                     <option value="paper">Paper</option>
                     <option value="midnight">Midnight</option>
+                    <option value="soft-modular">Soft Modular</option>
+                    <option value="soft-modular-dark">Soft Modular Dark</option>
                   </select>
                 </div>
                 <div class="appearance-row">
