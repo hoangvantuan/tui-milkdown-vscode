@@ -2,6 +2,20 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## [2.13.0] - 2026-05-25
+
+### Added
+
+- **Design Token System**: 3-tier CSS custom property architecture (primitive → semantic → component) with backwards-compatible adapter for legacy themes
+- **Soft Modular Theme**: Flagship light + dark theme using primitive token references
+- **Glass Popover**: Shared `backdrop-filter: blur(16px) saturate(180%)` class for file mention, wiki link, code block dropdowns
+
+### Improved
+
+- **All 12 Themes**: Critical fixes (missing highlights, inverted surfaces, outline contrast), per-theme polish (inline code, accent roles), 8 new tokens per theme
+- **Component Styling**: Toolbar, editor surface, headings, blockquotes, code blocks, images, tables, alerts, TOC sidebar, metadata panel, search bar, line highlight all upgraded to semantic tokens
+- **Dark Mode**: 18+ hardcoded `body.dark-theme` CSS overrides eliminated via semantic token auto-adaptation
+
 ## [2.12.0] - 2026-05-21
 
 ### Improved

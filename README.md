@@ -6,7 +6,7 @@
   *A beautiful WYSIWYG Markdown editor for VS Code, powered by Tiptap*
 
   [![VS Code](https://img.shields.io/badge/VS_Code-%3E%3D1.85.0-007ACC?style=flat-square&logo=visual-studio-code)](https://code.visualstudio.com/)
-  [![Version](https://img.shields.io/badge/version-2.8.6-blue?style=flat-square)](CHANGELOG.md)
+  [![Version](https://img.shields.io/badge/version-2.13.0-blue?style=flat-square)](CHANGELOG.md)
   [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
   [Features](#features) · [Usage](#usage) · [Configuration](#configuration) · [Themes](#themes) · [Export](#export)
@@ -55,6 +55,7 @@ Resizable tables with multi-line cell content. Right-click context menu for row/
 - **Reading Progress Bar** — Fixed top bar tracking scroll position
 - **Word Count** — Subtle indicator in bottom-right corner
 - **File Mention (@)** — Type `@` to autocomplete workspace filenames, inserts markdown link
+- **Wiki Link ([[)** — Obsidian-style `[[...]]` links with autocomplete, inline rendering, click-to-open
 - **Toolbar Auto-hide** — Opt-in, reveals on hover
 
 ## Usage
@@ -94,10 +95,12 @@ WYSIWYG export via headless Chromium (`puppeteer-core`). Requires Chrome, Edge, 
 
 ## Themes
 
-12 built-in themes with curated typography and color palettes:
+14 built-in themes with curated typography and color palettes:
 
 | Theme | Style | Character |
 |-------|-------|-----------|
+| **Soft Modular** | Light | Flagship, token-driven design system |
+| **Soft Modular Dark** | Dark | Flagship dark variant |
 | Frame | Light | Clean, modern default |
 | Frame Dark | Dark | Blue-tinted, sharp |
 | Nord | Light | Soft Arctic palette |
