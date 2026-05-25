@@ -1420,15 +1420,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             z-index: -1;
             transition: background 0.1s ease-out;
           }
-          /* Dark themes override (body.dark-theme set by applyTheme) */
-          body.dark-theme .tiptap {
-            box-shadow:
-              0 0 0 1px rgba(var(--border-rgb, 255, 255, 255), 0.05),
-              0 1px 2px rgba(0, 0, 0, 0.12),
-              0 2px 4px rgba(0, 0, 0, 0.10),
-              0 4px 8px rgba(0, 0, 0, 0.08),
-              0 8px 16px rgba(0, 0, 0, 0.06);
-          }
+          /* KEPT: dark line-highlight handled by Task 24 */
           body.dark-theme .tiptap .line-highlight::after {
             background: rgba(255, 255, 255, 0.05);
           }
@@ -2124,16 +2116,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             font-family: var(--vscode-editor-font-family, monospace);
             transition: opacity 0.15s ease-out;
           }
-          /* Light themes */
-          body.theme-frame .heading-level-badge,
-          body.theme-nord .heading-level-badge,
-          body.theme-crepe .heading-level-badge,
-          body.theme-catppuccin-latte .heading-level-badge {
-            color: rgba(0, 0, 0, 0.6);
-          }
-          /* Dark themes (body.dark-theme set by applyTheme) */
-          body.dark-theme .heading-level-badge {
-            color: rgba(255, 255, 255, 0.5);
+          .heading-level-badge {
+            color: var(--text-muted);
           }
 
           /* Heading collapse toggle arrow — overlaps badge, shown on hover */
@@ -2151,7 +2135,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             transition: opacity 0.15s ease-out;
             line-height: 1;
             z-index: 2;
-            color: rgba(0, 0, 0, 0.5);
+            color: var(--text-muted);
             font-family: var(--vscode-editor-font-family, monospace);
           }
           /* Hover heading: hide badge, show arrow */
@@ -2171,22 +2155,16 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .heading-collapsed-indicator .heading-level-badge {
             opacity: 0 !important;
           }
-          body.dark-theme .heading-collapse-toggle {
-            color: rgba(255, 255, 255, 0.5);
-          }
           /* Hidden content under collapsed heading */
           .collapsed-content {
             display: none !important;
           }
           /* Dashed border on collapsed headings — hide gradient underline */
           .heading-collapsed-indicator {
-            border-bottom: 1px dashed rgba(0, 0, 0, 0.15);
+            border-bottom: 1px dashed var(--border-subtle);
             padding-bottom: 4px;
             margin-bottom: 8px;
             background-image: none !important;
-          }
-          body.dark-theme .heading-collapsed-indicator {
-            border-bottom-color: rgba(255, 255, 255, 0.15);
           }
           @media (prefers-reduced-motion: reduce) {
             .heading-collapse-toggle {
@@ -2263,10 +2241,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             background: linear-gradient(90deg, rgba(var(--accent-rgb, 59, 130, 246), 0.9), rgba(var(--accent-rgb, 59, 130, 246), 0.4) 70%, transparent);
           }
           .tiptap pre:hover {
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-          }
-          body.dark-theme .tiptap pre:hover {
-            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+            box-shadow: var(--elevation-raised);
           }
           .tiptap pre:focus-within {
             border-color: var(--crepe-color-primary);
@@ -2338,15 +2313,11 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             align-items: center;
             justify-content: space-between;
             padding: 8px 12px;
-            background: rgba(var(--accent-rgb, 59, 130, 246), 0.04);
-            border-bottom: 1px solid rgba(var(--border-rgb, 0, 0, 0), 0.06);
-            border-radius: 8px 8px 0 0;
+            background: var(--accent-soft);
+            border-bottom: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md) var(--radius-md) 0 0;
             margin: -16px -20px 12px -20px;
             user-select: none;
-          }
-          body.dark-theme .code-block-header {
-            background: rgba(var(--accent-rgb, 59, 130, 246), 0.06);
-            border-bottom-color: rgba(255, 255, 255, 0.06);
           }
           .code-lang-badge {
             font-size: 11px;
@@ -2363,8 +2334,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             border-radius: 3px;
             transition: opacity 0.15s ease-out, background 0.1s ease-out;
           }
-          .code-lang-badge:hover { opacity: 1; background: rgba(0, 0, 0, 0.06); }
-          body.dark-theme .code-lang-badge:hover { background: rgba(255, 255, 255, 0.1); }
+          .code-lang-badge:hover { opacity: 1; background: var(--accent-soft); }
           .code-lang-badge svg { opacity: 0.5; flex-shrink: 0; }
           .code-lang-dropdown {
             position: absolute;
@@ -2401,8 +2371,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             transition: opacity 0.15s ease-out, background 0.1s ease-out;
           }
           .tiptap pre:hover .code-copy-btn { opacity: 0.6; }
-          .code-copy-btn:hover { opacity: 1 !important; background: rgba(0, 0, 0, 0.06); }
-          body.dark-theme .code-copy-btn:hover { background: rgba(255, 255, 255, 0.1); }
+          .code-copy-btn:hover { opacity: 1 !important; background: var(--accent-soft); }
           .code-copy-btn.copied { opacity: 1; color: #22c55e; }
 
           .tiptap blockquote {
@@ -2621,7 +2590,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             padding: 16px;
             border: 2px solid var(--crepe-color-outline, #ccc);
             border-radius: 8px;
-            background: var(--crepe-color-surface, #fafafa);
+            background: var(--surface-sunken);
             text-align: center;
             overflow-x: auto;
             user-select: none;
@@ -2646,8 +2615,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             font-size: 11px;
             padding: 2px 8px;
             border-radius: 4px;
-            background: var(--vscode-badge-background, rgba(0,0,0,0.06));
-            color: var(--vscode-badge-foreground, #666);
+            background: var(--accent-soft);
+            color: var(--text-muted);
             opacity: 0;
             transition: opacity 0.15s ease;
             pointer-events: none;
@@ -2683,10 +2652,10 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             width: 28px;
             height: 28px;
             padding: 0;
-            border: 1px solid var(--crepe-color-outline, rgba(0,0,0,0.15));
+            border: 1px solid var(--border-subtle);
             border-radius: 6px;
-            background: var(--vscode-badge-background, rgba(255,255,255,0.9));
-            color: var(--vscode-badge-foreground, #444);
+            background: var(--surface-overlay);
+            color: var(--text-secondary);
             cursor: pointer;
             display: flex;
             align-items: center;
@@ -2706,11 +2675,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .mermaid-code-block.mermaid-editing + .mermaid-preview .mermaid-expand-btn {
             display: none;
           }
-          body.dark-theme .mermaid-expand-btn {
-            border-color: rgba(255,255,255,0.15);
-            background: rgba(255,255,255,0.12);
-            color: rgba(255,255,255,0.9);
-          }
           @media (prefers-reduced-motion: reduce) {
             .mermaid-expand-btn { transition: none; }
           }
@@ -2721,10 +2685,10 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             width: 28px;
             height: 28px;
             padding: 0;
-            border: 1px solid var(--crepe-color-outline, rgba(0,0,0,0.15));
+            border: 1px solid var(--border-subtle);
             border-radius: 6px;
-            background: var(--vscode-badge-background, rgba(255,255,255,0.9));
-            color: var(--vscode-badge-foreground, #444);
+            background: var(--surface-overlay);
+            color: var(--text-secondary);
             cursor: pointer;
             display: flex;
             align-items: center;
@@ -2738,7 +2702,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .mermaid-copy-btn.is-copied .icon-copy { display: none; }
           .mermaid-copy-btn.is-copied .icon-check {
             display: inline-flex;
-            color: #2da44e;
+            color: var(--state-success);
           }
           .mermaid-preview:hover .mermaid-copy-btn { opacity: 0.85; }
           .mermaid-copy-btn:hover { opacity: 1 !important; }
@@ -2748,12 +2712,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .mermaid-code-block.mermaid-editing + .mermaid-preview .mermaid-copy-btn {
             display: none;
           }
-          body.dark-theme .mermaid-copy-btn {
-            border-color: rgba(255,255,255,0.15);
-            background: rgba(255,255,255,0.12);
-            color: rgba(255,255,255,0.9);
-          }
-          body.dark-theme .mermaid-copy-btn.is-copied .icon-check { color: #3fb950; }
           @media (prefers-reduced-motion: reduce) {
             .mermaid-copy-btn { transition: none; }
           }
@@ -2784,15 +2742,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             color: var(--vscode-descriptionForeground, #888);
             font-size: 12px;
             font-style: italic;
-          }
-
-          /* Dark theme overrides */
-          body.dark-theme .mermaid-preview {
-            background: rgba(255, 255, 255, 0.03);
-          }
-          body.dark-theme .mermaid-preview::after {
-            background: rgba(255,255,255,0.1);
-            color: rgba(255,255,255,0.7);
           }
 
           /* ─── TOC Sidebar ─── */
@@ -2936,11 +2885,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
           /* Image hover: enhanced shadow + subtle scale */
           .tiptap img:hover {
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            box-shadow: var(--elevation-raised);
             transform: scale(1.003);
-          }
-          body.dark-theme .tiptap img:hover {
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
           }
 
           /* Image selected: accent border for visibility */
@@ -2976,29 +2922,20 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             font-size: 9px;
             font-weight: 600;
             letter-spacing: 0.18em;
-            color: var(--crepe-color-outline, #b0b0b0);
-            background: var(--vscode-editor-background, #fff);
+            color: var(--text-muted);
+            background: var(--surface-base);
             padding: 1px 16px;
             white-space: nowrap;
             transition: color 0.15s ease-out, letter-spacing 0.15s ease-out;
           }
           .tiptap hr:hover::after {
-            color: #4a9eff;
+            color: var(--accent-strong, #4a9eff);
             letter-spacing: 0.22em;
-          }
-          body.dark-theme .tiptap hr::after {
-            color: rgba(255, 255, 255, 0.35);
-          }
-          body.dark-theme .tiptap hr:hover::after {
-            color: rgba(var(--accent-rgb, 0, 120, 212), 0.7);
           }
 
           /* Inline code: subtle bg */
           .tiptap :not(pre) > code {
-            background: rgba(var(--border-rgb, 0, 0, 0), 0.05);
-          }
-          body.dark-theme .tiptap :not(pre) > code {
-            background: rgba(255, 255, 255, 0.08);
+            background: var(--accent-soft);
           }
 
           /* Custom scrollbar */
@@ -3020,10 +2957,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
           /* Table header subtle accent */
           .tiptap table th {
-            background: rgba(var(--accent-rgb, 0, 0, 0), 0.04);
-          }
-          body.dark-theme .tiptap table th {
-            background: rgba(255, 255, 255, 0.06);
+            background: var(--accent-soft);
           }
 
           /* ─── Accessibility ─── */
@@ -3270,18 +3204,12 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
           /* Search match highlights (prosemirror-search) */
           .ProseMirror-search-match {
-            background: rgba(var(--accent-rgb, 59, 130, 246), 0.2);
+            background: var(--accent-soft);
             border-radius: 2px;
           }
           .ProseMirror-active-search-match {
             background: rgba(var(--accent-rgb, 59, 130, 246), 0.45);
             border-radius: 2px;
-          }
-          body.dark-theme .ProseMirror-search-match {
-            background: rgba(var(--accent-rgb, 59, 130, 246), 0.25);
-          }
-          body.dark-theme .ProseMirror-active-search-match {
-            background: rgba(var(--accent-rgb, 59, 130, 246), 0.5);
           }
 
           /* ─── Phase 3: Image Lightbox ─── */
@@ -3344,7 +3272,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             align-items: center;
             justify-content: center;
             border-radius: 8px;
-            background: rgba(255, 255, 255, 0.96);
+            background: var(--surface-base);
             padding: 24px;
             box-sizing: border-box;
             transition: transform 0.15s ease-out;
@@ -3362,9 +3290,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             pointer-events: none;
           }
           .lightbox-svg-wrapper svg * { overflow: visible; }
-          body.dark-theme .lightbox-svg-wrapper {
-            background: rgba(20, 22, 28, 0.96);
-          }
           .lightbox-svg-wrapper.grabbable { cursor: grab; }
           .lightbox-svg-wrapper.grabbing { cursor: grabbing; }
           #lightbox-image.grabbable { cursor: grab; }
@@ -3489,10 +3414,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             background-color: rgba(var(--accent-rgb, 59, 130, 246), 0.04);
           }
           .tiptap tbody tr:nth-child(even) {
-            background-color: rgba(0, 0, 0, 0.015);
-          }
-          body.dark-theme .tiptap tbody tr:nth-child(even) {
-            background-color: rgba(255, 255, 255, 0.02);
+            background-color: var(--surface-sunken);
           }
 
           /* ─── Phase 6: New Theme Overlay Vars ─── */
