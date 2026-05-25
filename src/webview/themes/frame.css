@@ -17,15 +17,15 @@
   --crepe-color-surface: #f5f6f8;
   --crepe-color-outline: #d0d5dd;
   --crepe-color-primary: #2563eb;
-  --crepe-color-inline-code: #B84A35;
+  --crepe-color-inline-code: #A83A25;
   --crepe-color-highlight: #FEF3C7;
-  --crepe-color-on-background-muted: #64748B;
-  --crepe-color-on-background-subtle: #94A3B8;
+  --crepe-color-on-background-muted: #475569;
+  --crepe-color-on-background-subtle: #64748B;
   --crepe-color-surface-raised: #FFFFFF;
   --crepe-color-surface-overlay: rgba(255,255,255,0.78);
   --crepe-color-state-info: #3B82F6;
-  --crepe-color-state-success: #10B981;
-  --crepe-color-state-warning: #F97316;
+  --crepe-color-state-success: #059669;
+  --crepe-color-state-warning: #C2410C;
   --crepe-color-state-danger: #F43F5E;
 
   --crepe-font-default: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;

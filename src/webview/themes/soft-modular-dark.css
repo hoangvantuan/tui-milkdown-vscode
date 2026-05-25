@@ -16,13 +16,13 @@
   --crepe-color-background: var(--slate-950);
   --crepe-color-on-background: #F8FAFC;
   --crepe-color-surface: var(--slate-900);
-  --crepe-color-outline: rgba(255,255,255,0.08);
+  --crepe-color-outline: rgba(255,255,255,0.14);
   --crepe-color-primary: #818CF8;
   --crepe-color-inline-code: #818CF8;
   --crepe-color-highlight: #312E81;
 
   --crepe-color-on-background-muted: var(--slate-300);
-  --crepe-color-on-background-subtle: var(--slate-500);
+  --crepe-color-on-background-subtle: #7A8699;
   --crepe-color-surface-raised: var(--slate-900);
   --crepe-color-surface-overlay: rgba(15,23,42,0.78);
   --crepe-color-state-info: #818CF8;

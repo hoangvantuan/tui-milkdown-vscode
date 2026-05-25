@@ -22,12 +22,12 @@
   --crepe-color-highlight: #FEF3C7;
 
   --crepe-color-on-background-muted: var(--slate-600);
-  --crepe-color-on-background-subtle: var(--slate-400);
+  --crepe-color-on-background-subtle: var(--slate-500);
   --crepe-color-surface-raised: #FFFFFF;
   --crepe-color-surface-overlay: rgba(255,255,255,0.78);
   --crepe-color-state-info: var(--indigo-500);
-  --crepe-color-state-success: var(--sage-500);
-  --crepe-color-state-warning: var(--peach-500);
+  --crepe-color-state-success: #047857;
+  --crepe-color-state-warning: #C2410C;
   --crepe-color-state-danger: var(--rose-500);
 
   --crepe-font-default: var(--font-prose);

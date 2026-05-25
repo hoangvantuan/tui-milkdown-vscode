@@ -1395,12 +1395,12 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .tiptap h4,
           .tiptap h5,
           .tiptap h6 { position: relative; font-feature-settings: "liga" 0; }
-          .tiptap h1 { font-size: var(--heading-h1-size, 32px) !important; margin-top: 64px !important; margin-bottom: 16px !important; font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; text-wrap: balance; }
-          .tiptap h2 { font-size: var(--heading-h2-size, 26px) !important; margin-top: 48px !important; margin-bottom: 14px !important; font-weight: 650; letter-spacing: -0.015em; line-height: 1.25; text-wrap: balance; }
-          .tiptap h3 { font-size: var(--heading-h3-size, 21px) !important; margin-top: 36px !important; margin-bottom: 12px !important; font-weight: 600; letter-spacing: -0.01em; line-height: 1.3; text-wrap: balance; }
-          .tiptap h4 { font-size: var(--heading-h4-size, 18px) !important; margin-top: 24px !important; margin-bottom: 10px !important; font-weight: 600; letter-spacing: -0.005em; line-height: 1.4; text-wrap: balance; }
-          .tiptap h5 { font-size: var(--heading-h5-size, 16px) !important; margin-top: 24px !important; margin-bottom: 10px !important; font-weight: 600; line-height: 1.45; text-wrap: balance; }
-          .tiptap h6 { font-size: var(--heading-h6-size, 14px) !important; margin-top: 24px !important; margin-bottom: 10px !important; font-weight: 600; letter-spacing: 0.01em; line-height: 1.5; color: var(--text-muted); text-wrap: balance; }
+          .tiptap h1 { font-size: var(--heading-h1-size, 32px) !important; margin-top: 64px !important; margin-bottom: 16px !important; font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; }
+          .tiptap h2 { font-size: var(--heading-h2-size, 26px) !important; margin-top: 48px !important; margin-bottom: 14px !important; font-weight: 650; letter-spacing: -0.015em; line-height: 1.25; }
+          .tiptap h3 { font-size: var(--heading-h3-size, 21px) !important; margin-top: 36px !important; margin-bottom: 12px !important; font-weight: 600; letter-spacing: -0.01em; line-height: 1.3; }
+          .tiptap h4 { font-size: var(--heading-h4-size, 18px) !important; margin-top: 24px !important; margin-bottom: 10px !important; font-weight: 600; letter-spacing: -0.005em; line-height: 1.4; }
+          .tiptap h5 { font-size: var(--heading-h5-size, 16px) !important; margin-top: 24px !important; margin-bottom: 10px !important; font-weight: 600; line-height: 1.45; }
+          .tiptap h6 { font-size: var(--heading-h6-size, 14px) !important; margin-top: 24px !important; margin-bottom: 10px !important; font-weight: 600; letter-spacing: 0.01em; line-height: 1.5; color: var(--text-muted); }
 
           /* Line highlight for current cursor position */
           .tiptap .line-highlight {

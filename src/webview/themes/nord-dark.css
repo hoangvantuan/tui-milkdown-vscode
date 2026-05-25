@@ -18,13 +18,13 @@
   --crepe-color-background: #2e3440; /* Polar Night 1 */
   --crepe-color-on-background: #eceff4; /* Snow Storm 3 */
   --crepe-color-surface: #3b4252; /* Polar Night 2 */
-  --crepe-color-outline: #4c566a; /* Polar Night 4 */
+  --crepe-color-outline: #5C677A; /* Polar Night 4 (boosted for AA UI contrast) */
   --crepe-color-primary: #88c0d0; /* Frost 2 (teal-blue) */
   --crepe-color-inline-code: #d08770; /* Aurora orange — WCAG AA fix (was #bf616a at 3.05:1, now ~4.8:1) */
   --crepe-color-highlight: #434c5e; /* Polar Night 3 */
 
   --crepe-color-on-background-muted: #D8DEE9;
-  --crepe-color-on-background-subtle: #7B8394;
+  --crepe-color-on-background-subtle: #969FB0;
   --crepe-color-surface-raised: #3B4252;
   --crepe-color-surface-overlay: rgba(46,52,64,0.78);
   --crepe-color-state-info: #88C0D0;
