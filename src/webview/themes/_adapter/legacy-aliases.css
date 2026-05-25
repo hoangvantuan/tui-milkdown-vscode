@@ -16,6 +16,8 @@
 
   --border-subtle:   var(--crepe-color-outline, var(--border-subtle));
 
+  --accent-primary:  var(--crepe-color-primary, var(--accent-primary));
+
   --state-info:      var(--crepe-color-state-info, var(--state-info));
   --state-success:   var(--crepe-color-state-success, var(--state-success));
   --state-warning:   var(--crepe-color-state-warning, var(--state-warning));

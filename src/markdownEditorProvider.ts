@@ -1697,14 +1697,19 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             min-width: 280px;
             max-width: calc(100vw - 16px);
             padding: 14px;
-            background: var(--vscode-editorWidget-background, var(--vscode-menu-background, #252526));
-            color: var(--vscode-editorWidget-foreground, var(--vscode-foreground, #cccccc));
-            border: 1px solid var(--vscode-editorWidget-border, var(--vscode-menu-border, rgba(127, 127, 127, 0.3)));
-            border-radius: 10px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+            background: var(--surface-overlay);
+            backdrop-filter: blur(16px) saturate(180%);
+            -webkit-backdrop-filter: blur(16px) saturate(180%);
+            color: var(--text-primary);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--elevation-popover);
             display: flex;
             flex-direction: column;
             gap: 12px;
+          }
+          @supports not (backdrop-filter: blur(16px)) {
+            .appearance-popover { background: var(--surface-raised); }
           }
           .appearance-popover.hidden {
             display: none;
@@ -2191,6 +2196,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           }
           .tiptap img:hover {
             box-shadow: var(--elevation-raised);
+            transform: scale(1.003);
           }
           .tiptap img.ProseMirror-selectednode {
             outline: 2px solid var(--border-focus);
@@ -2396,6 +2402,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           }
           .tiptap .alert p:first-child { margin-top: 0; }
           .tiptap .alert p:last-child { margin-bottom: 0; }
+          /* Label text via ::before */
           .tiptap .alert::before {
             display: block;
             font-weight: 600;
@@ -2407,44 +2414,51 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             padding-left: 22px;
             border-bottom: 1px solid var(--border-subtle);
             color: var(--alert-color, #888);
-            background-repeat: no-repeat;
-            background-position: 0 0;
-            background-size: 16px 16px;
           }
-          .tiptap .alert-note {
-            --alert-color: var(--state-info);
+          /* Icon via ::after — mask-image so fill inherits --alert-color (theme-aware) */
+          .tiptap .alert::after {
+            content: "";
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            width: 16px;
+            height: 16px;
+            background-color: var(--alert-color, #888);
+            -webkit-mask-repeat: no-repeat;
+                    mask-repeat: no-repeat;
+            -webkit-mask-size: 16px 16px;
+                    mask-size: 16px 16px;
+            pointer-events: none;
           }
-          .tiptap .alert-note::before {
-            content: "Note";
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%232f81f7' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cline x1='12' y1='16' x2='12' y2='12'/%3E%3Cline x1='12' y1='8' x2='12.01' y2='8'/%3E%3C/svg%3E");
+          .tiptap .alert-note { --alert-color: var(--state-info); }
+          .tiptap .alert-note::before { content: "Note"; }
+          .tiptap .alert-note::after {
+            -webkit-mask-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cline x1='12' y1='16' x2='12' y2='12'/%3E%3Cline x1='12' y1='8' x2='12.01' y2='8'/%3E%3C/svg%3E");
+                    mask-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cline x1='12' y1='16' x2='12' y2='12'/%3E%3Cline x1='12' y1='8' x2='12.01' y2='8'/%3E%3C/svg%3E");
           }
-          .tiptap .alert-tip {
-            --alert-color: var(--state-success);
+          .tiptap .alert-tip { --alert-color: var(--state-success); }
+          .tiptap .alert-tip::before { content: "Tip"; }
+          .tiptap .alert-tip::after {
+            -webkit-mask-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18h6'/%3E%3Cpath d='M10 22h4'/%3E%3Cpath d='M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14'/%3E%3C/svg%3E");
+                    mask-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18h6'/%3E%3Cpath d='M10 22h4'/%3E%3Cpath d='M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14'/%3E%3C/svg%3E");
           }
-          .tiptap .alert-tip::before {
-            content: "Tip";
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%233fb950' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18h6'/%3E%3Cpath d='M10 22h4'/%3E%3Cpath d='M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14'/%3E%3C/svg%3E");
+          .tiptap .alert-important { --alert-color: var(--state-important, #a371f7); }
+          .tiptap .alert-important::before { content: "Important"; }
+          .tiptap .alert-important::after {
+            -webkit-mask-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z'/%3E%3Cline x1='12' y1='9' x2='12' y2='13'/%3E%3Cline x1='12' y1='17' x2='12.01' y2='17'/%3E%3C/svg%3E");
+                    mask-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z'/%3E%3Cline x1='12' y1='9' x2='12' y2='13'/%3E%3Cline x1='12' y1='17' x2='12.01' y2='17'/%3E%3C/svg%3E");
           }
-          .tiptap .alert-important {
-            --alert-color: var(--state-important, #a371f7);
+          .tiptap .alert-warning { --alert-color: var(--state-warning); }
+          .tiptap .alert-warning::before { content: "Warning"; }
+          .tiptap .alert-warning::after {
+            -webkit-mask-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'/%3E%3Cline x1='12' y1='8' x2='12' y2='12'/%3E%3Cline x1='12' y1='16' x2='12.01' y2='16'/%3E%3C/svg%3E");
+                    mask-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'/%3E%3Cline x1='12' y1='8' x2='12' y2='12'/%3E%3Cline x1='12' y1='16' x2='12.01' y2='16'/%3E%3C/svg%3E");
           }
-          .tiptap .alert-important::before {
-            content: "Important";
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23a371f7' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z'/%3E%3Cline x1='12' y1='9' x2='12' y2='13'/%3E%3Cline x1='12' y1='17' x2='12.01' y2='17'/%3E%3C/svg%3E");
-          }
-          .tiptap .alert-warning {
-            --alert-color: var(--state-warning);
-          }
-          .tiptap .alert-warning::before {
-            content: "Warning";
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23d29922' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'/%3E%3Cline x1='12' y1='8' x2='12' y2='12'/%3E%3Cline x1='12' y1='16' x2='12.01' y2='16'/%3E%3C/svg%3E");
-          }
-          .tiptap .alert-caution {
-            --alert-color: var(--state-danger);
-          }
-          .tiptap .alert-caution::before {
-            content: "Caution";
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23f85149' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86'/%3E%3Cline x1='12' y1='8' x2='12' y2='12'/%3E%3Cline x1='12' y1='16' x2='12.01' y2='16'/%3E%3C/svg%3E");
+          .tiptap .alert-caution { --alert-color: var(--state-danger); }
+          .tiptap .alert-caution::before { content: "Caution"; }
+          .tiptap .alert-caution::after {
+            -webkit-mask-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86'/%3E%3Cline x1='12' y1='8' x2='12' y2='12'/%3E%3Cline x1='12' y1='16' x2='12.01' y2='16'/%3E%3C/svg%3E");
+                    mask-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86'/%3E%3Cline x1='12' y1='8' x2='12' y2='12'/%3E%3Cline x1='12' y1='16' x2='12.01' y2='16'/%3E%3C/svg%3E");
           }
 
           .tiptap a {
@@ -2879,17 +2893,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             border-bottom-color: transparent;
           }
 
-          /* Image hover: enhanced shadow + subtle scale */
-          .tiptap img:hover {
-            box-shadow: var(--elevation-raised);
-            transform: scale(1.003);
-          }
-
-          /* Image selected: accent border for visibility */
-          .tiptap img.ProseMirror-selectednode {
-            outline: 2.5px solid rgba(var(--accent-rgb, 100, 149, 237), 0.7);
-            outline-offset: 2px;
-          }
 
           /* Page Break: modern dashed separator */
           .tiptap hr {
@@ -2951,10 +2954,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             border-radius: 2px;
           }
 
-          /* Table header subtle accent */
-          .tiptap table th {
-            background: var(--accent-soft);
-          }
 
           /* ─── Accessibility ─── */
           @media (prefers-contrast: more) {
