@@ -24,4 +24,5 @@
   --state-warning:   var(--peach-500);
   --state-danger:    var(--rose-500);
   --state-info:      #3B82F6;
+  --state-important: #a371f7;
 }

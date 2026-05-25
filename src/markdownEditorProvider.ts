@@ -1950,8 +1950,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
           /* Metadata Panel */
           #metadata-panel {
-            border-bottom: 1px solid var(--vscode-panel-border);
-            background: var(--vscode-editor-background);
+            border-bottom: 1px solid var(--border-subtle);
+            background: var(--surface-raised);
           }
           #metadata-details { margin: 0; }
           #metadata-summary {
@@ -1963,11 +1963,11 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             user-select: none;
             font-size: 12px;
             font-weight: 500;
-            color: var(--vscode-editor-foreground);
-            background: var(--vscode-editor-background);
+            color: var(--text-primary);
+            background: var(--surface-raised);
           }
           #metadata-summary:hover {
-            background: var(--vscode-list-hoverBackground);
+            background: var(--accent-soft);
           }
           #metadata-summary:focus {
             outline: 2px solid var(--vscode-focusBorder);
@@ -2418,17 +2418,16 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           /* ─── Premium Alert Blocks ─── */
           .tiptap .alert {
             position: relative;
-            border: 1px solid rgba(var(--alert-rgb, 0, 0, 0), 0.15);
-            border-left: 4px solid var(--alert-color, #888);
-            border-radius: 8px;
+            border: none;
+            border-left: 3px solid var(--alert-color, #888);
+            border-radius: var(--radius-md);
             padding: 14px 16px 12px 16px;
             margin: 16px 0;
-            background: rgba(var(--alert-rgb, 0, 0, 0), 0.04);
-            transition: border-color 0.2s ease-out, box-shadow 0.2s ease-out;
+            background: color-mix(in oklch, var(--alert-color, #888) 8%, var(--surface-base));
+            transition: border-color var(--duration-base) var(--ease-standard);
           }
           .tiptap .alert:hover {
-            border-left-width: 5px;
-            box-shadow: 0 2px 8px rgba(var(--alert-rgb, 0, 0, 0), 0.08);
+            border-left-width: 4px;
           }
           .tiptap .alert p:first-child { margin-top: 0; }
           .tiptap .alert p:last-child { margin-bottom: 0; }
@@ -2441,61 +2440,46 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             margin-bottom: 8px;
             padding-bottom: 6px;
             padding-left: 22px;
-            border-bottom: 1px solid rgba(var(--alert-rgb, 0, 0, 0), 0.1);
+            border-bottom: 1px solid var(--border-subtle);
             color: var(--alert-color, #888);
             background-repeat: no-repeat;
             background-position: 0 0;
             background-size: 16px 16px;
           }
           .tiptap .alert-note {
-            --alert-color: #2f81f7;
-            --alert-rgb: 47, 129, 247;
+            --alert-color: var(--state-info);
           }
           .tiptap .alert-note::before {
             content: "Note";
             background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%232f81f7' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cline x1='12' y1='16' x2='12' y2='12'/%3E%3Cline x1='12' y1='8' x2='12.01' y2='8'/%3E%3C/svg%3E");
           }
           .tiptap .alert-tip {
-            --alert-color: #3fb950;
-            --alert-rgb: 63, 185, 80;
+            --alert-color: var(--state-success);
           }
           .tiptap .alert-tip::before {
             content: "Tip";
             background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%233fb950' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18h6'/%3E%3Cpath d='M10 22h4'/%3E%3Cpath d='M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14'/%3E%3C/svg%3E");
           }
           .tiptap .alert-important {
-            --alert-color: #a371f7;
-            --alert-rgb: 163, 113, 247;
+            --alert-color: var(--state-important, #a371f7);
           }
           .tiptap .alert-important::before {
             content: "Important";
             background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23a371f7' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z'/%3E%3Cline x1='12' y1='9' x2='12' y2='13'/%3E%3Cline x1='12' y1='17' x2='12.01' y2='17'/%3E%3C/svg%3E");
           }
           .tiptap .alert-warning {
-            --alert-color: #d29922;
-            --alert-rgb: 210, 153, 34;
+            --alert-color: var(--state-warning);
           }
           .tiptap .alert-warning::before {
             content: "Warning";
             background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23d29922' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'/%3E%3Cline x1='12' y1='8' x2='12' y2='12'/%3E%3Cline x1='12' y1='16' x2='12.01' y2='16'/%3E%3C/svg%3E");
           }
           .tiptap .alert-caution {
-            --alert-color: #f85149;
-            --alert-rgb: 248, 81, 73;
+            --alert-color: var(--state-danger);
           }
           .tiptap .alert-caution::before {
             content: "Caution";
             background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23f85149' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86'/%3E%3Cline x1='12' y1='8' x2='12' y2='12'/%3E%3Cline x1='12' y1='16' x2='12.01' y2='16'/%3E%3C/svg%3E");
-          }
-          body.dark-theme .tiptap .alert {
-            background: rgba(var(--alert-rgb, 0, 0, 0), 0.08);
-            border-color: rgba(var(--alert-rgb, 0, 0, 0), 0.2);
-          }
-          body.dark-theme .tiptap .alert::before {
-            border-bottom-color: rgba(var(--alert-rgb, 0, 0, 0), 0.15);
-          }
-          body.dark-theme .tiptap .alert:hover {
-            box-shadow: 0 2px 12px rgba(var(--alert-rgb, 0, 0, 0), 0.15);
           }
 
           .tiptap a {
@@ -2515,26 +2499,28 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           /* Table styles */
           .tiptap table th,
           .tiptap table td {
-            border: 1px solid var(--crepe-color-outline, #a8a8a8);
-            padding: 10px 14px;
-            transition: background 0.1s ease-out;
+            border: 1px solid var(--border-subtle);
+            padding: 12px 16px;
+            transition: background-color var(--duration-instant) var(--ease-standard);
           }
           .tiptap table th {
-            background: var(--crepe-color-surface, #f7f7f7);
-            font-weight: 600;
-            font-size: 0.9em;
-            letter-spacing: 0.02em;
+            background: var(--surface-sunken);
+            color: var(--text-secondary);
+            font-size: 12px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
           }
           /* Table row hover */
           .tiptap table tbody tr:hover td {
-            background: var(--crepe-color-surface);
+            background: var(--accent-soft);
           }
           /* Table zebra striping */
           .tiptap table tbody tr:nth-child(even) td {
-            background: color-mix(in srgb, var(--crepe-color-surface) 50%, transparent);
+            background: color-mix(in srgb, var(--surface-sunken) 50%, transparent);
           }
           .tiptap table tbody tr:nth-child(even):hover td {
-            background: var(--crepe-color-surface);
+            background: var(--accent-soft);
           }
           /* Compact spacing for elements inside table cells */
           .tiptap table p {
@@ -2558,12 +2544,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             content: '';
             position: absolute;
             left: 0; right: 0; top: 0; bottom: 0;
-            background: rgba(200, 200, 255, 0.4);
+            background: var(--accent-soft);
             pointer-events: none;
             z-index: 2;
-          }
-          body.dark-theme .tiptap table .selectedCell::after {
-            background: rgba(100, 100, 200, 0.3);
           }
           /* Table right-click context menu */
           .table-context-menu {
@@ -2820,17 +2803,13 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           #toc-sidebar {
             width: clamp(180px, 15vw, 300px);
             min-width: 180px;
-            border-right: 1px solid rgba(var(--border-rgb, 0, 0, 0), 0.08);
+            border-right: 1px solid var(--border-subtle);
             overflow-y: auto;
-            background: rgba(var(--toolbar-bg-rgb, 255, 255, 255), 0.6);
+            background: var(--surface-raised);
             color: var(--toolbar-fg, var(--vscode-editor-foreground));
             font-size: 13px;
             display: flex;
             flex-direction: column;
-          }
-          body.dark-theme #toc-sidebar {
-            background: rgba(var(--toolbar-bg-rgb, 30, 30, 30), 0.6);
-            border-right-color: rgba(255, 255, 255, 0.08);
           }
           #toc-sidebar.hidden { display: none; }
           .toc-header {
@@ -2839,10 +2818,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             align-items: center;
             gap: 6px;
             flex-wrap: wrap;
-            border-bottom: 1px solid rgba(var(--border-rgb, 0, 0, 0), 0.08);
-          }
-          body.dark-theme .toc-header {
-            border-bottom-color: rgba(255, 255, 255, 0.08);
+            border-bottom: 1px solid var(--border-subtle);
           }
           .toc-title {
             font-size: 11px;
@@ -2863,27 +2839,21 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             gap: 4px;
             padding: 3px 10px;
             cursor: pointer;
-            border-radius: 3px;
+            border-radius: var(--radius-sm);
             margin: 0 4px;
             color: var(--toolbar-fg, var(--vscode-editor-foreground));
             opacity: 0.55;
-            transition: background 0.1s ease-out, opacity 0.1s ease-out;
+            transition: background-color var(--duration-instant) var(--ease-standard), opacity 0.1s ease-out;
           }
           .toc-entry:hover {
-            background: rgba(var(--border-rgb, 0, 0, 0), 0.10);
+            background: var(--accent-soft);
             opacity: 0.9;
           }
-          body.dark-theme .toc-entry:hover {
-            background: rgba(255, 255, 255, 0.10);
-          }
           .toc-entry.active {
-            background: rgba(0, 0, 0, 0.08);
-            box-shadow: inset 3px 0 0 var(--accent-primary, var(--vscode-focusBorder));
+            background: var(--accent-soft);
+            border-left: 2px solid var(--accent-primary);
             font-weight: 600;
             opacity: 1;
-          }
-          body.dark-theme .toc-entry.active {
-            background: rgba(255, 255, 255, 0.12);
           }
           .toc-label {
             white-space: nowrap;
@@ -2934,14 +2904,11 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .toc-toggle-btn svg { width: 14px; height: 14px; }
           .toc-toggle-btn:hover {
             opacity: 1;
-            background: rgba(var(--border-rgb, 0, 0, 0), 0.05);
+            background: var(--accent-soft);
           }
           .toc-toggle-btn.is-active {
             opacity: 0.85;
-            color: var(--accent-primary, var(--toolbar-fg));
-          }
-          body.dark-theme .toc-toggle-btn:hover {
-            background: rgba(255, 255, 255, 0.05);
+            color: var(--accent-primary);
           }
           @media (max-width: 600px) {
             #toc-sidebar { width: 160px; min-width: 160px; }
