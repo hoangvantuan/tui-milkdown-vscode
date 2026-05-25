@@ -1312,9 +1312,13 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .tiptap {
             min-height: 100%;
             padding: 32px 48px 40vh 48px;
-            caret-color: var(--crepe-color-primary);
+            caret-color: var(--accent-primary);
             font-optical-sizing: auto;
             transition: background-color 0.3s ease, color 0.3s ease;
+          }
+          .tiptap ::selection {
+            background: var(--accent-soft);
+            color: var(--text-primary);
           }
           /* Body text: 16px base, 1.6 line-height for readability */
           .tiptap p,
@@ -1332,18 +1336,14 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .tiptap p,
           .tiptap li,
           .tiptap blockquote { font-feature-settings: "liga" 1; }
-          /* Override VSCode default blockquote styles — clean border, no bg */
           .tiptap blockquote {
-            background: transparent;
-            border-color: var(--crepe-color-primary);
-            overflow: hidden;
-            opacity: 0.85;
-            padding: 4px 20px;
-            transition: border-left-width 0.15s ease-out, padding-left 0.15s ease-out;
+            border-left: 3px solid var(--border-subtle);
+            padding-left: 20px;
+            color: var(--text-secondary);
+            transition: border-color var(--duration-instant) var(--ease-standard);
           }
           .tiptap blockquote:hover {
-            border-left-width: 4px;
-            padding-left: 19px;
+            border-left-color: var(--accent-primary);
           }
           .tiptap li {
             font-size: calc(16px * var(--editor-font-scale, 1));
@@ -1395,12 +1395,12 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .tiptap h4,
           .tiptap h5,
           .tiptap h6 { position: relative; font-feature-settings: "liga" 0; }
-          .tiptap h1 { font-size: var(--heading-h1-size, 32px) !important; margin-top: var(--heading-h1-margin, 48px) !important; margin-bottom: var(--heading-h1-margin-bottom, 16px) !important; font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; }
-          .tiptap h2 { font-size: var(--heading-h2-size, 24px) !important; margin-top: var(--heading-h2-margin, 40px) !important; margin-bottom: var(--heading-h2-margin-bottom, 12px) !important; font-weight: 700; letter-spacing: -0.01em; line-height: 1.3; }
-          .tiptap h3 { font-size: var(--heading-h3-size, 20px) !important; margin-top: var(--heading-h3-margin, 32px) !important; margin-bottom: var(--heading-h3-margin-bottom, 10px) !important; font-weight: 600; line-height: 1.4; }
-          .tiptap h4 { font-size: var(--heading-h4-size, 16px) !important; margin-top: var(--heading-h4-margin, 24px) !important; margin-bottom: var(--heading-h4-margin-bottom, 8px) !important; font-weight: 600; line-height: 1.4; }
-          .tiptap h5 { font-size: var(--heading-h5-size, 14px) !important; margin-top: var(--heading-h5-margin, 20px) !important; margin-bottom: var(--heading-h5-margin-bottom, 6px) !important; font-weight: 600; line-height: 1.5; }
-          .tiptap h6 { font-size: var(--heading-h6-size, 13px) !important; margin-top: var(--heading-h6-margin, 16px) !important; margin-bottom: var(--heading-h6-margin-bottom, 6px) !important; font-weight: 600; line-height: 1.5; color: var(--crepe-color-outline); }
+          .tiptap h1 { font-size: var(--heading-h1-size, 32px) !important; margin-top: 64px !important; margin-bottom: 16px !important; font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; text-wrap: balance; }
+          .tiptap h2 { font-size: var(--heading-h2-size, 26px) !important; margin-top: 48px !important; margin-bottom: 14px !important; font-weight: 650; letter-spacing: -0.015em; line-height: 1.25; text-wrap: balance; }
+          .tiptap h3 { font-size: var(--heading-h3-size, 21px) !important; margin-top: 36px !important; margin-bottom: 12px !important; font-weight: 600; letter-spacing: -0.01em; line-height: 1.3; text-wrap: balance; }
+          .tiptap h4 { font-size: var(--heading-h4-size, 18px) !important; margin-top: 24px !important; margin-bottom: 10px !important; font-weight: 600; letter-spacing: -0.005em; line-height: 1.4; text-wrap: balance; }
+          .tiptap h5 { font-size: var(--heading-h5-size, 16px) !important; margin-top: 24px !important; margin-bottom: 10px !important; font-weight: 600; line-height: 1.45; text-wrap: balance; }
+          .tiptap h6 { font-size: var(--heading-h6-size, 14px) !important; margin-top: 24px !important; margin-bottom: 10px !important; font-weight: 600; letter-spacing: 0.01em; line-height: 1.5; color: var(--text-muted); text-wrap: balance; }
 
           /* Line highlight for current cursor position */
           .tiptap .line-highlight {
@@ -2211,15 +2211,23 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           .tiptap img {
             max-width: 100%;
             height: auto;
-            border-radius: 6px;
-            transition: box-shadow 0.25s ease-out, transform 0.25s ease-out;
+            border-radius: var(--radius-md);
+            transition: box-shadow var(--duration-base) var(--ease-decelerate),
+                        transform var(--duration-base) var(--ease-decelerate);
+          }
+          .tiptap img:hover {
+            box-shadow: var(--elevation-raised);
+          }
+          .tiptap img.ProseMirror-selectednode {
+            outline: 2px solid var(--border-focus);
+            outline-offset: 4px;
           }
           .tiptap code {
             color: var(--crepe-color-inline-code, #ba1a1a);
-            background: var(--crepe-color-surface, #f7f7f7);
+            background: var(--accent-soft);
             padding: 2px 6px;
-            border-radius: 4px;
-            font-family: var(--crepe-font-code, monospace);
+            border-radius: var(--radius-xs);
+            font-family: var(--crepe-font-code, var(--font-mono));
             font-size: 0.9em;
           }
           .tiptap mark {
@@ -2230,12 +2238,13 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           }
           .tiptap pre {
             position: relative;
-            background: var(--crepe-color-surface, #f7f7f7);
-            border-radius: 8px;
+            background: var(--surface-sunken);
+            border-radius: var(--radius-md);
             padding: 16px 20px;
             overflow-x: auto;
-            border: 1px solid transparent;
-            transition: border-color 0.2s ease-out, box-shadow 0.2s ease-out;
+            border: 1px solid var(--border-subtle);
+            transition: border-color var(--duration-base) var(--ease-standard),
+                        box-shadow var(--duration-base) var(--ease-standard);
           }
           /* Gradient accent bar at top via ::after (preserves border-radius) */
           .tiptap pre::after {
