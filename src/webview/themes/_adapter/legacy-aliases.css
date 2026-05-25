@@ -1,0 +1,23 @@
+/* Backwards-compat: legacy --crepe-* → semantic tokens */
+/* Legacy themes define --crepe-color-* inside .theme-X .tiptap.
+   This adapter re-derives semantic tokens from those legacy vars
+   so new components can consume --surface-base etc. regardless of theme. */
+
+.tiptap {
+  --surface-base:    var(--crepe-color-background, var(--surface-base));
+  --surface-sunken:  var(--crepe-color-surface, var(--surface-sunken));
+  --surface-raised:  var(--crepe-color-surface-raised, var(--surface-raised));
+  --surface-overlay: var(--crepe-color-surface-overlay, var(--surface-overlay));
+
+  --text-primary:    var(--crepe-color-on-background, var(--text-primary));
+  --text-secondary:  var(--crepe-color-on-background-muted, var(--text-secondary));
+  --text-muted:      var(--crepe-color-on-background-subtle, var(--text-muted));
+  --text-accent:     var(--crepe-color-primary, var(--text-accent));
+
+  --border-subtle:   var(--crepe-color-outline, var(--border-subtle));
+
+  --state-info:      var(--crepe-color-state-info, var(--state-info));
+  --state-success:   var(--crepe-color-state-success, var(--state-success));
+  --state-warning:   var(--crepe-color-state-warning, var(--state-warning));
+  --state-danger:    var(--crepe-color-state-danger, var(--state-danger));
+}
