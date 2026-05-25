@@ -13,10 +13,11 @@
 .theme-crepe .tiptap {
   --crepe-color-background: #fffdfb;
   --crepe-color-on-background: #1f1b16;
-  --crepe-color-surface: #fff8f4;
-  --crepe-color-outline: #817567;
+  --crepe-color-surface: #F5EDE4;
+  --crepe-color-outline: #E5DDD2;
   --crepe-color-primary: #805610;
   --crepe-color-inline-code: #ba1a1a;
+  --crepe-color-highlight: #FFF3D6;
 
   /* ui-serif = New York on macOS (Apple reading font), falls back to Source Serif 4 if installed, then Georgia */
   --crepe-font-default: ui-serif, "Source Serif 4", "Source Serif Pro", Georgia, serif;

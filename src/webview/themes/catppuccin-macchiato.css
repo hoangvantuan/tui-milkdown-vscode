@@ -1,15 +1,15 @@
 /* Catppuccin Macchiato Theme - Medium contrast dark variant */
 /* https://catppuccin.com/palette */
 .theme-catppuccin-macchiato {
-  --accent-primary: #B7BDF8;
-  --accent-rgb: 183, 189, 248;
+  --accent-primary: #F5A97F;
+  --accent-rgb: 245, 169, 127;
   --toolbar-bg-rgb: 36, 39, 58;
   --border-rgb: 255, 255, 255;
   --toolbar-fg: #cad3f5;
   --canvas-bg: #1c1f31;
   --noise-opacity: 0.5;
   --vignette-opacity: 0.08;
-  --selection-bg: rgba(183, 189, 248, 0.25);
+  --selection-bg: rgba(245, 169, 127, 0.25);
 }
 .theme-catppuccin-macchiato .tiptap {
   --crepe-color-background: #24273a;
