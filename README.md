@@ -38,6 +38,7 @@ Resizable tables with multi-line cell content. Right-click context menu for row/
 - Auto-rename files when path changes in markdown
 - Auto-delete files when removed from markdown (moves to Trash)
 - Fullscreen lightbox with zoom controls (0.5x–4x)
+- Open local image file in a new VSCode editor tab (hover button; works with Excalidraw plugin for `.svg`)
 
 ### Navigation & Search
 
