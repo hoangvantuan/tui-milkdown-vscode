@@ -127,6 +127,35 @@ function buildOriginalImageMap(
 }
 
 /**
+ * Resolve a relative file path against the document's folder and open it in a
+ * new VSCode editor tab. Validates the target stays within the workspace or
+ * document directory. Shared by the openLink and openImageInTab handlers.
+ */
+function openLocalFileInEditor(relativePath: string, document: vscode.TextDocument): void {
+  const docDir = path.dirname(document.uri.fsPath);
+  // Separate file path and anchor fragment
+  const hashIndex = relativePath.indexOf("#");
+  const filePart = hashIndex !== -1 ? relativePath.slice(0, hashIndex) : relativePath;
+  const targetPath = filePart
+    ? path.resolve(docDir, filePart)
+    : document.uri.fsPath;
+
+  // Security: Validate target is within workspace or document directory
+  const wsFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+  const allowedRoot = wsFolder?.uri.fsPath || docDir;
+  if (!targetPath.startsWith(allowedRoot + path.sep) && targetPath !== allowedRoot) {
+    vscode.window.showWarningMessage(`Cannot open file outside workspace: ${filePart}`);
+    return;
+  }
+
+  const targetUri = vscode.Uri.file(targetPath);
+  vscode.commands.executeCommand("vscode.open", targetUri).then(
+    undefined,
+    () => vscode.window.showWarningMessage(`Cannot open file: ${relativePath}`)
+  );
+}
+
+/**
  * CustomTextEditorProvider for Markdown WYSIWYG editing.
  * Registers for .md files via package.json customEditors.
  */
@@ -764,28 +793,14 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
               vscode.env.openExternal(vscode.Uri.parse(linkHref));
             } else {
               // Relative file path → resolve against document location
-              const docDir = path.dirname(document.uri.fsPath);
-              // Separate file path and anchor fragment
-              const hashIndex = linkHref.indexOf("#");
-              const filePart = hashIndex !== -1 ? linkHref.slice(0, hashIndex) : linkHref;
-              const targetPath = filePart
-                ? path.resolve(docDir, filePart)
-                : document.uri.fsPath;
-
-              // Security: Validate target is within workspace or document directory
-              const wsFolder = vscode.workspace.getWorkspaceFolder(document.uri);
-              const allowedRoot = wsFolder?.uri.fsPath || docDir;
-              if (!targetPath.startsWith(allowedRoot + path.sep) && targetPath !== allowedRoot) {
-                vscode.window.showWarningMessage(`Cannot open file outside workspace: ${filePart}`);
-                break;
-              }
-
-              const targetUri = vscode.Uri.file(targetPath);
-              vscode.commands.executeCommand("vscode.open", targetUri).then(
-                undefined,
-                () => vscode.window.showWarningMessage(`Cannot open file: ${linkHref}`)
-              );
+              openLocalFileInEditor(linkHref, document);
             }
+            break;
+          }
+          case "openImageInTab": {
+            const imgPath = (msg as { path?: string }).path;
+            if (!imgPath) break;
+            openLocalFileInEditor(imgPath, document);
             break;
           }
           case "requestLinkEdit": {
