@@ -134,7 +134,10 @@ function positionOverlay(img: HTMLImageElement): void {
   // Position at top-right of image, relative to container
   // Use left positioning (imgRect.right - button width offset) for consistency
   const top = imgRect.top - containerRect.top + container.scrollTop + 12;
-  const left = imgRect.right - containerRect.left - 48 - 32; // 36 offset + 32 button width
+  // Right-align overlay 12px inside the image's right edge. Measure actual width so
+  // it adapts to button count (open-in-tab button is hidden for non-local images).
+  const overlayWidth = overlayContainer.offsetWidth;
+  const left = imgRect.right - containerRect.left - overlayWidth - 12;
 
   // Clear right property and set left for consistent positioning
   overlayContainer.style.right = "";
