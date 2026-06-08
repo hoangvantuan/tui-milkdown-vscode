@@ -34,6 +34,7 @@ let overlayContainer: HTMLDivElement | null = null;
 let currentHoveredImg: HTMLImageElement | null = null;
 let hideTimer: ReturnType<typeof setTimeout> | null = null;
 let storedEditorEl: HTMLElement | null = null;
+let openTabBtn: HTMLButtonElement | null = null;
 
 // Track mouse position for detecting hover on newly added images
 let lastMouseX = 0;
@@ -57,6 +58,11 @@ function isPointInElement(x: number, y: number, el: Element): boolean {
   return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
 }
 
+/** Check if an image src points to a local workspace file (vs base64 or remote URL) */
+function isLocalImageSrc(src: string): boolean {
+  return src.startsWith("vscode-webview://") || src.includes("vscode-resource.vscode-cdn.net");
+}
+
 /**
  * Create the floating overlay container
  * Appends to parent of editorEl (container) to survive editor recreation
@@ -64,12 +70,15 @@ function isPointInElement(x: number, y: number, el: Element): boolean {
 // Expand/fullscreen SVG icon
 const EXPAND_ICON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`;
 
+// External-link icon (open in new tab)
+const OPEN_TAB_ICON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>`;
+
 function createOverlay(editorEl: HTMLElement): HTMLDivElement {
   const overlay = document.createElement("div");
   overlay.className = "image-edit-overlay";
   overlay.style.display = "flex";
   overlay.style.gap = "4px";
-  overlay.innerHTML = `<button class="image-edit-btn" title="Edit image path">${EDIT_ICON_SVG}</button><button class="image-expand-btn" title="View fullscreen">${EXPAND_ICON_SVG}</button>`;
+  overlay.innerHTML = `<button class="image-edit-btn" title="Edit image path">${EDIT_ICON_SVG}</button><button class="image-expand-btn" title="View fullscreen">${EXPAND_ICON_SVG}</button><button class="image-open-tab-btn" title="Open in a new tab">${OPEN_TAB_ICON_SVG}</button>`;
 
   const btn = overlay.querySelector(".image-edit-btn") as HTMLButtonElement;
   btn.addEventListener("click", (e) => {
@@ -86,6 +95,15 @@ function createOverlay(editorEl: HTMLElement): HTMLDivElement {
     e.stopPropagation();
     if (currentHoveredImg) {
       openLightbox(currentHoveredImg.getAttribute("src") || "", currentHoveredImg.getAttribute("alt") || "");
+    }
+  });
+
+  openTabBtn = overlay.querySelector(".image-open-tab-btn") as HTMLButtonElement;
+  openTabBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (currentHoveredImg) {
+      triggerOpenInTab(currentHoveredImg);
     }
   });
 
@@ -134,6 +152,10 @@ function showOverlay(img: HTMLImageElement): void {
     hideTimer = null;
   }
   currentHoveredImg = img;
+  if (openTabBtn) {
+    // Only local files can be opened in a VSCode tab
+    openTabBtn.style.display = isLocalImageSrc(img.getAttribute("src") || "") ? "flex" : "none";
+  }
   positionOverlay(img);
 }
 
@@ -281,6 +303,7 @@ export function setupImageEditOverlay(
     overlayContainer?.remove();
     overlayContainer = null;
     currentHoveredImg = null;
+    openTabBtn = null;
     cachedImages = [];
     imageCacheValid = false;
   };
@@ -334,6 +357,24 @@ function triggerImageEdit(imgEl: HTMLImageElement): void {
       }
     }
   });
+}
+
+/**
+ * Open the hovered local image file in a new VSCode editor tab.
+ * Reverse-looks up the original relative path from the image map.
+ */
+function triggerOpenInTab(imgEl: HTMLImageElement): void {
+  if (!storedPostMessage) return;
+  const src = imgEl.getAttribute("src") || "";
+  let originalPath = "";
+  for (const [path, webviewUri] of Object.entries(currentImageMap)) {
+    if (webviewUri === src) {
+      originalPath = path;
+      break;
+    }
+  }
+  if (!originalPath) return; // local image not in map — nothing to open
+  storedPostMessage({ type: "openImageInTab", path: originalPath });
 }
 
 /** Get folder part of path */
@@ -430,8 +471,7 @@ function requestUrlEdit(
   const editId = `edit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   const isBase64 = currentUrl.startsWith("data:");
-  const isLocalImage = currentUrl.startsWith("vscode-webview://")
-    || currentUrl.includes("vscode-resource.vscode-cdn.net");
+  const isLocalImage = isLocalImageSrc(currentUrl);
 
   let displayUrl = currentUrl;
   if (isBase64) {
