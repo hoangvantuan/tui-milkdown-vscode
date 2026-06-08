@@ -3357,6 +3357,23 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           }
           .image-expand-btn:hover { opacity: 1; }
           .image-expand-btn svg { width: 16px; height: 16px; }
+          .image-open-tab-btn {
+            width: 32px;
+            height: 32px;
+            padding: 6px;
+            border: none;
+            border-radius: 50%;
+            background: var(--overlay-bg);
+            color: var(--overlay-fg);
+            opacity: 0.6;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.15s ease-out;
+          }
+          .image-open-tab-btn:hover { opacity: 1; }
+          .image-open-tab-btn svg { width: 16px; height: 16px; }
           #lightbox-overlay {
             display: none;
             position: fixed;
