@@ -2,6 +2,12 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## [2.13.0] - 2026-06-08
+
+### Added
+
+- **Open Image in New Tab**: Nút mới khi hover ảnh local, mở file trong tab editor VSCode (dùng editor mặc định, vd Excalidraw plugin cho `.svg`). Chỉ hiện với ảnh local; ảnh base64 và URL http(s) không có nút này. (#62)
+
 ## [2.12.0] - 2026-05-21
 
 ### Improved

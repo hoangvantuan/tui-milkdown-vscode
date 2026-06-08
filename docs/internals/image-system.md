@@ -64,6 +64,24 @@ Image display, upload, editing, lightbox, clipboard fallback.
 * Reverse lookup from imageMap to display original path instead of webview URI
 * Updates node via ProseMirror transaction after user confirms
 
+## Open Image in New Tab (issue #62)
+
+(`src/webview/image-edit-plugin.ts` + `src/markdownEditorProvider.ts`):
+
+The hover overlay has a third button (external-link icon), shown only when the
+image is local (`isLocalImageSrc`: src starts with `vscode-webview://` or contains
+`vscode-resource.vscode-cdn.net`). Base64 and remote `http(s)` images hide it.
+
+Flow:
+
+1. Webview reverse-looks up `originalPath` from `currentImageMap` (webview URI → relative path).
+2. Sends `postMessage({ type: "openImageInTab", path })`.
+3. Extension `openLocalFileInEditor(path, document)`: resolves against the document
+   folder, security-checks it stays within the workspace, then `vscode.open(uri)`
+   (respects the default editor association, so the Excalidraw plugin opens `.svg`).
+
+Helper `openLocalFileInEditor` is shared with the `openLink` handler.
+
 ## Context-Aware Path Transforms
 
 (`src/webview/main.ts` + `src/markdownEditorProvider.ts`):
@@ -84,6 +102,7 @@ Image display, upload, editing, lightbox, clipboard fallback.
 * `showWarning`: Webview → Extension (message title and warning text for VSCode dialog)
 * `readClipboardImage`: Webview → Extension (request native clipboard read as fallback)
 * `clipboardImage`: Extension → Webview (base64 PNG from system clipboard)
+* `openImageInTab`: Webview → Extension (relative path of a local image to open in a new editor tab)
 
 ## Clipboard Image Fallback
 
