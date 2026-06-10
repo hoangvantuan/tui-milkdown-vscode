@@ -2,6 +2,20 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## [2.14.0] - 2026-06-10
+
+### Changed
+
+- **Tiptap upgrade 3.19 → 3.26**: Nâng cấp toàn bộ 13 package `@tiptap/*` lên 3.26.0. Các cải thiện chính:
+  - Fix markdown roundtrip bold/italic chồng nhau
+  - Fix HTML entities (`&lt;`, `&gt;`, `&amp;`) roundtrip đúng
+  - Fix backslash-escape handling (`\*`, `\_`, `\\`) parse/serialize chuẩn
+  - Fix nội dung trong angle-bracket tags không còn bị nuốt
+  - Fix marks cùng loại khác attributes không còn bị merge nhầm
+  - Fix image drag không tạo duplicate
+  - Placeholder performance cải thiện trên document lớn
+  - Memory leak fix khi Editor.destroy()
+
 ## [2.13.0] - 2026-06-08
 
 ### Added
