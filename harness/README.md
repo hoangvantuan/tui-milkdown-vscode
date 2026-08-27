@@ -57,6 +57,16 @@ baseline was captured on the pre-upgrade dependency tree, before any version
 in the sweep moved. Add a fixture by dropping a `.md` file into
 `fixtures/synthetic/` and running `roundtrip:update`.
 
+**Defect fixtures record broken output on purpose.** The four fixtures
+`list-continuation-underindented.md`, `heading-after-list.md`,
+`table-cell-code-span-pipe.md` and `table-column-widths.md` exist to pin the
+four markdown defects that the Tiptap upgrade in issue #67 must fix. Their
+goldens were captured on Tiptap 3.26.0 and are expected to contain the
+broken output (lost continuation characters, an absorbed heading, a split
+table column, dropped column widths). Do not "repair" those goldens. When
+#67 moves the version, these fixtures should diff, and each diff is
+classified there as an intended fix.
+
 ## Reading a diff after a dependency change
 
 A diff is not automatically a failure; some diffs are the point of an
