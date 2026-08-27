@@ -148,6 +148,71 @@ byte" is already false today for the implicit and empty frontmatter forms:
 drops empty delimiters entirely. Fixing `reconstructContent` is out of
 scope for #69.
 
+## Classification record: fuzzysort 3.1.0 → 4.0.2 (issue #70)
+
+Recorded when fuzzysort moved to 4.0.2 (exact-pinned, same rationale as the
+`@tiptap/*` family: this package governs the file-search golden). Two source
+changes rode along in `src/webview/file-search-utils.ts`:
+
+- **Threshold corrected from `-1000` to `0`.** fuzzysort 4 defines
+  `threshold` as a minimum score on a 0..1 scale ("defaults to .5; 0 = any
+  match", per the package's own `index.d.ts` and README), replacing the
+  v1/v2-era scale where higher-is-better scores made negative thresholds
+  meaningful and `-Infinity` the no-filter default. The old `-1000` has no
+  defined meaning on the new scale; `0` is the documented value that admits
+  every match, i.e. exactly today's behaviour with filtering off. The
+  option now means what it says: measured on the seam fixture list, query
+  `d` returns 5 results under the v4 default (`.5`) and 9 under `0`, so the
+  knob demonstrably filters when not neutralised.
+- **The manual diacritic-normalisation second pass is deleted.** fuzzysort
+  4 automatically remaps common lookalike characters (the changelog line
+  "Automatically remaps common lookalike characters", plus the new
+  `fuzzysort.remap()` API), which is a superset of what the removed
+  `normalizeText` + second `go()` pass did. One ranking path remains, so
+  the class of results that used to be discovered only by the second pass
+  and therefore rendered without match indices can no longer occur.
+
+**Diacritic ordering: the premise in issues #64/#70 did not hold.** Both
+issues state that today the accented filename ranks first and that
+fuzzysort 4 will reverse this. The pre-upgrade golden (captured on
+fuzzysort 3.1.0) already shows the opposite, and the post-bump run is
+byte-identical:
+
+| Measurement (query `café`, currentDocFolder=docs) | fuzzysort 3.1.0 (golden) | fuzzysort 4.0.2 (this bump) |
+| --- | --- | --- |
+| 1st result | `docs/cafe.md` nameIndexes=[0,1,2,3] pathIndexes=[5,6,7,8] | identical |
+| 2nd result | `docs/café.md` nameIndexes=[0,1,2,3] pathIndexes=[5,6,7,8] | identical |
+| Scores | (not recorded in golden) | tie at 0.9552 |
+
+The unaccented file already ranked first before the bump, both majors
+return match indices for both files, and v4 scores them equally. The
+"accepted reversal" therefore never materialised on this fixture; nothing
+was compensated and nothing needed to be. This finding carries forward to
+the declined-upgrade record in issue #73.
+
+**Breadth and proximity: unchanged where the seam measures them.** Empty
+query: 12 of 12 files, indices null on all (no query, nothing to
+highlight, expected). Query `ma` + currentDocFolder=docs: 2 of 12, both
+with name and path indices. Query `readme` + currentDocFolder=tests:
+`tests/README.md` above `README.md`; without the folder the order flips.
+Ad-hoc probes beyond the seam's cases found breadth only growing, never
+shrinking: `road map` and `MY PHOTO` (space vs hyphen) previously returned
+nothing (the old normalisation pass only ran when the query carried
+diacritics or hyphens itself, and the primary pass could not match a space
+against a hyphen) and now match `plans/road-map.md` / `assets/my-photo.png`;
+`cafe` now also returns `docs/café.md`, highlighted.
+
+**Harness outcome: zero diffs, no golden re-captured.** 33 fixtures + 2
+seams = 35 passed, 0 failed before and after; the file-search seam output
+is byte-identical, so `harness/golden/seams/file-search.txt` still
+represents the 3.1.0 baseline and also the 4.0.2 present. `npm run lint`
+and `npm run build` green.
+
+Pre-existing staleness carried forward (not touched here, docs edits are
+out of scope for #70): `docs/internals/autocomplete-plugins.md` still
+says "Threshold -1000" and lists `fuzzysort@^3.1.0` in its dependency
+line.
+
 ## The other two seams
 
 Besides the markdown corpus, the same single command runs two pure,
