@@ -117,6 +117,37 @@ hook via `getExtensionField(extension, "renderMarkdown")` and calls it with
 serializer is retained deliberately (see issue #64: the upstream serializer
 flattens lists inside table cells).
 
+## Classification record: js-yaml 4.1.1 → 5.3.0 (issue #69)
+
+Recorded when js-yaml moved to 5.3.0 (exact-pinned, same rationale as the
+`@tiptap/*` family above), `@types/js-yaml` was removed from devDependencies
+(the package now bundles its own type declarations), both consumers
+(`src/utils/frontmatter-parser.ts`, `src/webview/frontmatter.ts`) switched
+to namespace imports (`import * as yaml from "js-yaml"` — the package no
+longer provides a default export, and that failure is invisible to `tsc`
+under `esModuleInterop` and surfaces only at bundle time, hence the
+mandatory `npm run build`), and a guard was added that treats frontmatter
+consisting only of comment lines and blank lines as valid empty frontmatter
+without invoking the loader (js-yaml 5's default YAML 1.2 core schema throws
+on an empty document where 4.x returned a null value). The guard works by
+stripping comment and blank lines (`isBlankOrCommentOnly`), never by matching
+library error text. Baseline before the bump: 33 fixtures + 2 seams = 35
+passed. After the bump + guard: 1 seam diff, classified below; all 33
+markdown fixtures byte-identical, `npm run lint` and `npm run build` green.
+
+| Fixture | Diff | Classification | Evidence |
+| --- | --- | --- | --- |
+| `seams/frontmatter.txt` (invalid-yaml case only) | Error position moved: parse error string `(3:1)` → `(2:16)`, `validateYaml` reportedLine `2` → `1` | **Accepted change** | js-yaml 5 anchors the "unexpected end of the stream within a flow collection" error at the end-of-input position of the offending line (line 2, `tags: [unclosed`) instead of advancing to the following line. The mark still identifies the offending line for genuinely malformed YAML: spot-checked further malformed inputs (bad mapping entry, duplicated mapping key) all report the line carrying the mistake. Every other seam line is unchanged: comment-only and blank-line-only still report `isValid=true` (via the guard, confirmed to flip to `false` without it), and all byte-for-byte verdicts match the old golden |
+
+Pre-existing finding carried to issue #73: three byte-for-byte failures in
+the frontmatter seam (implicit, empty-delimiters, blank-line-only
+reconstructs) predate this bump — they are present in the js-yaml 4.1.1
+golden and unchanged here. "Untouched frontmatter round-trips byte for
+byte" is already false today for the implicit and empty frontmatter forms:
+`reconstructContent` drops the blank line before an implicit separator and
+drops empty delimiters entirely. Fixing `reconstructContent` is out of
+scope for #69.
+
 ## The other two seams
 
 Besides the markdown corpus, the same single command runs two pure,

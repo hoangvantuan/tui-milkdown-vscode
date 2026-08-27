@@ -101,8 +101,8 @@ input:
    6| # Body
    7| 
    8| The flow sequence on line 3 is never closed.
-parse: format=standard isValid=false error="unexpected end of the stream within a flow collection (3:1)\n\n 1 | title: Valid Line\n 2 | tags: [unclosed\n 3 | \n-----^"
-validateYaml(frontmatter): isValid=false error="unexpected end of the stream within a flow collection" reportedLine=2
+parse: format=standard isValid=false error="unexpected end of the stream within a flow collection (2:16)\n\n 1 | title: Valid Line\n 2 | tags: [unclosed\n--------------------^"
+validateYaml(frontmatter): isValid=false error="unexpected end of the stream within a flow collection" reportedLine=1
 reconstruct === input (byte for byte): yes
 
 [case no-frontmatter]
