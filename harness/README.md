@@ -213,6 +213,79 @@ out of scope for #70): `docs/internals/autocomplete-plugins.md` still
 says "Threshold -1000" and lists `fuzzysort@^3.1.0` in its dependency
 line.
 
+## Classification record: remaining in-range bumps (issue #71)
+
+Recorded when the last six packages moved to the latest version within
+their existing semver ranges (caret floors raised, lockfile pins the
+resolution):
+
+| Package | Before | After | Constraint honoured |
+| --- | --- | --- | --- |
+| `mermaid` | 11.12.2 | 11.17.2 | within `^11` |
+| `@mermaid-js/layout-elk` | 0.2.1 | 0.2.3 | within `^0.2` |
+| `prosemirror-search` | 1.1.0 | 1.1.1 | within `^1.1` (removed by #72 next) |
+| `puppeteer-core` | 24.42.0 | 24.43.1 | **major 24 held**: 25.x requires Node ≥ 22.12, the declared VS Code floor `^1.85.0` runs an extension host on Node 18 |
+| `@types/node` | 25.6.0 | 25.9.5 | **major 25 held** (26.x exists, out of range) |
+| `@types/vscode` | 1.108.1 | 1.134.0 | within `^1.85` (type-level only; no code changes, so no API above the 1.85 floor is called) |
+
+**Harness outcome: zero diffs, no golden re-captured.** 33 fixtures + 2
+seams = 35 passed, 0 failed before and after the bump; `npm run lint` and
+`npm run build` green. Mermaid markdown roundtrip (the synthetic mermaid
+fixture) is byte-identical: the codeBlock passes through the Tiptap
+markdown layer, which this bump does not touch. The typed API surface the
+plugins use (`mermaid.initialize` / `mermaid.render` /
+`mermaid.registerLayoutLoaders(elkLayouts)` from layout-elk 0.2.3) still
+typechecks under the new declarations; actual SVG rendering needs a real
+DOM and is deferred to the #73 manual checklist.
+
+**Production bundle sizes** (minified, before → after):
+
+| Bundle | Before | After | Delta |
+| --- | --- | --- | --- |
+| `out/extension.js` | 176,434 B | 176,434 B | 0 |
+| `out/webview/main.js` | 5,023,289 B | 9,246,656 B | **+4,223,367 B (+84%)** |
+| `out/markdown-ast.js` | 154,219 B | 154,219 B | 0 |
+| `out/export-docx.js` | 464,029 B | 464,029 B | 0 |
+| `out/export-pdf.js` | 2,583,511 B | 2,595,481 B | +11,970 B |
+
+The webview growth is mermaid itself, not a bundling regression: the
+package's unpacked dist grew from 66,174,471 B / 793 files (11.12.2) to
+83,995,446 B / 1,183 files (11.17.2), adding new diagram types (verified
+dist chunks: `treemap`, `radar`, `packet`, `vennDiagram`, plus new deps
+`@upsetjs/venn.js`, `fastdom`, `es-toolkit` replacing `lodash-es`). The
+plugin imports the full `mermaid` entry, so every registered diagram is
+bundled. Slimming that (selective diagram registration) is future work,
+not part of #71.
+
+**Export verification (PDF/DOCX "output unchanged" boxes).** Method: the
+real lazy bundles `out/export-docx.js` and `out/export-pdf.js` were run
+under plain Node against a fixed sample document (headings, emphasis,
+inline code, link, nested/task lists, blockquote, table, two fenced code
+blocks; no images, no mermaid substitution), with a shimmed `vscode`
+module providing the dialogs/progress/FS surface; same document and same
+installed Chrome before and after the bump.
+
+- **PDF**: zip-level byte comparison is impossible by construction
+  (creation timestamps, object ids, font subset tags), so page count and
+  the extracted text layer were compared with pypdf: 2 pages before and
+  after, text layer identical on both pages (616 + 94 chars).
+- **DOCX**: the extracted zip trees were compared part by part.
+  16 of 18 parts byte-identical (styles, numbering, settings, fontTable,
+  comments, footnotes, endnotes, `[Content_Types].xml`, …);
+  `docProps/core.xml` excluded (carries creation/modification timestamps).
+  `word/document.xml` and `word/_rels/document.xml.rels` differ **only**
+  in the hyperlink relationship id the `docx` library randomizes per run
+  (`rId5qcwfwzvd3jwejdbzl9y3` vs `rIdbdf4spt3ltqemh5085dzd`, same 12,617
+  and 1,243 byte lengths). Control: two exports on the *same* post-bump
+  tree differ from each other the same way; after normalizing that one
+  id, before vs after is byte-identical. The DOCX dependency chain
+  (`mdast2docx`, `@m2d/*`, `docx`, `image-size`) did not move in this
+  bump; the diff is per-run nondeterminism, not a version effect.
+
+**Deferred to the #73 manual checklist** (not verifiable here): mermaid
+diagram rendering in the running extension, and the extension loading on
+the VS Code version declared in `engines`.
+
 ## The other two seams
 
 Besides the markdown corpus, the same single command runs two pure,
