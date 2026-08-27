@@ -118,11 +118,11 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 
 **Node naming:** Tiptap uses camelCase: `listItem`, `codeBlock`, `taskList`, `taskItem`, `tableCell`, `tableHeader`.
 
-## Conventions & Gotchas
+## Conventions &amp; Gotchas
 
 - `pendingEdit` flag prevents edit loops between extension and webview
 - Webview persists state in `vscode.setState()` — MUST use spread pattern: `{ ...getState(), key: value }`
-- Large files (>500KB) show warning dialog
+- Large files (&gt;500KB) show warning dialog
 - CSP uses nonce for script execution
 - `BlankLineHandler` extension handles empty paragraph roundtrip (MarkedJS `space` tokens → empty paragraph nodes)
 - Task list selectors MUST use direct child combinator (`ul[data-type="taskList"] > li`) — descendant combinator leaks `display: flex` to nested items
@@ -161,7 +161,7 @@ Implementation details for each feature area:
 - @tiptap/markdown: [https://tiptap.dev/docs/editor/markdown](https://tiptap.dev/docs/editor/markdown)
 - Local reference: `docs/tiptap-markdown-reference.md` (API spec, extension patterns, tokenizer guides)
 
-**Performance & Bundle Optimization:**
+**Performance &amp; Bundle Optimization:**
 
 - Prefer named imports (e.g., `import { Image } from '@tiptap/extension-image'`)
 - Avoid importing entire packages when only specific features are needed
@@ -185,7 +185,6 @@ After every development cycle (new feature, bug fix, refactor), update these fil
 
 - **CLAUDE.md**: "Cái gì ở đâu" — file structure, extension list, settings, conventions, pointers
 - **docs/internals/**: "Cái này hoạt động thế nào" — message flows, DOM structure, CSS classes, persistence strategies, gotchas
-
 
 # GitNexus — Code Intelligence
 
@@ -228,4 +227,3 @@ This project is indexed by GitNexus as **tui-milkdown-vscode** (2033 symbols, 30
 | Rename / extract / split / refactor          | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md`     |
 | Tools, resources, schema reference           | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md`           |
 | Index, status, clean, wiki CLI commands      | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md`             |
-

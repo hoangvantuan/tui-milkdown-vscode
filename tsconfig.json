@@ -7,9 +7,8 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "outDir": "out",
-    "rootDir": "src",
     "moduleResolution": "bundler"
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "harness/**/*.ts"],
   "exclude": ["node_modules", "out"]
 }

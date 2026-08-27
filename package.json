@@ -178,6 +178,8 @@
     "build:dev": "node esbuild.config.js --dev",
     "watch": "node esbuild.config.js --watch",
     "lint": "tsc --noEmit",
+    "roundtrip": "node esbuild.harness.config.js && node out/harness/roundtrip.js",
+    "roundtrip:update": "node esbuild.harness.config.js && node out/harness/roundtrip.js --update",
     "package": "vsce package"
   },
   "devDependencies": {
@@ -185,6 +187,7 @@
     "@types/node": "^25.0.10",
     "@types/vscode": "^1.85.0",
     "esbuild": "^0.20.0",
+    "jsdom": "^30.0.1",
     "typescript": "^5.3.0"
   },
   "dependencies": {
