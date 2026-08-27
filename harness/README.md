@@ -96,6 +96,15 @@ zero diffs. Each diff is classified below.
 | `synthetic/heading-after-list.md` | Heading immediately after an ordered list gained blank lines around it | **Intended fix** | 3.26.0 golden emitted `# Top Level Heading...` flush against `2. another ordered item`, unlike the same pattern after bullet lists which already had blank lines; 3.30.1 emits blank lines on both sides, consistent with the other headings in the same document |
 | `synthetic/list-continuation-underindented.md` | Continuation line under the two-digit `10.` marker serializes with 1 leading space instead of 2 | **Accepted change** | Upstream changed how it indents continuation paragraphs of ordered-list items. Semantics are unchanged: both `2 spaces` and `1 space` re-parse as a lazy continuation of the same paragraph, and no text is lost. Measured convergence: round 1 → `1 space`, round 2 → `0 spaces`, round 3 identical (fixed point). The other continuation lines in this fixture are byte-identical to the 3.26.0 golden. Note: neither version preserves the original 4-space indent; the upgrade changes the normalization step, not fidelity |
 | `repo/AGENTS.md` | One blank line added at end of file after the final table | **Intended fix** | Source `AGENTS.md` ends with table row + blank line (`\|\n\n`); the 3.26.0 golden swallowed that blank line (`\|\n`), while 3.30.1 preserves it, matching the source. Pre-existing normalizations unrelated to this bump (HTML-entity escaping of `&`, one swallowed mid-file blank line) were already recorded in the old golden and did not change |
+| `synthetic/table-column-widths.md` | No diff: byte-identical output before and after the bump | **Not evidenced by this harness** | GFM table markdown has no syntax for column widths. The 3.29+ upstream fix parses `<colgroup>/<col width>` from HTML into the editor's DOM/attributes, but that is a rendering concern: both the custom serializer and the upstream one emit plain GFM tables with no width information, so the serialized markdown string cannot change whether widths were parsed or dropped. The string-in/string-out seam is structurally blind to this fix. Issue #67's column-width acceptance box is therefore NOT evidenced here and is deferred to the manual verification checklist in issue #73, as is the placeholder-flicker box (flicker is a rendering/perf behaviour, equally invisible to a jsdom harness with no layout) |
+
+Why the `@tiptap/*` specifiers moved from caret ranges (`^3.26.0`) to exact
+pins (`3.30.1`): this repository has no CI and no automated tests beyond
+this harness, and the `@tiptap/*` family is the one dependency group that
+governs markdown fidelity. Pinning it exactly means a plain `npm install`
+can never silently drift onto a newer patch the goldens were never run
+against. This is a deliberate decision, not an accident; relax it only
+together with a harness run that re-baselines the goldens.
 
 Custom table serializer check (issue #67 acceptance): the
 `MarkdownRendererHelpers` type in `@tiptap/core` 3.30.1
