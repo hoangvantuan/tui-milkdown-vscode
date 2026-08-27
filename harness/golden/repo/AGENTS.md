@@ -83,13 +83,15 @@ src/
         ├── catppuccin-mocha.css   # Catppuccin Mocha (dark)
         ├── paper.css              # Paper (light, warm serif)
         └── midnight.css           # Midnight (dark, deep navy)
-harness/                            # Markdown roundtrip harness (see harness/README.md)
+harness/                            # Dependency-verification harness (see harness/README.md)
 ├── editor.ts                       # Editor factory mirroring initEditor's markdown-relevant extensions
 ├── corpus.ts                       # Corpus enumeration (synthetic fixtures + repo docs)
 ├── diff.ts                         # Dependency-free unified line diff
 ├── roundtrip.ts                    # Runner: check (default) / --update modes
+├── frontmatter-seam.ts             # Frontmatter parse/reconstruct + validateYaml seam
+├── filesearch-seam.ts              # File search ranking seam (diacritic ordering = recorded measurement)
 ├── fixtures/synthetic/*.md         # One feature per fixture
-└── golden/                         # Committed baselines, captured on the pre-upgrade dependency tree
+└── golden/                         # Committed baselines (corpus + seams), captured on the pre-upgrade dependency tree
 ```
 
 ## Configuration Settings

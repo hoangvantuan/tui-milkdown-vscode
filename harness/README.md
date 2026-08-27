@@ -1,10 +1,11 @@
-# Markdown Roundtrip Harness
+# Dependency-Verification Harness
 
-A golden-baseline harness that verifies markdown fidelity across dependency
+A golden-baseline harness that verifies markdown fidelity and the two
+non-editor seams (frontmatter parsing, file search ranking) across dependency
 changes. It exists so a maintainer can run one command before and after any
 dependency bump and attribute a fidelity regression to one specific version
 change instead of a vague suspicion. Introduced for the upgrade sweep in
-issue #64 (harness ticket: #65), and intended to outlive it.
+issue #64 (harness tickets: #65, #66), and intended to outlive it.
 
 ## How to run
 
@@ -81,6 +82,37 @@ it, as exactly one of:
 
 If goldens must move, regenerate them in the same commit as the bump, so each
 commit stays self-consistent and revertible.
+
+## The other two seams
+
+Besides the markdown corpus, the same single command runs two pure,
+no-DOM seams against their own goldens (`harness/golden/seams/`):
+
+- **Frontmatter seam** (`frontmatter-seam.ts`) exercises
+  `parseContent` / `reconstructContent` from
+  `src/utils/frontmatter-parser.ts` and the webview's `validateYaml` from
+  `src/webview/frontmatter.ts`, through their existing exported signatures.
+  It records each supported frontmatter form (standard, implicit, empty
+  delimiters, comment-only, blank-line-only, none), whether comment-only and
+  blank-line-only blocks validate, the reported line of a YAML error, and
+  whether untouched frontmatter reconstructs byte for byte. Where it does
+  not (implicit form, empty delimiters), the reconstructed output is
+  recorded next to the input so the diff shows exactly what changed.
+
+- **File search seam** (`filesearch-seam.ts`) exercises `searchFiles` from
+  `src/webview/file-search-utils.ts` with a fixed twelve-file fixture list.
+  It records candidate breadth, proximity ordering with and without a
+  `currentDocFolder`, and whether every result carries match indices.
+
+  The **diacritic ordering block is a recorded measurement, not a pass/fail
+  assertion**: it shows how a diacritic-bearing query ranks accented versus
+  unaccented filenames today. The upcoming search library major is expected
+  to change that ordering; the change was accepted in advance, and this
+  measurement exists so the decision can be revisited against data rather
+  than recollection.
+
+Both seam reports are plain deterministic text: whatever the current
+dependency tree produces is what lands in the golden.
 
 ## Stated limitation: no layout, no coordinates, no measurement
 

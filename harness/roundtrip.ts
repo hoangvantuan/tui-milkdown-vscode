@@ -1,10 +1,15 @@
 /**
- * Markdown roundtrip harness — runner.
+ * Dependency-verification harness — runner.
  *
- * Single command (npm run roundtrip): parses every corpus document into a
- * Tiptap editor, serializes it back, and reports per-fixture diffs against
- * the committed golden baselines. Exit code 1 on any diff, missing golden or
- * error; 0 when everything matches.
+ * Single command (npm run roundtrip) runs all three seams and reports
+ * per-item diffs against the committed golden baselines:
+ *   1. the markdown corpus (synthetic fixtures + repo documents) roundtripped
+ *      through the Tiptap editor (see ./editor.ts),
+ *   2. the frontmatter parse/reconstruct seam (see ./frontmatter-seam.ts),
+ *   3. the file search ranking seam (see ./filesearch-seam.ts).
+ *
+ * Exit code 1 on any diff, missing golden or error; 0 when everything
+ * matches.
  *
  * `npm run roundtrip:update` re-captures goldens instead of comparing.
  * Only ever do that deliberately, as part of a reviewed change.
@@ -13,6 +18,8 @@ import * as fs from "fs";
 import * as path from "path";
 import { roundtripMarkdown } from "./editor";
 import { loadCorpus, type CorpusEntry } from "./corpus";
+import { runFrontmatterSeam } from "./frontmatter-seam";
+import { runFileSearchSeam } from "./filesearch-seam";
 import { formatUnifiedDiff } from "./diff";
 
 const MAX_DIFF_LINES = 120;
@@ -23,10 +30,14 @@ type Outcome =
   | { kind: "missing" }
   | { kind: "error"; message: string };
 
-function runFixture(entry: CorpusEntry, update: boolean): Outcome {
+function runFixture(
+  entry: CorpusEntry,
+  update: boolean,
+  run: (content: string) => string = roundtripMarkdown,
+): Outcome {
   let output: string;
   try {
-    output = roundtripMarkdown(entry.content);
+    output = run(entry.content);
   } catch (err) {
     return {
       kind: "error",
@@ -113,13 +124,68 @@ function main(): number {
   }
 
   console.log("──────────────────────────────────────────");
+
+  const seams: Array<{ name: string; goldenPath: string; run: () => string }> = [
+    {
+      name: "seams/frontmatter.txt",
+      goldenPath: path.join(repoRoot, "harness", "golden", "seams", "frontmatter.txt"),
+      run: runFrontmatterSeam,
+    },
+    {
+      name: "seams/file-search.txt",
+      goldenPath: path.join(repoRoot, "harness", "golden", "seams", "file-search.txt"),
+      run: runFileSearchSeam,
+    },
+  ];
+
+  for (const seam of seams) {
+    const outcome = runFixture(
+      { name: seam.name, sourcePath: "", goldenPath: seam.goldenPath, content: "" },
+      update,
+      seam.run,
+    );
+    switch (outcome.kind) {
+      case "pass":
+        if (update) {
+          console.log(`CAPTURED ${seam.name}`);
+        } else {
+          passed++;
+        }
+        break;
+      case "missing":
+        missing++;
+        console.log(`MISSING  ${seam.name} (no golden; run: npm run roundtrip:update)`);
+        break;
+      case "error":
+        errored++;
+        console.log(`ERROR    ${seam.name}`);
+        console.log(`         ${outcome.message}`);
+        break;
+      case "fail": {
+        failed++;
+        console.log(`FAIL     ${seam.name} (+${outcome.additions} -${outcome.deletions} lines)`);
+        if (outcome.diff) {
+          const diffLines = outcome.diff.split("\n");
+          const shown = diffLines.slice(0, MAX_DIFF_LINES);
+          console.log(shown.map((l) => `  ${l}`).join("\n"));
+          if (diffLines.length > shown.length) {
+            console.log(`  ... ${diffLines.length - shown.length} more diff lines not shown`);
+          }
+          console.log("");
+        }
+        break;
+      }
+    }
+  }
+
+  console.log("──────────────────────────────────────────");
   if (update) {
-    console.log(`goldens written for ${corpus.length} fixtures to harness/golden/`);
+    console.log(`goldens written for ${corpus.length} fixtures and ${seams.length} seams to harness/golden/`);
     console.log("review them with git diff before committing.");
     return 0;
   }
   console.log(
-    `${corpus.length} fixtures: ${passed} passed, ${failed} failed, ${missing} missing, ${errored} errored`,
+    `${corpus.length} markdown fixtures + ${seams.length} seams: ${passed} passed, ${failed} failed, ${missing} missing, ${errored} errored`,
   );
   return failed + missing + errored > 0 ? 1 : 0;
 }
