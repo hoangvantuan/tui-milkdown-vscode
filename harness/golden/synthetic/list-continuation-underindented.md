@@ -19,4 +19,4 @@ Nested list variant:
    inner continuation under the two-space inner marker
 
 10. ordered item with a two-digit marker
-  continuation at the four-character marker
+ continuation at the four-character marker

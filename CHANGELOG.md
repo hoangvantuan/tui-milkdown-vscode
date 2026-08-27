@@ -2,6 +2,18 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## [Unreleased]
+
+### Changed
+
+- **Tiptap upgrade 3.26 → 3.30.1**: Nâng cấp toàn bộ package `@tiptap/*` (pin chính xác 3.30.1). Các cải thiện fidelity do bump này:
+  - Ô bảng chứa code span có ký tự pipe (`git log | head -20`) không còn bị tách cột
+  - Heading đặt ngay sau ordered list giữ nguyên cấu trúc block (có blank line chuẩn GFM)
+  - Bảng kèm column widths (`<col width>`) parse đúng (upstream 3.29+)
+  - Blank line cuối file sau bảng được bảo toàn qua roundtrip
+  - Placeholder không còn flicker trên document lớn (upstream)
+- Custom table serializer (multi-line cell, list trong cell) được giữ nguyên; hook `renderMarkdown` xác nhận không đổi với 3.30.1. Phân loại toàn bộ harness diff ghi tại `harness/README.md`.
+
 ## [2.14.0] - 2026-06-10
 
 ### Changed

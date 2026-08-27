@@ -83,6 +83,31 @@ it, as exactly one of:
 If goldens must move, regenerate them in the same commit as the bump, so each
 commit stays self-consistent and revertible.
 
+## Classification record: Tiptap 3.26.0 → 3.30.1 (issue #67)
+
+Recorded when the fourteen directly-used `@tiptap/*` packages moved to
+3.30.1. Baseline before the bump: 33 fixtures + 2 seams = 35 passed. After
+the bump: 4 diffs, all in the markdown seam; both non-editor seams stayed at
+zero diffs. Each diff is classified below.
+
+| Fixture | Diff | Classification | Evidence |
+| --- | --- | --- | --- |
+| `synthetic/table-cell-code-span-pipe.md` | Cell containing a backtick code span with a pipe split into two columns on 3.26.0 (golden shows the escaped backtick fragments as separate cells and the table widened to 3 columns); on 3.30.1 the pipe stays inside the code span and the row matches the source | **Intended fix** | Golden vs source diff shows the split; new output matches the source row byte for byte |
+| `synthetic/heading-after-list.md` | Heading immediately after an ordered list gained blank lines around it | **Intended fix** | 3.26.0 golden emitted `# Top Level Heading...` flush against `2. another ordered item`, unlike the same pattern after bullet lists which already had blank lines; 3.30.1 emits blank lines on both sides, consistent with the other headings in the same document |
+| `synthetic/list-continuation-underindented.md` | Continuation line under the two-digit `10.` marker serializes with 1 leading space instead of 2 | **Accepted change** | Upstream changed how it indents continuation paragraphs of ordered-list items. Semantics are unchanged: both `2 spaces` and `1 space` re-parse as a lazy continuation of the same paragraph, and no text is lost. Measured convergence: round 1 → `1 space`, round 2 → `0 spaces`, round 3 identical (fixed point). The other continuation lines in this fixture are byte-identical to the 3.26.0 golden. Note: neither version preserves the original 4-space indent; the upgrade changes the normalization step, not fidelity |
+| `repo/AGENTS.md` | One blank line added at end of file after the final table | **Intended fix** | Source `AGENTS.md` ends with table row + blank line (`\|\n\n`); the 3.26.0 golden swallowed that blank line (`\|\n`), while 3.30.1 preserves it, matching the source. Pre-existing normalizations unrelated to this bump (HTML-entity escaping of `&`, one swallowed mid-file blank line) were already recorded in the old golden and did not change |
+
+Custom table serializer check (issue #67 acceptance): the
+`MarkdownRendererHelpers` type in `@tiptap/core` 3.30.1
+(`node_modules/@tiptap/core/dist/index.d.ts`) is byte-identical to the
+3.26.0 declaration (24/24 lines, `renderChildren` / `renderChild` /
+`wrapInBlock` / `indent`), and `@tiptap/markdown` 3.30.1 still resolves the
+hook via `getExtensionField(extension, "renderMarkdown")` and calls it with
+`(node, helpers, context)`. The `Table.extend({ renderMarkdown })` wiring in
+`src/webview/main.ts` therefore needs no adaptation, and the custom
+serializer is retained deliberately (see issue #64: the upstream serializer
+flattens lists inside table cells).
+
 ## The other two seams
 
 Besides the markdown corpus, the same single command runs two pure,

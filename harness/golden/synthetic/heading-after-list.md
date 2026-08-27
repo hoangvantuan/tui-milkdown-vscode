@@ -13,7 +13,9 @@ Body text.
 
 1. ordered item
 2. another ordered item
+
 # Top Level Heading After Ordered List
+
 Body text.
 
 With a blank line for contrast:
