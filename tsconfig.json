@@ -5,6 +5,7 @@
     "lib": ["ES2020", "DOM"],
     "strict": true,
     "esModuleInterop": true,
+    "types": ["node"],
     "skipLibCheck": true,
     "outDir": "out",
     "moduleResolution": "bundler"

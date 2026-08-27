@@ -186,9 +186,9 @@
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^25.0.10",
     "@types/vscode": "^1.85.0",
-    "esbuild": "^0.20.0",
+    "esbuild": "0.28.2",
     "jsdom": "^30.0.1",
-    "typescript": "^5.3.0"
+    "typescript": "7.0.2"
   },
   "dependencies": {
     "@m2d/html": "^1.1.11",
