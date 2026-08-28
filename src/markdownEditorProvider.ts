@@ -3336,19 +3336,22 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             stroke-linejoin: round;
           }
 
-          /* Search match highlights (prosemirror-search) */
-          .ProseMirror-search-match {
+          /* Search match highlights (@tiptap/extension-find-and-replace;
+             injection disabled via injectCSS: false, so these theme rules
+             are the only styling. The active match element carries both
+             classes, so -current must come after -result in source order.) */
+          .find-and-replace-result {
             background: rgba(var(--accent-rgb, 59, 130, 246), 0.2);
             border-radius: 2px;
           }
-          .ProseMirror-active-search-match {
+          .find-and-replace-result-current {
             background: rgba(var(--accent-rgb, 59, 130, 246), 0.45);
             border-radius: 2px;
           }
-          body.dark-theme .ProseMirror-search-match {
+          body.dark-theme .find-and-replace-result {
             background: rgba(var(--accent-rgb, 59, 130, 246), 0.25);
           }
-          body.dark-theme .ProseMirror-active-search-match {
+          body.dark-theme .find-and-replace-result-current {
             background: rgba(var(--accent-rgb, 59, 130, 246), 0.5);
           }
 
@@ -3904,6 +3907,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             scriptUri: "${mermaidScriptUri}",
             nonce: "${nonce}",
           };
+          // Page CSP nonce for any nonce-gated style injection (see
+          // search-plugin.ts: find-and-replace injectNonce option).
+          window.__tuiCspNonce = "${nonce}";
         </script>
         <script nonce="${nonce}" src="${scriptUri}"></script>
       </body>

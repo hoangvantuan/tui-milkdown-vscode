@@ -1287,11 +1287,8 @@ function setupSearchBar(): void {
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
       if (!editor) return;
+      // performSearch selects and centres the first match at/after the cursor
       performSearch(editor, searchInput.value);
-      // After setting query, navigate to first match
-      if (searchInput.value.length > 0) {
-        searchNext(editor);
-      }
       updateCount();
     }, 150);
   });

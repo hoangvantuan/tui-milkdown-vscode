@@ -132,13 +132,13 @@ Toolbar, appearance, zoom, search, line highlight, reading progress, page break.
 
 **Plugin** (`src/webview/search-plugin.ts`):
 
-* Tiptap Extension wrapping `prosemirror-search` package
-* `search()` ProseMirror plugin provides decoration-based match highlighting
-* `SearchQuery({ search, caseSensitive })` configures the search
-* `setSearchState(tr, query)` sets query via transaction meta
-* `findNext(state, dispatch)` / `findPrev(state, dispatch)` — standard ProseMirror commands
-* `getMatchHighlights(state)` returns DecorationSet; `.find()` gives match count
-* `Mod-f` intercepted via `addKeyboardShortcuts()`, dispatches `CustomEvent("toggle-search-bar")`
+* Thin wrapper over `@tiptap/extension-find-and-replace` (`FindAndReplace.extend()` + `.configure()`)
+* Configured with `searchDebounceMs: 0` (the search input in main.ts already debounces at 150ms), `caseSensitive: false`, `injectCSS: false`, and the page CSP nonce via `injectNonce` (read from `window.__tuiCspNonce`, exposed by the bootstrap script in markdownEditorProvider.ts)
+* `injectCSS: false` disables the extension's stylesheet injection so its fixed defaults cannot override theme styling; decoration classes are `find-and-replace-result` / `find-and-replace-result-current`
+* Primitives map to extension commands/storage: `performSearch` → `setSearchTerm` + select first match at/after cursor, `clearSearch` → `clearSearch`, `searchNext`/`searchPrev` → `goToNextResult`/`goToPreviousResult`, count/index read from `editor.storage.findAndReplace` (`results.length`, `currentIndex + 1`) — no position-comparison inference
+* `Mod-f` intercepted via `addKeyboardShortcuts()` on the extend, dispatches `CustomEvent("toggle-search-bar")`
+
+**Scrolling**: the extension's `goToNextResult`/`goToPreviousResult` call `tr.scrollIntoView()`, but ProseMirror's `scrollToSelection` bails when DOM focus sits outside the editor (prosemirror-view checks `domSelectionRange().focusNode` against `view.dom`) — exactly the state during search, where focus stays in the search input. The manual centring in `scrollSearchMatchIntoView()` (coordsAtPos + `#editor-container.scrollTop`) is therefore kept as the only reliable scroll; it is also zoom-safe because `#editor-container` is the non-zoomed parent of `.tiptap`.
 
 **Search Bar UI** (in `src/markdownEditorProvider.ts` HTML + CSS):
 
@@ -150,6 +150,6 @@ Toolbar, appearance, zoom, search, line highlight, reading progress, page break.
 
 **Keyboard shortcuts**: `Mod-f` toggle, `Enter` next, `Shift+Enter` prev, `Escape` close
 
-**CSS classes**: `.ProseMirror-search-match` (all matches, `rgba(--accent-rgb, 0.2)`), `.ProseMirror-active-search-match` (active, `0.45`). Dark theme uses higher opacity (`0.25`/`0.5`).
+**CSS classes**: `.find-and-replace-result` (all matches, `rgba(--accent-rgb, 0.2)`), `.find-and-replace-result-current` (active, `0.45`; the element carries both classes, so `-current` is declared after `-result`). Dark theme uses higher opacity (`0.25`/`0.5`).
 
-**Dependencies**: `prosemirror-search@^1.1.0`
+**Dependencies**: `@tiptap/extension-find-and-replace@3.30.1` (brings transitive `re2js`; replace/regex/whole-word remain library-level only, no UI)

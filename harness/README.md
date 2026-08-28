@@ -223,7 +223,7 @@ resolution):
 | --- | --- | --- | --- |
 | `mermaid` | 11.12.2 | 11.17.2 | within `^11` |
 | `@mermaid-js/layout-elk` | 0.2.1 | 0.2.3 | within `^0.2` |
-| `prosemirror-search` | 1.1.0 | 1.1.1 | within `^1.1` (removed by #72 next) |
+| `prosemirror-search` | 1.1.0 | removed | dropped as a direct dependency by #72 (search now runs on `@tiptap/extension-find-and-replace` 3.30.1, added there) |
 | `puppeteer-core` | 24.42.0 | 24.43.1 | **major 24 held**: 25.x requires Node ≥ 22.12, the declared VS Code floor `^1.85.0` runs an extension host on Node 18 |
 | `@types/node` | 25.6.0 | 25.9.5 | **major 25 held** (26.x exists, out of range) |
 | `@types/vscode` | 1.108.1 | 1.134.0 | within `^1.85` (type-level only; no code changes, so no API above the 1.85 floor is called) |
