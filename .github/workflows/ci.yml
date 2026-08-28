@@ -1,0 +1,52 @@
+name: CI
+
+# The roundtrip harness is the only automated regression signal this repo has
+# for markdown fidelity, frontmatter parsing and file search ranking. Before
+# this workflow it ran only when someone remembered to type `npm run roundtrip`,
+# and publish.yml gated releases on lint + build alone. Gate pull requests and
+# the integration branches on it instead.
+on:
+  # Every pull request, whatever its base: stacked PRs target a feature
+  # branch rather than develop, and they need the same gate.
+  pull_request:
+  push:
+    branches: [develop, main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Node 22, not 20: jsdom 30 (the harness DOM) declares
+      # "^22.22.2 || ^24.15.0 || >=26.0.0". publish.yml still runs Node 20,
+      # which is fine only because it does not run the harness.
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build (production)
+        run: npm run build
+
+      - name: Build (development)
+        run: npm run build:dev
+
+      # Fails on any diff, missing golden or error, so a fidelity regression
+      # shows up as a concrete per-fixture diff in the log. If a diff is
+      # intended, re-capture the goldens with `npm run roundtrip:update` in the
+      # same commit as the change that caused it.
+      - name: Markdown roundtrip harness
+        run: npm run roundtrip
