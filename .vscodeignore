@@ -41,3 +41,6 @@ plans/**
 # Build artifacts
 *.vsix
 .DS_Store
+# Sourcemaps: production builds don't emit them, but stale `build:dev` output
+# would otherwise ship (~44 MB, 30 MB of it the mermaid artifact)
+out/**/*.map

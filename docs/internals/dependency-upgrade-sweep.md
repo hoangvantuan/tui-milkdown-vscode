@@ -239,3 +239,10 @@ npm run build              # bundle — catches what tsc cannot (see finding 2)
 `esbuild.harness.config.js`) are now excluded; verified via `npx vsce ls`
 that no harness file remains while `out/webview/mermaid-loader.js` (the lazy
 mermaid artifact the extension needs at runtime) is still included.
+
+Follow-up (same ticket): production builds set `sourcemap: !isProduction` and
+emit no maps, but a stale `npm run build:dev` output was not cleaned and
+`vsce ls` showed seven `.map` files totalling 43,858,474 B (the mermaid
+artifact's map alone is 29.9 MB). `out/**/*.map` is now excluded the same
+way; the listing ships zero maps, zero harness files, and still ships
+`mermaid-loader.js`.
