@@ -286,6 +286,64 @@ installed Chrome before and after the bump.
 diagram rendering in the running extension, and the extension loading on
 the VS Code version declared in `engines`.
 
+## Follow-up to #71: mermaid lazy-loading + @types/vscode floor pin
+
+Two coordinator-approved changes landed on top of #71 (one commit,
+Refs #71).
+
+**Mermaid is now a separate, on-demand artifact.** The webview bundle is
+IIFE, so a dynamic `import()` cannot split a chunk (and an initial
+mis-build without `bundle: true` on the new entry confirmed how silently
+that fails: the "artifact" was 1,570 B of bare `require()` stubs). The
+working design: `src/webview/mermaid-loader.ts` is its own esbuild entry
+(IIFE, `out/webview/mermaid-loader.js`) that imports mermaid +
+`@mermaid-js/layout-elk` eagerly and registers them on
+`window.__tuiMermaidBundle`. `src/webview/mermaid-bridge.ts` (in
+main.js) injects that file as a `<script nonce=…>` on first render. The
+nonce and artifact URI come from a nonce-bearing inline bootstrap script
+the provider emits before main.js (`window.__tuiMermaidBootstrap`);
+browsers hide the nonce attribute from the DOM, so the page cannot
+recover it otherwise. **The CSP is byte-for-byte unchanged** (still
+`default-src 'none'; script-src 'nonce-…'; …`): a nonce-bearing script
+element may load the artifact without any relaxation. Loading is
+idempotent and race-safe: one in-flight promise shared by all callers,
+one `<script>` element, one ELK registration, one `mermaid.initialize`;
+failed loads clear the in-flight promise so the next render retries.
+Theme changes before first load are a no-op (nothing rendered to
+re-theme; first render initializes with the current body theme class).
+During the first load the user sees the existing `Rendering…`
+placeholder — the code block stays hidden in view mode, so there is no
+flash of raw code.
+
+| Bundle (production) | #71 (eager) | Follow-up (lazy) | Delta |
+| --- | --- | --- | --- |
+| `out/webview/main.js` | 9,246,656 B | **783,157 B** | **−8,463,499 B (−91.5%)** |
+| `out/webview/mermaid-loader.js` (new) | — | 8,457,219 B | loaded only when a diagram renders |
+
+`main.js` is now also 84% below the pre-sweep 5,023,289 B baseline;
+documents without diagrams never fetch the 8.46 MB artifact at all.
+Verified `cytoscape`/mermaid runtime symbols absent from main.js
+(the only remaining "dagre" hit is the plugin's own fallback warning
+string). jsdom smoke test of the real artifact: executes, registers
+`__tuiMermaidBundle`, ELK registration OK, `initialize` OK;
+`mermaid.render` rejects with `getBBox is not a function`, the known
+jsdom no-layout limit. **Deferred to #73 manual checklist**: actual
+diagram rendering, view/edit toggle, copy-as-PNG, lightbox, and CSP
+enforcement of the nonce-bearing injection in the real webview.
+
+**@types/vscode pinned back to the declared floor.** `~1.85.0`
+(installed 1.85.0; #71 had raised it to ^1.134.0 while `engines.vscode`
+stays `^1.85.0`, letting tsc bless APIs the minimum runtime lacks).
+`npm run lint` is GREEN on the 1.85.0 type surface: no production code
+calls an API newer than the floor, so no call sites to report.
+`@types/node` stays at 25.9.5.
+
+**Verification (after final edit):** `npm run lint` clean;
+`npm run build` and `npm run build:dev` both complete; harness 33
+fixtures + 2 seams = 35 passed / 0 failed (zero diffs, no golden
+re-captured — the harness editor never loaded the mermaid preview
+plugin, so the lazy-loading change is invisible to it by design).
+
 ## The other two seams
 
 Besides the markdown corpus, the same single command runs two pure,

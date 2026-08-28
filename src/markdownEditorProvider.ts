@@ -1266,6 +1266,19 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         "main.css",
       ),
     );
+    // Lazy mermaid artifact URI (injected on demand by the webview, see
+    // src/webview/mermaid-bridge.ts). Computed here because only the
+    // extension host can mint webview resource URIs.
+    const mermaidScriptUri = webview
+      .asWebviewUri(
+        vscode.Uri.joinPath(
+          this.context.extensionUri,
+          "out",
+          "webview",
+          "mermaid-loader.js",
+        ),
+      )
+      .toString();
 
     const nonce = getNonce();
 
@@ -3880,6 +3893,18 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         </div>
         <div id="reading-progress"></div>
         <div id="toolbar-hover-zone"></div>
+        <script nonce="${nonce}">
+          // Bootstrap for the lazy mermaid artifact: the webview CSP is
+          // nonce-only for scripts and browsers hide the nonce attribute
+          // from the DOM, so the page cannot recover it by itself. Expose
+          // the artifact URI + nonce to the webview BEFORE main.js runs;
+          // mermaid-bridge.ts injects the artifact with this nonce when a
+          // diagram is first rendered. No CSP relaxation involved.
+          window.__tuiMermaidBootstrap = {
+            scriptUri: "${mermaidScriptUri}",
+            nonce: "${nonce}",
+          };
+        </script>
         <script nonce="${nonce}" src="${scriptUri}"></script>
       </body>
       </html>
