@@ -135,21 +135,28 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 
 Implementation details for each feature area:
 
-| Doc                       | Covers                                                                                                                                       |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `editor-core.md`          | Toolbar, glassmorphic styling, appearance popover, auto-hide, zoom, line highlight, reading progress, word count, page break, search (Cmd+F) |
-| `image-system.md`         | Image display, upload, auto rename/delete, URL editing, clipboard fallback, lightbox                                                         |
-| `table-system.md`         | Table styling, context menu, GFM serializer, cell content parser                                                                             |
-| `mermaid-system.md`       | Mermaid rendering, copy as PNG, `securityLevel: "loose"` trade-off                                                                           |
-| `heading-navigation.md`   | Heading level badges, collapse/expand, TOC sidebar, link click navigation                                                                    |
-| `autocomplete-plugins.md` | File mention (@), wiki link ([[...]]), cache strategy, click navigation                                                                      |
-| `export-system.md`        | DOCX/PDF export, MDAST pipeline, Chromium discovery, security notes                                                                          |
-| `metadata-panel.md`       | Frontmatter YAML panel, bidirectional sync                                                                                                   |
-| `theming.md`              | Theme system, font strategy, typography, micro-interactions, font selector                                                                   |
-| `alerts-codeblock.md`     | GitHub-style alerts, code block language badge + copy                                                                                        |
+| Doc                           | Covers                                                                                                                                       |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `editor-core.md`              | Toolbar, glassmorphic styling, appearance popover, auto-hide, zoom, line highlight, reading progress, word count, page break, search (Cmd+F) |
+| `image-system.md`             | Image display, upload, auto rename/delete, URL editing, clipboard fallback, lightbox                                                         |
+| `table-system.md`             | Table styling, context menu, GFM serializer, cell content parser                                                                             |
+| `mermaid-system.md`           | Mermaid rendering, copy as PNG, `securityLevel: "loose"` trade-off                                                                           |
+| `heading-navigation.md`       | Heading level badges, collapse/expand, TOC sidebar, link click navigation                                                                    |
+| `autocomplete-plugins.md`     | File mention (@), wiki link ([[...]]), cache strategy, click navigation                                                                      |
+| `export-system.md`            | DOCX/PDF export, MDAST pipeline, Chromium discovery, security notes                                                                          |
+| `metadata-panel.md`           | Frontmatter YAML panel, bidirectional sync                                                                                                   |
+| `theming.md`                  | Theme system, font strategy, typography, micro-interactions, font selector                                                                   |
+| `alerts-codeblock.md`         | GitHub-style alerts, code block language badge + copy                                                                                        |
+| `dependency-upgrade-sweep.md` | Sweep record (2.15.0): versions moved, declined upgrades, manual verification checklist, findings, harness usage for future upgrades         |
 
 
 ## Development Guidelines
+
+**Dependency Upgrades:**
+
+- Before and after ANY dependency change: run `npm run roundtrip` (see `harness/README.md`) and `npm run build` — a green `npm run lint` is NOT sufficient evidence (a default-import break once passed tsc while breaking the bundle)
+- Classify every golden diff as intended fix / accepted change / regression, in the commit that caused it
+- Declined-upgrade decisions and their reasoning: `docs/internals/dependency-upgrade-sweep.md`
 
 **Tiptap-First Approach:**
 

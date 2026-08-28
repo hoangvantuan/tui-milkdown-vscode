@@ -3,6 +3,11 @@ src/**
 *.ts
 tsconfig.json
 esbuild.config.js
+esbuild.harness.config.js
+
+# Dependency-verification harness (dev-only, never shipped)
+harness/**
+out/harness/**
 
 # Dependencies
 node_modules/**

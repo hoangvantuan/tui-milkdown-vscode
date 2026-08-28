@@ -2,6 +2,28 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## \[2.15.0\] - 2026-08-28
+
+Dependency upgrade sweep (#64), kiểm chứng bằng markdown roundtrip harness. Chi tiết từng bump và cách chạy harness: `harness/README.md` và `docs/internals/dependency-upgrade-sweep.md`.
+
+### Changed
+
+- **Dependency upgrade sweep (#64)**: nâng 14 package `@tiptap/*` 3.26.0 → 3.30.1 (pin chính xác), TypeScript 5.9.3 → 7.0.2, esbuild → 0.28.2, js-yaml 4 → 5.3.0, fuzzysort 3.1.0 → 4.0.2, mermaid 11.12.2 → 11.17.2 và các bump còn lại trong range. Cmd+F search chuyển từ `prosemirror-search` sang `@tiptap/extension-find-and-replace` (bỏ 1 direct dependency).
+- **Markdown fixes (chứng minh bằng harness golden)**:
+  - Ô bảng chứa code span có dấu `|` không còn bị tách thành hai cột
+  - Heading đặt ngay sau ordered list giữ đúng cấu trúc khối (không còn bị hút thành text của list)
+  - Dòng trắng cuối file sau bảng được giữ nguyên khi lưu
+- **Frontmatter (js-yaml 5)**: frontmatter rỗng hoặc chỉ chứa comment vẫn hợp lệ; vị trí báo lỗi YAML chính xác hơn (trỏ đúng dòng chứa lỗi)
+- **File search**: @ mention và [[wiki link]] — mọi gợi ý đều có highlight ký tự khớp (một đường xếp hạng duy nhất sau khi bỏ pass chuẩn hoá diacritic thủ công)
+- **Search**: bộ đếm match đọc index chính thức từ plugin storage thay vì suy đoán theo vị trí con trỏ
+- **Mermaid lazy-load**: bundle khởi động webview giảm 5.023.289 B → 932.754 B; mermaid (8.457.219 B) tách thành artifact nạp riêng, chỉ tải khi document có diagram
+- **Hiệu năng**: type check (`tsc --noEmit`) nhanh hơn, median \~0.94s → \~0.27s
+- **Security**: js-yaml 4 → 5 loại bỏ exposure với hai lỗi parser denial-of-service đã được công bố
+
+### Fixed
+
+- **File search threshold**: giá trị `-1000` cũ (kỷ nguyên fuzzysort v1/v2) evaluates thành `NaN` trên thang điểm mới, vô hiệu hoá filtering âm thầm từ lâu; đổi thành `0` (giữ nguyên hành vi hôm nay, option giờ nói thật)
+
 ## \[2.14.0\] - 2026-06-10
 
 ### Changed

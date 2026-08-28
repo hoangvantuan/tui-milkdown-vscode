@@ -8,7 +8,7 @@ File mention (@) and wiki link ([[...]]) autocomplete.
 
 Shared module used by both file-mention and wiki-link plugins.
 
-* **Fuzzy search**: `fuzzysort` (5KB, 0-dep) matches on both `name` and `path` fields. Threshold -1000, returns top `maxResults * 3` then re-sorts with proximity bonus.
+* **Fuzzy search**: `fuzzysort` (5KB, 0-dep) matches on both `name` and `path` fields. Threshold 0 — on fuzzysort 4's 0..1 minimum-score scale, `0` admits every match, i.e. today's behaviour with filtering disabled (the old `-1000` was a v1/v2-era value that evaluates to `NaN` on the current scale). Returns top `maxResults * 3` then re-sorts with proximity bonus. Diacritic remapping is automatic in fuzzysort 4; there is one ranking pass (the manual normalisation second pass was removed, so every result carries match indices).
 * **Proximity scoring**: Files in same folder as current document get +50 bonus, parent folder +25. When no query, files sort by proximity then alphabetically.
 * **Highlight**: `highlightMatches()` wraps matched character indexes in `<mark>` tags (with HTML escaping).
 * **File icons**: `getFileIcon()` returns SVG icons for 10 file type groups:
@@ -58,7 +58,7 @@ Shared module used by both file-mention and wiki-link plugins.
 
 **CSS**: `.file-mention-popup`, `.file-mention-item`, `.file-mention-icon`, `.file-mention-name`, `.file-mention-path`, `.file-mention-empty`, `.file-mention-popup mark`. Glassmorphic style matching toolbar.
 
-**Dependencies**: `@tiptap/suggestion@^3.19.0`, `fuzzysort@^3.1.0`
+**Dependencies**: `@tiptap/suggestion@3.30.1` (exact-pinned), `fuzzysort@4.0.2` (exact-pinned)
 
 ## Wiki Link ([[...]])
 

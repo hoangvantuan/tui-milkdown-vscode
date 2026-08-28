@@ -147,9 +147,16 @@ Implementation details for each feature area:
 | `metadata-panel.md`       | Frontmatter YAML panel, bidirectional sync                                                                                                   |
 | `theming.md`              | Theme system, font strategy, typography, micro-interactions, font selector                                                                   |
 | `alerts-codeblock.md`     | GitHub-style alerts, code block language badge + copy                                                                                        |
+| `dependency-upgrade-sweep.md` | Sweep record (2.15.0): versions moved, declined upgrades, manual verification checklist, findings, harness usage for future upgrades      |
 
 
 ## Development Guidelines
+
+**Dependency Upgrades:**
+
+- Before and after ANY dependency change: run `npm run roundtrip` (see `harness/README.md`) and `npm run build` — a green `npm run lint` is NOT sufficient evidence (a default-import break once passed tsc while breaking the bundle)
+- Classify every golden diff as intended fix / accepted change / regression, in the commit that caused it
+- Declined-upgrade decisions and their reasoning: `docs/internals/dependency-upgrade-sweep.md`
 
 **Tiptap-First Approach:**
 
