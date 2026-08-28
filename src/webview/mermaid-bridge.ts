@@ -20,6 +20,15 @@
  * one in-flight promise and one <script> element; exactly one network
  * load and one global registration happen. After success the bundle is
  * cached synchronously.
+ *
+ * Failure semantics (issue #75): a <script> element fires `load`/`error`
+ * at most once, so a settled element can never be waited on again. A
+ * network failure removes the element and stays retryable (the next call
+ * performs a fresh injection). An artifact that executes WITHOUT
+ * registering the global latches the failure for the rest of the page
+ * lifetime: later calls reject promptly instead of re-downloading the
+ * same broken bytes, and the webview reload is what picks up a fixed
+ * build. Neither path can leave a pending promise.
  */
 import type ElkLayouts from "@mermaid-js/layout-elk";
 import type Mermaid from "mermaid";
@@ -42,6 +51,13 @@ const LOADER_SCRIPT_ID = "tui-mermaid-loader";
 
 let cached: MermaidBundle | null = null;
 let inflight: Promise<MermaidBundle> | null = null;
+/**
+ * Latched when the artifact executed but did not register the global.
+ * Non-null means the page is stuck with a broken artifact until reload:
+ * retrying would re-download the same bytes, so fail fast instead.
+ * Network failures never set this — they stay retryable.
+ */
+let brokenArtifactError: Error | null = null;
 
 /** The already-loaded bundle, or null if mermaid has not been loaded yet. */
 export function getCachedMermaidBundle(): MermaidBundle | null {
@@ -54,13 +70,16 @@ export function getCachedMermaidBundle(): MermaidBundle | null {
 /**
  * Load the mermaid artifact on demand. Idempotent and race-safe: the first
  * call injects the <script> element; every concurrent or later call reuses
- * the same promise/result. A failed load clears the in-flight promise so
- * the next call retries with a fresh injection.
+ * the same promise/result. A network failure clears the in-flight promise
+ * so the next call retries with a fresh injection; a broken artifact (ran
+ * but never registered the global) latches a prompt rejection for the
+ * page lifetime (see the header comment), so no call can hang.
  */
 export function loadMermaidBundle(): Promise<MermaidBundle> {
     const already = getCachedMermaidBundle();
     if (already) return Promise.resolve(already);
     if (inflight) return inflight;
+    if (brokenArtifactError) return Promise.reject(brokenArtifactError);
 
     inflight = injectLoaderScript().then((bundle) => {
         cached = bundle;
@@ -87,24 +106,41 @@ function injectLoaderScript(): Promise<MermaidBundle> {
             return;
         }
 
-        let script = document.getElementById(LOADER_SCRIPT_ID) as HTMLScriptElement | null;
-        if (!script) {
-            script = document.createElement("script");
-            script.id = LOADER_SCRIPT_ID;
-            script.src = bootstrap.scriptUri;
-            // Nonce-bearing script element: allowed by the page's nonce-only
-            // script-src CSP without any CSP relaxation.
-            script.nonce = bootstrap.nonce;
-            document.head.appendChild(script);
-        }
+        // Never reuse an existing element with this id: once its `load` or
+        // `error` has fired, listeners attached now can never fire and the
+        // promise would hang forever (issue #75). Both failure paths below
+        // remove the element after settling, so this is a defensive sweep.
+        document.getElementById(LOADER_SCRIPT_ID)?.remove();
+
+        const script = document.createElement("script");
+        script.id = LOADER_SCRIPT_ID;
+        script.src = bootstrap.scriptUri;
+        // Nonce-bearing script element: allowed by the page's nonce-only
+        // script-src CSP without any CSP relaxation.
+        script.nonce = bootstrap.nonce;
+        document.head.appendChild(script);
 
         script.addEventListener("load", () => {
             const bundle = window.__tuiMermaidBundle;
-            if (bundle) resolve(bundle);
-            else reject(new Error("Mermaid artifact executed but did not register window.__tuiMermaidBundle"));
+            if (bundle) {
+                resolve(bundle);
+                return;
+            }
+            // The artifact finished executing without registering the global
+            // (broken or truncated build). The element is spent — `load`
+            // never fires again — so remove it and latch the failure: a
+            // genuine re-injection would fetch the same broken bytes, so
+            // later calls reject promptly instead (issue #75).
+            script.remove();
+            brokenArtifactError = new Error(
+                "Mermaid artifact executed but did not register window.__tuiMermaidBundle",
+            );
+            reject(brokenArtifactError);
         });
         script.addEventListener("error", () => {
-            script?.remove();
+            // Network-level failure: transient, so stay retryable rather
+            // than latching — the next call injects a fresh element.
+            script.remove();
             reject(new Error(`Failed to load mermaid artifact: ${bootstrap.scriptUri}`));
         });
     });

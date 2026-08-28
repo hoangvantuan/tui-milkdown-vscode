@@ -208,6 +208,11 @@ let globalThemeReceived: ThemeName | null = null;
 let currentFrontmatter: string | null = null;
 let currentBody: string = "";
 let currentFormat: FrontmatterFormat = "none";
+// Raw frontmatter block (delimiters plus the original blank-line gap to the
+// body) from the last parse; lets reconstruction replay the original bytes
+// verbatim. Not cleared on metadata edits: reconstructContent only replays
+// it while it still embeds the current frontmatter text.
+let currentRawBlock: string | null = null;
 let lastSentState: string | null = null;
 let highlightCurrentLine = true;
 let currentImageMap: Record<string, string> = {};
@@ -509,7 +514,7 @@ function replaceInlineImage(
     setImageMap(currentImageMap);
   }
 
-  const fullContent = reconstructContent(currentFrontmatter, currentBody, currentFormat);
+  const fullContent = reconstructContent(currentFrontmatter, currentBody, currentFormat, currentRawBlock);
   lastSentState = serializeStateForEcho(fullContent, currentImageMap);
   vscode.postMessage({ type: "edit", content: fullContent });
 
@@ -536,7 +541,7 @@ function debouncedPostEdit(): void {
     // Serialize only once per debounce window (300ms after last keystroke)
     const markdown = editor.getMarkdown();
     currentBody = transformForSave(markdown, currentImageMap);
-    const content = reconstructContent(currentFrontmatter, currentBody, currentFormat);
+    const content = reconstructContent(currentFrontmatter, currentBody, currentFormat, currentRawBlock);
 
     const hasPendingBlobs = await processInlineImages(content);
     if (hasPendingBlobs) {
@@ -634,7 +639,7 @@ async function sendFullContent(): Promise<void> {
   if (hasPendingBlobs) {
     return;
   }
-  const fullContent = reconstructContent(currentFrontmatter, currentBody, currentFormat);
+  const fullContent = reconstructContent(currentFrontmatter, currentBody, currentFormat, currentRawBlock);
   lastSentState = serializeStateForEcho(fullContent, currentImageMap);
   vscode.postMessage({ type: "edit", content: fullContent });
 }
@@ -1674,6 +1679,7 @@ window.addEventListener("message", async (event) => {
           currentFrontmatter = parsed.frontmatter;
           currentBody = parsed.body;
           currentFormat = parsed.format;
+          currentRawBlock = parsed.rawBlock ?? null;
 
           updateMetadataPanel(parsed.frontmatter, parsed.isValid, parsed.error);
 

@@ -20,6 +20,35 @@ Mermaid diagram rendering, copy as PNG, security considerations.
 
 **Dependencies**: `mermaid@^11.12.2`
 
+## Lazy-load lifecycle (`src/webview/mermaid-bridge.ts`)
+
+Mermaid is fetched only when the first diagram is about to render. The
+bridge (bundled inside main.js) injects `out/webview/mermaid-loader.js`
+(its own esbuild IIFE entry, `src/webview/mermaid-loader.ts`) as a
+`<script nonce=…>`; nonce and artifact URI come from
+`window.__tuiMermaidBootstrap`, a nonce-bearing inline bootstrap the
+provider emits before main.js (browsers hide the nonce attribute from the
+DOM). The CSP is unchanged: nonce-only `script-src`, no relaxation.
+
+* **Success**: the artifact registers `window.__tuiMermaidBundle`; the
+  bridge caches it synchronously. Concurrent callers (two diagrams
+  rendering at once) share one in-flight promise, one `<script>` element,
+  one network load, one registration.
+* **Network failure** (`error` event): the element is removed and the
+  in-flight promise cleared, so the next render retries with a fresh
+  injection. Transient errors stay retryable by design.
+* **Executed without registering** (broken/truncated build, issue #75): a
+  `<script>` fires `load`/`error` at most once, so a settled element must
+  never be waited on again. The `load` listener removes the spent element
+  and latches the failure for the rest of the page lifetime: later calls
+  reject promptly instead of re-downloading the same broken bytes. The
+  webview reload is what picks up a fixed build. If the global gets
+  registered later by any means, the cache check wins over the latch.
+* **User surface**: every load failure rejects through
+  `ensureMermaidReady()` into the existing render catch in
+  `mermaid-plugin.ts`, which shows `.mermaid-err-msg` in the placeholder
+  plus the `mermaid-error` class — never an indefinite `Rendering…` state.
+
 ## Security: `securityLevel: "loose"`
 
 Mermaid is initialized with `securityLevel: "loose"` in both `ensureMermaidInit()` and `updateMermaidTheme()`. "loose" is required so ELK can render `foreignObject` HTML inside labels. "strict" strips HTML and the layout looks flat.

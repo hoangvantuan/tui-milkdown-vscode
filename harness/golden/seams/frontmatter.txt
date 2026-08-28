@@ -32,16 +32,7 @@ input:
    9| Text under the implicit separator.
 parse: format=implicit isValid=true error=null
 validateYaml(frontmatter): isValid=true error=null reportedLine=none
-reconstruct === input (byte for byte): no
-reconstructed:
-   1| title: Implicit Form
-   2| type: note
-   3| created: 2024-02-01
-   4| ---
-   5| 
-   6| # Body
-   7| 
-   8| Text under the implicit separator.
+reconstruct === input (byte for byte): yes
 
 [case empty-delimiters]
 input:
@@ -53,12 +44,7 @@ input:
    6| Only the two delimiters, nothing between.
 parse: format=standard isValid=true error=null
 validateYaml(frontmatter): isValid=true error=null reportedLine=none
-reconstruct === input (byte for byte): no
-reconstructed:
-   1| 
-   2| # Body
-   3| 
-   4| Only the two delimiters, nothing between.
+reconstruct === input (byte for byte): yes
 
 [case comment-only]
 input:
@@ -84,12 +70,60 @@ input:
    7| Frontmatter containing only a blank line.
 parse: format=standard isValid=true error=null
 validateYaml(frontmatter): isValid=true error=null reportedLine=none
-reconstruct === input (byte for byte): no
-reconstructed:
-   1| 
-   2| # Body
-   3| 
-   4| Frontmatter containing only a blank line.
+reconstruct === input (byte for byte): yes
+
+[case no-blank-line-after-fm]
+input:
+   1| ---
+   2| title: No Blank Line
+   3| draft: true
+   4| ---
+   5| # Body
+   6| 
+   7| The body starts on the line immediately after the closing delimiter.
+parse: format=standard isValid=true error=null
+validateYaml(frontmatter): isValid=true error=null reportedLine=none
+reconstruct === input (byte for byte): yes
+
+[case no-blank-line-after-empty-delims]
+input:
+   1| ---
+   2| ---
+   3| # Body
+   4| 
+   5| The body starts on the line immediately after the empty delimiters.
+parse: format=standard isValid=true error=null
+validateYaml(frontmatter): isValid=true error=null reportedLine=none
+reconstruct === input (byte for byte): yes
+
+[case two-blank-lines-after-fm]
+input:
+   1| ---
+   2| title: Two Blank Lines
+   3| draft: true
+   4| ---
+   5| 
+   6| 
+   7| # Body
+   8| 
+   9| Two blank lines separate the closing delimiter from the body.
+parse: format=standard isValid=true error=null
+validateYaml(frontmatter): isValid=true error=null reportedLine=none
+reconstruct === input (byte for byte): yes
+
+[case trailing-space-delimiters]
+input:
+   1| --- 
+   2| title: Trailing Space
+   3| draft: true
+   4| --- 
+   5| 
+   6| # Body
+   7| 
+   8| Both delimiters carry a trailing space that must survive the round-trip.
+parse: format=standard isValid=true error=null
+validateYaml(frontmatter): isValid=true error=null reportedLine=none
+reconstruct === input (byte for byte): yes
 
 [case invalid-yaml]
 input:

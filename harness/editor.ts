@@ -219,7 +219,7 @@ export function roundtripMarkdown(source: string): string {
   try {
     transformTableCellsAfterParse(editor);
     const body = editor.getMarkdown();
-    return reconstructContent(parsed.frontmatter, body, parsed.format);
+    return reconstructContent(parsed.frontmatter, body, parsed.format, parsed.rawBlock);
   } finally {
     editor.destroy();
     host.remove();
