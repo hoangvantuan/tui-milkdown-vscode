@@ -11,6 +11,8 @@ npm run build      # Production build (minified, no sourcemaps)
 npm run build:dev  # Development build (with sourcemaps, unminified)
 npm run watch      # Watch mode for development
 npm run lint       # TypeScript type checking (tsc --noEmit)
+npm run roundtrip  # Markdown roundtrip harness: corpus vs golden baselines (see harness/README.md)
+npm run roundtrip:update  # Re-capture golden baselines (deliberate use only)
 npm run package    # Package extension as .vsix
 ```
 
@@ -61,7 +63,7 @@ src/
     ├── table-markdown-serializer.ts # Custom GFM table serializer (multi-line cells)
     ├── table-cell-content-parser.ts # Post-parse transformer for table cell lists/breaks
     ├── table-context-menu.ts # Right-click context menu for table operations
-    ├── search-plugin.ts      # Cmd+F search via prosemirror-search (highlight, next/prev, match count)
+    ├── search-plugin.ts      # Cmd+F search via @tiptap/extension-find-and-replace (highlight, next/prev, match count)
     ├── file-search-utils.ts  # Shared: fuzzy search (fuzzysort), proximity scoring, file type icons, highlight helpers
     ├── file-mention-plugin.ts # @-mention file autocomplete via @tiptap/suggestion (popup, fuzzy filter, link insert)
     ├── wiki-link-plugin.ts   # Wiki link [[...]] autocomplete via @tiptap/suggestion (popup, filter, node insert)
@@ -81,6 +83,15 @@ src/
         ├── catppuccin-mocha.css   # Catppuccin Mocha (dark)
         ├── paper.css              # Paper (light, warm serif)
         └── midnight.css           # Midnight (dark, deep navy)
+harness/                            # Dependency-verification harness (see harness/README.md)
+├── editor.ts                       # Editor factory mirroring initEditor's markdown-relevant extensions
+├── corpus.ts                       # Corpus enumeration (synthetic fixtures + repo docs)
+├── diff.ts                         # Dependency-free unified line diff
+├── roundtrip.ts                    # Runner: check (default) / --update modes
+├── frontmatter-seam.ts             # Frontmatter parse/reconstruct + validateYaml seam
+├── filesearch-seam.ts              # File search ranking seam (diacritic ordering = recorded measurement)
+├── fixtures/synthetic/*.md         # One feature per fixture
+└── golden/                         # Committed baselines (corpus + seams), captured on the pre-upgrade dependency tree
 ```
 
 ## Configuration Settings
@@ -98,7 +109,7 @@ Extension provides these settings via `tuiMarkdown.*` namespace:
 
 Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for markdown roundtrip.
 
-**Extensions:** StarterKit (includes Link with `autolink: true, linkOnPaste: true`), Image, Highlight, Table (resizable + custom `renderMarkdown` hook), CodeBlockLowlight (syntax highlighting via lowlight/highlight.js), TaskList + TaskItem, Placeholder, Markdown (GFM + configurable indentation), AlertNode (GitHub-style alerts), MermaidDiagram (SVG preview), TableContextMenu (right-click menu), CodeBlockEnhancement (language badge + copy button), SearchPlugin (Cmd+F via prosemirror-search), FileMention (@-mention file autocomplete via @tiptap/suggestion), WikiLink (wiki links), WikiLinkSuggestion ([[...]] autocomplete via @tiptap/suggestion).
+**Extensions:** StarterKit (includes Link with `autolink: true, linkOnPaste: true`), Image, Highlight, Table (resizable + custom `renderMarkdown` hook), CodeBlockLowlight (syntax highlighting via lowlight/highlight.js), TaskList + TaskItem, Placeholder, Markdown (GFM + configurable indentation), AlertNode (GitHub-style alerts), MermaidDiagram (SVG preview), TableContextMenu (right-click menu), CodeBlockEnhancement (language badge + copy button), SearchPlugin (Cmd+F via @tiptap/extension-find-and-replace), FileMention (@-mention file autocomplete via @tiptap/suggestion), WikiLink (wiki links), WikiLinkSuggestion ([[...]] autocomplete via @tiptap/suggestion).
 
 **Markdown API:**
 
@@ -136,9 +147,16 @@ Implementation details for each feature area:
 | `metadata-panel.md`       | Frontmatter YAML panel, bidirectional sync                                                                                                   |
 | `theming.md`              | Theme system, font strategy, typography, micro-interactions, font selector                                                                   |
 | `alerts-codeblock.md`     | GitHub-style alerts, code block language badge + copy                                                                                        |
+| `dependency-upgrade-sweep.md` | Sweep record (2.15.0): versions moved, declined upgrades, manual verification checklist, findings, harness usage for future upgrades      |
 
 
 ## Development Guidelines
+
+**Dependency Upgrades:**
+
+- Before and after ANY dependency change: run `npm run roundtrip` (see `harness/README.md`) and `npm run build` — a green `npm run lint` is NOT sufficient evidence (a default-import break once passed tsc while breaking the bundle)
+- Classify every golden diff as intended fix / accepted change / regression, in the commit that caused it
+- Declined-upgrade decisions and their reasoning: `docs/internals/dependency-upgrade-sweep.md`
 
 **Tiptap-First Approach:**
 

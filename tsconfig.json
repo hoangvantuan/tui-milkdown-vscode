@@ -5,11 +5,11 @@
     "lib": ["ES2020", "DOM"],
     "strict": true,
     "esModuleInterop": true,
+    "types": ["node"],
     "skipLibCheck": true,
     "outDir": "out",
-    "rootDir": "src",
     "moduleResolution": "bundler"
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "harness/**/*.ts"],
   "exclude": ["node_modules", "out"]
 }

@@ -1,22 +1,36 @@
-import { Editor, Extension } from "@tiptap/core";
-import { search, SearchQuery, findNext, findPrev, setSearchState, getMatchHighlights, getSearchState } from "prosemirror-search";
+import { Editor } from "@tiptap/core";
+import { TextSelection } from "@tiptap/pm/state";
+import FindAndReplace, {
+  FindAndReplacePluginKey,
+  findNextIndex,
+} from "@tiptap/extension-find-and-replace";
 
 export interface SearchMatchInfo {
   count: number;
   activeIndex: number;
 }
 
+// The webview CSP is nonce-only for scripts and browsers hide the nonce
+// attribute from the DOM, so the page cannot recover it by itself.
+// markdownEditorProvider.ts exposes it on this global before main.js runs.
+declare global {
+  interface Window {
+    __tuiCspNonce?: string;
+  }
+}
+
 /**
- * Tiptap Extension wrapping prosemirror-search.
- * Provides search decorations and Mod-f intercept.
+ * Tiptap find-and-replace extension configured for Cmd+F search.
+ *
+ * - injectCSS is disabled: the theme rules in markdownEditorProvider.ts style
+ *   the `find-and-replace-result` / `find-and-replace-result-current`
+ *   decoration classes, and the extension's fixed defaults must not override
+ *   them. The nonce is still passed so any future re-enabling of injection
+ *   stays compatible with the webview CSP.
+ * - searchDebounceMs is 0: the search input in main.ts already debounces.
+ * - Replace/regex/whole-word stay at the library level; no UI is exposed.
  */
-export const SearchPlugin = Extension.create({
-  name: "searchPlugin",
-
-  addProseMirrorPlugins() {
-    return [search()];
-  },
-
+export const SearchPlugin = FindAndReplace.extend({
   addKeyboardShortcuts() {
     return {
       "Mod-f": () => {
@@ -25,39 +39,62 @@ export const SearchPlugin = Extension.create({
       },
     };
   },
+}).configure({
+  caseSensitive: false,
+  searchDebounceMs: 0,
+  injectCSS: false,
+  injectNonce: window.__tuiCspNonce,
 });
 
-/** Set or update the search query, highlighting all matches */
+/**
+ * Set or update the search query, highlighting all matches, and select the
+ * first match at or after the cursor (wrapping to the first match).
+ */
 export function performSearch(editor: Editor, queryText: string): void {
-  const query = new SearchQuery({
-    search: queryText,
-    caseSensitive: false,
-  });
-  const { dispatch, state } = editor.view;
-  dispatch(setSearchState(state.tr, query));
+  editor.commands.setSearchTerm(queryText);
+  if (!queryText) return;
+  const { results } = editor.storage.findAndReplace;
+  const index = findNextIndex(results, editor.state.selection.from);
+  if (index !== null) {
+    selectResult(editor, index);
+  }
 }
 
 /** Clear all search highlights */
 export function clearSearch(editor: Editor): void {
-  const query = new SearchQuery({ search: "" });
-  const { dispatch, state } = editor.view;
-  dispatch(setSearchState(state.tr, query));
+  editor.commands.clearSearch();
 }
 
-/** Navigate to the next match (ProseMirror command) */
+/** Navigate to the next match */
 export function searchNext(editor: Editor): void {
-  const { state, dispatch } = editor.view;
-  if (findNext(state, dispatch)) {
+  if (editor.commands.goToNextResult()) {
     scrollSearchMatchIntoView(editor);
   }
 }
 
-/** Navigate to the previous match (ProseMirror command) */
+/** Navigate to the previous match */
 export function searchPrev(editor: Editor): void {
-  const { state, dispatch } = editor.view;
-  if (findPrev(state, dispatch)) {
+  if (editor.commands.goToPreviousResult()) {
     scrollSearchMatchIntoView(editor);
   }
+}
+
+/**
+ * Move the active match (decoration + selection) without triggering
+ * ProseMirror's scroll-to-selection: that path bails when DOM focus sits
+ * outside the editor (prosemirror-view scrollToSelection), which is exactly
+ * the state during search because focus stays in the search input. Manual
+ * centring below is the only reliable scroll in that state.
+ */
+function selectResult(editor: Editor, index: number): void {
+  const result = editor.storage.findAndReplace.results[index];
+  if (!result) return;
+  const { dispatch, state } = editor.view;
+  const tr = state.tr;
+  tr.setSelection(TextSelection.create(state.doc, result.from, result.to));
+  tr.setMeta(FindAndReplacePluginKey, { currentIndex: index });
+  dispatch(tr);
+  scrollSearchMatchIntoView(editor);
 }
 
 function scrollSearchMatchIntoView(editor: Editor): void {
@@ -78,31 +115,14 @@ function scrollSearchMatchIntoView(editor: Editor): void {
   });
 }
 
-/** Get current match count and active match index */
+/**
+ * Get current match count and active match index.
+ * Both values come straight from the extension's plugin storage, which
+ * tracks the active index itself; no position inference is done here.
+ */
 export function getMatchInfo(editor: Editor): SearchMatchInfo {
-  const state = editor.view.state;
-  const searchState = getSearchState(state);
-  if (!searchState || !searchState.query.valid) {
-    return { count: 0, activeIndex: 0 };
-  }
-  const decos = getMatchHighlights(state);
-  const allMatches = decos.find();
-  const count = allMatches.length;
+  const { results, currentIndex } = editor.storage.findAndReplace;
+  const count = results.length;
   if (count === 0) return { count: 0, activeIndex: 0 };
-
-  // Find active match by checking which decoration overlaps the current selection
-  const { from } = state.selection;
-  let activeIndex = 0;
-  for (let i = 0; i < allMatches.length; i++) {
-    if (allMatches[i].from <= from && allMatches[i].to >= from) {
-      activeIndex = i + 1;
-      break;
-    }
-    if (allMatches[i].from > from) {
-      activeIndex = i + 1;
-      break;
-    }
-  }
-  if (activeIndex === 0) activeIndex = count;
-  return { count, activeIndex };
+  return { count, activeIndex: (currentIndex ?? 0) + 1 };
 }

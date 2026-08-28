@@ -1,0 +1,66 @@
+file search seam — searchFiles (src/webview/file-search-utils.ts)
+recorded on the current dependency tree; measurements, not verdicts
+
+fixture files (12):
+  README.md
+  CHANGELOG.md
+  docs/notes.md
+  docs/editor-core.md
+  docs/table-system.md
+  docs/café.md
+  docs/cafe.md
+  src/main.ts
+  src/utils/search.ts
+  tests/README.md
+  assets/my-photo.png
+  plans/road-map.md
+
+[empty query — full breadth, proximity + name ordering]
+results: 12 of 12 fixture files
+  1. docs/cafe.md nameIndexes=null pathIndexes=null
+  2. docs/café.md nameIndexes=null pathIndexes=null
+  3. CHANGELOG.md nameIndexes=null pathIndexes=null
+  4. docs/editor-core.md nameIndexes=null pathIndexes=null
+  5. src/main.ts nameIndexes=null pathIndexes=null
+  6. assets/my-photo.png nameIndexes=null pathIndexes=null
+  7. docs/notes.md nameIndexes=null pathIndexes=null
+  8. README.md nameIndexes=null pathIndexes=null
+  9. tests/README.md nameIndexes=null pathIndexes=null
+  10. plans/road-map.md nameIndexes=null pathIndexes=null
+  11. src/utils/search.ts nameIndexes=null pathIndexes=null
+  12. docs/table-system.md nameIndexes=null pathIndexes=null
+every result carries nameIndexes: no (12 without)
+every result carries pathIndexes: no (12 without)
+
+[candidate-breadth] query="ma" currentDocFolder=docs
+note: loose query — how many of the fixture files come back at all
+results: 2 of 12 fixture files
+  1. src/main.ts nameIndexes=[0,1] pathIndexes=[4,5]
+  2. plans/road-map.md nameIndexes=[5,6] pathIndexes=[11,12]
+every result carries nameIndexes: yes
+every result carries pathIndexes: yes
+
+[proximity-ordering] query="readme" currentDocFolder=tests
+note: currentDocFolder=tests must lift tests/README.md above the root README.md
+results: 2 of 12 fixture files
+  1. tests/README.md nameIndexes=[0,1,2,3,4,5] pathIndexes=[6,7,8,9,10,11]
+  2. README.md nameIndexes=[0,1,2,3,4,5] pathIndexes=[0,1,2,3,4,5]
+every result carries nameIndexes: yes
+every result carries pathIndexes: yes
+
+[proximity-contrast-no-folder] query="readme"
+note: same query with no currentDocFolder — ordering falls back to score alone
+results: 2 of 12 fixture files
+  1. README.md nameIndexes=[0,1,2,3,4,5] pathIndexes=[0,1,2,3,4,5]
+  2. tests/README.md nameIndexes=[0,1,2,3,4,5] pathIndexes=[6,7,8,9,10,11]
+every result carries nameIndexes: yes
+every result carries pathIndexes: yes
+
+[diacritic-ordering] query="café" currentDocFolder=docs
+note: RECORDED MEASUREMENT, NOT A PASS/FAIL: accented vs unaccented filename order for a diacritic-bearing query; the upcoming search library major is expected to reverse this and that has been accepted
+results: 2 of 12 fixture files
+  1. docs/cafe.md nameIndexes=[0,1,2,3] pathIndexes=[5,6,7,8]
+  2. docs/café.md nameIndexes=[0,1,2,3] pathIndexes=[5,6,7,8]
+every result carries nameIndexes: yes
+every result carries pathIndexes: yes
+

@@ -1266,6 +1266,19 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         "main.css",
       ),
     );
+    // Lazy mermaid artifact URI (injected on demand by the webview, see
+    // src/webview/mermaid-bridge.ts). Computed here because only the
+    // extension host can mint webview resource URIs.
+    const mermaidScriptUri = webview
+      .asWebviewUri(
+        vscode.Uri.joinPath(
+          this.context.extensionUri,
+          "out",
+          "webview",
+          "mermaid-loader.js",
+        ),
+      )
+      .toString();
 
     const nonce = getNonce();
 
@@ -3323,19 +3336,22 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             stroke-linejoin: round;
           }
 
-          /* Search match highlights (prosemirror-search) */
-          .ProseMirror-search-match {
+          /* Search match highlights (@tiptap/extension-find-and-replace;
+             injection disabled via injectCSS: false, so these theme rules
+             are the only styling. The active match element carries both
+             classes, so -current must come after -result in source order.) */
+          .find-and-replace-result {
             background: rgba(var(--accent-rgb, 59, 130, 246), 0.2);
             border-radius: 2px;
           }
-          .ProseMirror-active-search-match {
+          .find-and-replace-result-current {
             background: rgba(var(--accent-rgb, 59, 130, 246), 0.45);
             border-radius: 2px;
           }
-          body.dark-theme .ProseMirror-search-match {
+          body.dark-theme .find-and-replace-result {
             background: rgba(var(--accent-rgb, 59, 130, 246), 0.25);
           }
-          body.dark-theme .ProseMirror-active-search-match {
+          body.dark-theme .find-and-replace-result-current {
             background: rgba(var(--accent-rgb, 59, 130, 246), 0.5);
           }
 
@@ -3880,6 +3896,21 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         </div>
         <div id="reading-progress"></div>
         <div id="toolbar-hover-zone"></div>
+        <script nonce="${nonce}">
+          // Bootstrap for the lazy mermaid artifact: the webview CSP is
+          // nonce-only for scripts and browsers hide the nonce attribute
+          // from the DOM, so the page cannot recover it by itself. Expose
+          // the artifact URI + nonce to the webview BEFORE main.js runs;
+          // mermaid-bridge.ts injects the artifact with this nonce when a
+          // diagram is first rendered. No CSP relaxation involved.
+          window.__tuiMermaidBootstrap = {
+            scriptUri: "${mermaidScriptUri}",
+            nonce: "${nonce}",
+          };
+          // Page CSP nonce for any nonce-gated style injection (see
+          // search-plugin.ts: find-and-replace injectNonce option).
+          window.__tuiCspNonce = "${nonce}";
+        </script>
         <script nonce="${nonce}" src="${scriptUri}"></script>
       </body>
       </html>

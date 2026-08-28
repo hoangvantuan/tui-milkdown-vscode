@@ -1,4 +1,4 @@
-import yaml from "js-yaml";
+import * as yaml from "js-yaml";
 import { MAX_FILE_SIZE } from "../constants";
 
 export type FrontmatterFormat = "standard" | "implicit" | "none";
@@ -14,6 +14,13 @@ export interface ParseResult {
 const FRONTMATTER_REGEX = /^---[ \t]*\n([\s\S]*?)\n---[ \t]*(?:\n|$)/;
 const EMPTY_FRONTMATTER_REGEX = /^---[ \t]*\n---[ \t]*(?:\n|$)/;
 const IMPLICIT_SEPARATOR_REGEX = /\n---[ \t]*(?:\n|$)/;
+
+export function isBlankOrCommentOnly(rawYaml: string): boolean {
+  return rawYaml.split("\n").every((line) => {
+    const trimmed = line.trim();
+    return trimmed === "" || trimmed.startsWith("#");
+  });
+}
 
 const KNOWN_KEYS = new Set([
   "title",
@@ -98,6 +105,9 @@ export function parseContent(markdown: string): ParseResult {
   if (stdMatch) {
     const rawYaml = stdMatch[1];
     const body = markdown.slice(stdMatch[0].length);
+    if (isBlankOrCommentOnly(rawYaml)) {
+      return { frontmatter: rawYaml, body, isValid: true, format: "standard" };
+    }
     try {
       yaml.load(rawYaml);
       return { frontmatter: rawYaml, body, isValid: true, format: "standard" };

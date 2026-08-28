@@ -1,0 +1,116 @@
+frontmatter seam — parseContent / reconstructContent (src/utils/frontmatter-parser.ts)
+                + validateYaml (src/webview/frontmatter.ts)
+recorded on the current dependency tree; observations, not verdicts
+
+[case standard]
+input:
+   1| ---
+   2| title: Seam Fixture
+   3| tags:
+   4|   - frontmatter
+   5|   - roundtrip
+   6| draft: false
+   7| ---
+   8| 
+   9| # Body
+  10| 
+  11| Text under standard frontmatter.
+parse: format=standard isValid=true error=null
+validateYaml(frontmatter): isValid=true error=null reportedLine=none
+reconstruct === input (byte for byte): yes
+
+[case implicit]
+input:
+   1| title: Implicit Form
+   2| type: note
+   3| created: 2024-02-01
+   4| 
+   5| ---
+   6| 
+   7| # Body
+   8| 
+   9| Text under the implicit separator.
+parse: format=implicit isValid=true error=null
+validateYaml(frontmatter): isValid=true error=null reportedLine=none
+reconstruct === input (byte for byte): no
+reconstructed:
+   1| title: Implicit Form
+   2| type: note
+   3| created: 2024-02-01
+   4| ---
+   5| 
+   6| # Body
+   7| 
+   8| Text under the implicit separator.
+
+[case empty-delimiters]
+input:
+   1| ---
+   2| ---
+   3| 
+   4| # Body
+   5| 
+   6| Only the two delimiters, nothing between.
+parse: format=standard isValid=true error=null
+validateYaml(frontmatter): isValid=true error=null reportedLine=none
+reconstruct === input (byte for byte): no
+reconstructed:
+   1| 
+   2| # Body
+   3| 
+   4| Only the two delimiters, nothing between.
+
+[case comment-only]
+input:
+   1| ---
+   2| # only a comment
+   3| ---
+   4| 
+   5| # Body
+   6| 
+   7| Frontmatter consisting solely of a comment line.
+parse: format=standard isValid=true error=null
+validateYaml(frontmatter): isValid=true error=null reportedLine=none
+reconstruct === input (byte for byte): yes
+
+[case blank-line-only]
+input:
+   1| ---
+   2| 
+   3| ---
+   4| 
+   5| # Body
+   6| 
+   7| Frontmatter containing only a blank line.
+parse: format=standard isValid=true error=null
+validateYaml(frontmatter): isValid=true error=null reportedLine=none
+reconstruct === input (byte for byte): no
+reconstructed:
+   1| 
+   2| # Body
+   3| 
+   4| Frontmatter containing only a blank line.
+
+[case invalid-yaml]
+input:
+   1| ---
+   2| title: Valid Line
+   3| tags: [unclosed
+   4| ---
+   5| 
+   6| # Body
+   7| 
+   8| The flow sequence on line 3 is never closed.
+parse: format=standard isValid=false error="unexpected end of the stream within a flow collection (2:16)\n\n 1 | title: Valid Line\n 2 | tags: [unclosed\n--------------------^"
+validateYaml(frontmatter): isValid=false error="unexpected end of the stream within a flow collection" reportedLine=1
+reconstruct === input (byte for byte): yes
+
+[case no-frontmatter]
+input:
+   1| # Just a body
+   2| 
+   3| No frontmatter anywhere in this document.
+parse: format=none isValid=true error=null
+validateYaml(frontmatter): isValid=true error=null reportedLine=none
+reconstruct === input (byte for byte): yes
+
