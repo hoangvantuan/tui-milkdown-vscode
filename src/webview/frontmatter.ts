@@ -1,5 +1,6 @@
 // src/webview/frontmatter.ts
-import yaml from "js-yaml";
+import * as yaml from "js-yaml";
+import { isBlankOrCommentOnly } from "../utils/frontmatter-parser";
 
 // Re-export shared logic so existing imports in main.ts keep working
 export {
@@ -16,7 +17,7 @@ export interface ValidationResult {
 }
 
 export function validateYaml(content: string): ValidationResult {
-  if (!content || content.trim() === "") {
+  if (!content || isBlankOrCommentOnly(content)) {
     return { isValid: true };
   }
 

@@ -2,36 +2,64 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## [2.15.0] - 2026-08-28
+
+Dependency upgrade sweep (#64), verified with the markdown roundtrip harness. Per-bump detail and how to run the harness: `harness/README.md` and `docs/internals/dependency-upgrade-sweep.md`.
+
+### Changed
+
+- **Dependency upgrade sweep (#64)**: 14 `@tiptap/*` packages 3.26.0 → 3.30.1 (pinned exactly), TypeScript 5.9.3 → 7.0.2, esbuild → 0.28.2, js-yaml 4 → 5.3.0, fuzzysort 3.1.0 → 4.0.2, mermaid 11.12.2 → 11.17.2, plus the remaining in-range bumps. Cmd+F search moved from `prosemirror-search` to `@tiptap/extension-find-and-replace` (one direct dependency fewer).
+- **Markdown fixes (each evidenced by a harness golden)**:
+  - A table cell containing a code span with a `|` no longer splits into two columns
+  - A heading placed immediately after an ordered list keeps proper block structure (it is no longer absorbed into the list text)
+  - A trailing blank line after a table at end of file survives a save
+- **Frontmatter (js-yaml 5)**: empty or comment-only frontmatter stays valid; YAML error positions are more precise (they point at the line that actually carries the error)
+- **File search**: every @ mention and [[ wiki link ]] suggestion now carries match highlighting (a single ranking path, after the manual diacritic-normalization pass was removed)
+- **Search**: the match counter reads the authoritative index from plugin storage instead of inferring it from the cursor position
+- **Mermaid lazy-load**: the webview startup bundle drops from 5,023,289 B to 933,347 B; mermaid (8,457,219 B) becomes a separate artifact, fetched only when a document contains a diagram
+- **Performance**: type checking (`tsc --noEmit`) is faster, median ~0.94 s → ~0.27 s
+- **Security**: js-yaml 4 → 5 removes exposure to two published parser denial-of-service defects
+
+### Added
+
+- **Automated verification for what previously needed a human**: the harness gained a table column-width seam and a placeholder rendering seam, and the repository gained `npm run verify:vscode-floor`, which downloads the VS Code version named by `engines.vscode`, runs the extension in it and inspects the live webview. The three items the sweep record listed as "not verified" are now checks anyone can re-run with one command.
+
+### Fixed
+
+- **Mermaid lazy-load hanging forever (#75)**: when the artifact finished loading but did not register `window.__tuiMermaidBundle` (a broken or truncated build), the next retry attached a fresh `load` listener to a `<script>` element that had already fired `load` (an element fires `load`/`error` exactly once), so the promise never settled and every diagram sat at "Rendering..." with no error. A settled element is now removed from the DOM and the "executed but did not register" failure is latched for the lifetime of the page: later calls reject immediately instead of re-downloading the same broken bytes (a webview reload picks up the fixed build); network failures still remove the element and stay genuinely retryable; and every load failure surfaces through the placeholder's existing `.mermaid-err-msg` instead of hanging. Concurrent callers still share exactly one load and one registration (evidenced by a five-scenario jsdom probe)
+- **File search threshold**: the old `-1000` value (a fuzzysort v1/v2-era number) evaluates to `NaN` on the new scale, which had silently disabled filtering long ago; it is now `0` (today's behaviour unchanged, but the option finally states it honestly)
+- **Frontmatter round-trip (#74)**: untouched frontmatter is now saved back byte for byte. Three forms used to be corrupted: `---` immediately followed by `---` (both delimiters lost), `---`, blank line, `---` (both delimiters lost), and the implicit form (the blank line before the separator lost). Cause: `parseContent()` discarded the original block, so `reconstructContent()` could not tell "no frontmatter" from "empty frontmatter". Parsing now also returns `rawBlock` (the raw text of the block, delimiters included, plus the whitespace between block and body) and reconstruction replays it verbatim while the frontmatter has not been edited through the metadata panel; that whitespace keeps its original shape (none, one, or several blank lines), and trailing spaces on a delimiter line (`--- `) survive too. Validity is unchanged for every form
+
 ## [2.14.0] - 2026-06-10
 
 ### Changed
 
-- **Tiptap upgrade 3.19 → 3.26**: Nâng cấp toàn bộ 13 package `@tiptap/*` lên 3.26.0. Các cải thiện chính:
-  - Fix markdown roundtrip bold/italic chồng nhau
-  - Fix HTML entities (`&lt;`, `&gt;`, `&amp;`) roundtrip đúng
-  - Fix backslash-escape handling (`\*`, `\_`, `\\`) parse/serialize chuẩn
-  - Fix nội dung trong angle-bracket tags không còn bị nuốt
-  - Fix marks cùng loại khác attributes không còn bị merge nhầm
-  - Fix image drag không tạo duplicate
-  - Placeholder performance cải thiện trên document lớn
-  - Memory leak fix khi Editor.destroy()
+- **Tiptap upgrade 3.19 → 3.26**: All 13 `@tiptap/*` packages moved to 3.26.0. Main improvements:
+  - Fixed markdown roundtrip of overlapping bold/italic
+  - Fixed HTML entity (`&lt;`, `&gt;`, `&amp;`) roundtrip
+  - Fixed backslash-escape handling (`\*`, `\_`, `\\`) on parse and serialize
+  - Fixed content inside angle-bracket tags being swallowed
+  - Fixed marks of the same type with different attributes being merged
+  - Fixed image drag creating a duplicate
+  - Improved placeholder performance on large documents
+  - Fixed a memory leak in Editor.destroy()
 
 ## [2.13.0] - 2026-06-08
 
 ### Added
 
-- **Open Image in New Tab**: Nút mới khi hover ảnh local, mở file trong tab editor VSCode (dùng editor mặc định, vd Excalidraw plugin cho `.svg`). Chỉ hiện với ảnh local; ảnh base64 và URL http(s) không có nút này. (#62)
+- **Open Image in New Tab**: A new button on local image hover opens the file in a VSCode editor tab (using the default editor for that type, e.g. the Excalidraw plugin for `.svg`). Local images only; base64 images and http(s) URLs do not get the button. (#62)
 
 ## [2.12.0] - 2026-05-21
 
 ### Improved
 
-- **File Search**: Fuzzy matching cho @ mention và [[ wiki link (fuzzysort)
-- **File Search**: Proximity scoring ưu tiên file gần document đang mở
-- **File Search**: File type icons (10 nhóm) trong popup
-- **File Search**: Wiki link giờ filter cả path, không chỉ filename
-- **File Search**: Dùng VSCode `files.exclude` setting thay vì exclude cố định
-- **File Search**: Nâng giới hạn từ 1000 lên 5000 files
+- **File Search**: Fuzzy matching for @ mention and [[ wiki link (fuzzysort)
+- **File Search**: Proximity scoring favours files near the open document
+- **File Search**: File type icons (10 groups) in the popup
+- **File Search**: Wiki links now filter on the path too, not just the filename
+- **File Search**: Uses the VSCode `files.exclude` setting instead of a fixed exclude list
+- **File Search**: Limit raised from 1000 to 5000 files
 - **File Search**: Highlight matched characters trong popup
 
 ## [2.11.0] - 2026-05-21

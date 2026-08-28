@@ -58,6 +58,25 @@ const exportPdfConfig = {
   treeShaking: true,
 };
 
+// Lazy mermaid artifact: separate IIFE entry so the heavy mermaid + ELK
+// code is NOT part of out/webview/main.js. Injected at render time by
+// src/webview/mermaid-bridge.ts (nonce-bearing <script>), so documents
+// without diagrams never load it. Must stay `format: 'iife'`-compatible:
+// no code splitting, the bundle self-registers on window.
+const mermaidLoaderConfig = {
+  entryPoints: ['src/webview/mermaid-loader.ts'],
+  bundle: true,
+  outfile: 'out/webview/mermaid-loader.js',
+  format: 'iife',
+  platform: 'browser',
+  sourcemap: !isProduction,
+  minify: isProduction,
+  treeShaking: true,
+  define: {
+    'process.env.NODE_ENV': isProduction ? '"production"' : '"development"',
+  },
+};
+
 const webviewConfig = {
   entryPoints: ['src/webview/main.ts'],
   bundle: true,
@@ -94,12 +113,14 @@ async function build() {
     const markdownAstCtx = await esbuild.context(markdownAstConfig);
     const exportDocxCtx = await esbuild.context(exportDocxConfig);
     const exportPdfCtx = await esbuild.context(exportPdfConfig);
+    const mermaidLoaderCtx = await esbuild.context(mermaidLoaderConfig);
     const webCtx = await esbuild.context(webviewConfig);
     await Promise.all([
       extCtx.watch(),
       markdownAstCtx.watch(),
       exportDocxCtx.watch(),
       exportPdfCtx.watch(),
+      mermaidLoaderCtx.watch(),
       webCtx.watch(),
     ]);
     console.log('Watching for changes...');
@@ -108,6 +129,7 @@ async function build() {
     await esbuild.build(markdownAstConfig);
     await esbuild.build(exportDocxConfig);
     await esbuild.build(exportPdfConfig);
+    await esbuild.build(mermaidLoaderConfig);
     await esbuild.build(webviewConfig);
     console.log(`Build complete (${isProduction ? 'production' : 'development'})`);
   }

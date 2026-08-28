@@ -14,19 +14,9 @@
 import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
-import mermaid from "mermaid";
-import elkLayouts from "@mermaid-js/layout-elk";
+import { getCachedMermaidBundle, loadMermaidBundle, type MermaidBundle } from "./mermaid-bridge";
 import { openMermaidLightbox } from "./image-lightbox-plugin";
 import { copySvgAsPng } from "./svg-to-png";
-
-// Register ELK layout engine for better subgraph/edge routing
-let elkAvailable = false;
-try {
-    mermaid.registerLayoutLoaders(elkLayouts);
-    elkAvailable = true;
-} catch {
-    console.warn("ELK layout registration failed, falling back to dagre");
-}
 
 const EXPAND_ICON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`;
 const COPY_ICON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
@@ -49,8 +39,11 @@ const MERMAID_FLOWCHART_CFG = {
     padding: 20,
 };
 
-function ensureMermaidInit(isDark: boolean): void {
-    mermaid.initialize({
+/** Whether the ELK layout engine registered successfully on the loaded bundle. */
+let elkAvailable = false;
+
+function initializeMermaid(bundle: MermaidBundle, isDark: boolean): void {
+    bundle.mermaid.initialize({
         startOnLoad: false,
         layout: elkAvailable ? "elk" : "dagre",
         theme: isDark ? "dark" : "default",
@@ -61,20 +54,39 @@ function ensureMermaidInit(isDark: boolean): void {
 }
 
 /**
+ * Load the mermaid artifact (once, race-safe) and initialize it on first
+ * render: ELK layout registration + one `mermaid.initialize`. Later calls
+ * are cheap no-ops unless the bundle has not been initialized yet.
+ */
+async function ensureMermaidReady(isDark: boolean): Promise<MermaidBundle> {
+    const bundle = await loadMermaidBundle();
+    if (!mermaidInitialized) {
+        if (!elkAvailable) {
+            // Register ELK layout engine for better subgraph/edge routing
+            try {
+                bundle.mermaid.registerLayoutLoaders(bundle.elkLayouts);
+                elkAvailable = true;
+            } catch {
+                console.warn("ELK layout registration failed, falling back to dagre");
+            }
+        }
+        initializeMermaid(bundle, isDark);
+    }
+    return bundle;
+}
+
+/**
  * Re-initialize mermaid with a new theme (called when editor theme changes).
+ * If the artifact has not been loaded yet there is nothing rendered to
+ * re-theme; the first render initializes with the current theme instead.
  */
 export function updateMermaidTheme(isDark: boolean): void {
-    mermaid.initialize({
-        startOnLoad: false,
-        layout: elkAvailable ? "elk" : "dagre",
-        theme: isDark ? "dark" : "default",
-        securityLevel: "loose",
-        flowchart: MERMAID_FLOWCHART_CFG,
-    });
+    const bundle = getCachedMermaidBundle();
+    if (bundle) initializeMermaid(bundle, isDark);
     // Re-render all existing previews
     document.querySelectorAll<HTMLElement>(".mermaid-preview").forEach((el) => {
         const code = el.getAttribute("data-mermaid-src");
-        if (code) renderToEl(el, code);
+        if (code) void renderToEl(el, code);
     });
 }
 
@@ -193,6 +205,7 @@ async function renderToEl(preview: HTMLElement, code: string): Promise<void> {
     const host = getSvgHost(preview);
     const id = `mermaid-render-${++renderCounter}`;
     try {
+        const { mermaid } = await ensureMermaidReady(document.body.classList.contains("dark-theme"));
         const { svg } = await mermaid.render(id, code);
         host.innerHTML = svg;
         uniquifySvgIds(host);
@@ -217,9 +230,9 @@ const MAX_RENDER_CACHE = 30;
 
 async function renderMermaid(preview: HTMLElement, code: string): Promise<void> {
     const host = getSvgHost(preview);
-    const cached = renderCache.get(code);
-    if (cached) {
-        host.innerHTML = cached;
+    const cachedSvg = renderCache.get(code);
+    if (cachedSvg) {
+        host.innerHTML = cachedSvg;
         uniquifySvgIds(host);
         preview.classList.remove("mermaid-error");
         preview.setAttribute("data-rendered", "true");
@@ -228,6 +241,7 @@ async function renderMermaid(preview: HTMLElement, code: string): Promise<void> 
 
     const id = `mermaid-render-${++renderCounter}`;
     try {
+        const { mermaid } = await ensureMermaidReady(document.body.classList.contains("dark-theme"));
         // Mermaid v11 no longer auto-converts literal \n inside labels.
         // Replace \n with <br/> inside any bracket group ([...], (...), {...})
         // regardless of quote style. Covers plain labels like A[Line1\nLine2].
@@ -373,8 +387,8 @@ export const MermaidDiagram = Extension.create({
                     document.addEventListener("dblclick", handleDblClick);
 
                     function scanAndSchedule(view: any): void {
-                        const isDark = document.body.classList.contains("dark-theme");
-                        if (!mermaidInitialized) ensureMermaidInit(isDark);
+                        // Mermaid itself loads lazily on first render
+                        // (see ensureMermaidReady); nothing to init eagerly.
 
                         // Skip expensive scan when no mermaid blocks exist
                         if (mermaidBlockCount === 0) return;
