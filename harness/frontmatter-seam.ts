@@ -46,6 +46,11 @@ const CASES: FmCase[] = [
     source: "---\n\n---\n\n# Body\n\nFrontmatter containing only a blank line.\n",
   },
   {
+    label: "trailing-space-delimiters",
+    source:
+      "--- \ntitle: Trailing Space\ndraft: true\n--- \n\n# Body\n\nBoth delimiters carry a trailing space that must survive the round-trip.\n",
+  },
+  {
     label: "invalid-yaml",
     source: '---\ntitle: Valid Line\ntags: [unclosed\n---\n\n# Body\n\nThe flow sequence on line 3 is never closed.\n',
   },
@@ -77,6 +82,7 @@ export function runFrontmatterSeam(): string {
       parsed.frontmatter,
       parsed.body,
       parsed.format,
+      parsed.rawBlock,
     );
     const byteForByte = reconstructed === testCase.source;
 

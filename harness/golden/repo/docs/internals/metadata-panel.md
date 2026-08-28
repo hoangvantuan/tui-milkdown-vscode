@@ -46,7 +46,9 @@ date: 2024-01-01
 
 **Format preservation:** file opened as implicit saves as implicit (no opening `---` added). File opened as standard (with opening `---`) saves as standard.
 
-**Shared utility:** `src/utils/frontmatter-parser.ts` exports `parseFrontmatter(content)` and `reconstructMarkdown(data, body, format)` used by both extension and webview.
+**Lossless replay (`rawBlock`):** beside `frontmatter` (the raw YAML between/above the delimiters), `ParseResult` carries `rawBlock`: the exact original block text including delimiters. `reconstructContent(frontmatter, body, format, rawBlock?)` replays those bytes verbatim (normalized to `block + \n\n + body`) while the block still embeds the current `frontmatter` — this check discards a stale block after a metadata-panel edit, which then falls back to the canonical `---\n{yaml}\n---` template. This is what keeps `---\n---`, blank-line-only blocks, the implicit separator's preceding blank line, and trailing whitespace on delimiter lines (`---` ) byte-for-byte stable across open/save. The distinction between "no frontmatter" (`frontmatter: null`, `format: "none"`) and "empty standard frontmatter" (`frontmatter: ""`, `format: "standard"`) lives in these fields.
+
+**Shared utility:** `src/utils/frontmatter-parser.ts` exports `parseContent(content)` and `reconstructContent(frontmatter, body, format, rawBlock?)` used by both extension and webview; `src/webview/frontmatter.ts` re-exports them and adds `validateYaml`.
 
 ## Bidirectional Sync
 

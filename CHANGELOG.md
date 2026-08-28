@@ -23,6 +23,7 @@ Dependency upgrade sweep (#64), kiểm chứng bằng markdown roundtrip harness
 ### Fixed
 
 - **File search threshold**: giá trị `-1000` cũ (kỷ nguyên fuzzysort v1/v2) evaluates thành `NaN` trên thang điểm mới, vô hiệu hoá filtering âm thầm từ lâu; đổi thành `0` (giữ nguyên hành vi hôm nay, option giờ nói thật)
+- **Frontmatter round-trip (#74)**: frontmatter chưa chỉnh sửa giờ lưu lại nguyên byte (byte for byte). Ba dạng từng bị hỏng: `---\n---` (mất cả hai delimiter), `---\n` dòng trắng `---` (mất cả hai delimiter), và dạng implicit (mất dòng trắng trước separator). Nguyên nhân: `parseContent()` vứt mất thông tin khối gốc, `reconstructContent()` không thể phân biệt "không có frontmatter" với "frontmatter rỗng". Giờ parse trả thêm `rawBlock` (văn bản thô của khối, bao gồm delimiter) và reconstruct phát lại nguyên văn khi frontmatter chưa bị sửa qua metadata panel; dấu cách cuối dòng trên dòng delimiter (`--- `) cũng được giữ nguyên. Tính hợp lệ của mọi dạng không đổi
 
 ## [2.14.0] - 2026-06-10
 
