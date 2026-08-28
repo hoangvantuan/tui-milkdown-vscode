@@ -22,6 +22,7 @@ package-lock.json
 
 # AI/agent tools
 .agent/**
+.agents/**
 .claude/**
 .mcp.json
 _bmad/**
