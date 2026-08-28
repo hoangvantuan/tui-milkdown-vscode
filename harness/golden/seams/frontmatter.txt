@@ -72,6 +72,45 @@ parse: format=standard isValid=true error=null
 validateYaml(frontmatter): isValid=true error=null reportedLine=none
 reconstruct === input (byte for byte): yes
 
+[case no-blank-line-after-fm]
+input:
+   1| ---
+   2| title: No Blank Line
+   3| draft: true
+   4| ---
+   5| # Body
+   6| 
+   7| The body starts on the line immediately after the closing delimiter.
+parse: format=standard isValid=true error=null
+validateYaml(frontmatter): isValid=true error=null reportedLine=none
+reconstruct === input (byte for byte): yes
+
+[case no-blank-line-after-empty-delims]
+input:
+   1| ---
+   2| ---
+   3| # Body
+   4| 
+   5| The body starts on the line immediately after the empty delimiters.
+parse: format=standard isValid=true error=null
+validateYaml(frontmatter): isValid=true error=null reportedLine=none
+reconstruct === input (byte for byte): yes
+
+[case two-blank-lines-after-fm]
+input:
+   1| ---
+   2| title: Two Blank Lines
+   3| draft: true
+   4| ---
+   5| 
+   6| 
+   7| # Body
+   8| 
+   9| Two blank lines separate the closing delimiter from the body.
+parse: format=standard isValid=true error=null
+validateYaml(frontmatter): isValid=true error=null reportedLine=none
+reconstruct === input (byte for byte): yes
+
 [case trailing-space-delimiters]
 input:
    1| --- 

@@ -208,10 +208,10 @@ let globalThemeReceived: ThemeName | null = null;
 let currentFrontmatter: string | null = null;
 let currentBody: string = "";
 let currentFormat: FrontmatterFormat = "none";
-// Raw frontmatter block from the last parse; lets reconstruction replay the
-// original bytes (delimiters, blank lines, trailing whitespace) verbatim.
-// Cleared implicitly on metadata edits: reconstructContent only replays it
-// while it still embeds the current frontmatter text.
+// Raw frontmatter block (delimiters plus the original blank-line gap to the
+// body) from the last parse; lets reconstruction replay the original bytes
+// verbatim. Not cleared on metadata edits: reconstructContent only replays
+// it while it still embeds the current frontmatter text.
 let currentRawBlock: string | null = null;
 let lastSentState: string | null = null;
 let highlightCurrentLine = true;

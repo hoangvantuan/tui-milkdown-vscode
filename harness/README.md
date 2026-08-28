@@ -344,6 +344,25 @@ fixtures + 2 seams = 35 passed / 0 failed (zero diffs, no golden
 re-captured — the harness editor never loaded the mermaid preview
 plugin, so the lazy-loading change is invisible to it by design).
 
+## Classification record: frontmatter round-trip fixes (issue #74)
+
+Recorded across the two #74 commits on `fix/harness-findings`. Root cause of
+every diff: `parseContent()` did not carry enough information for
+`reconstructContent()` to rebuild an untouched frontmatter block, so the
+corpus seam was recording lossy output as the baseline. The fix adds
+`rawBlock` (exact block bytes plus the original blank-line gap to the body)
+to `ParseResult`; reconstruction replays it verbatim under a consistency
+check that still rejects the block after a metadata-panel edit, and the
+edited-frontmatter fallback keeps emitting the canonical `\n\n` template.
+`harness/editor.ts` now passes `rawBlock` too, closing the mirror drift the
+maintenance notes warn about.
+
+| Fixture | Diff | Classification | Evidence |
+| --- | --- | --- | --- |
+| `synthetic/frontmatter-empty.md` | The `---` / `---` delimiter pair, previously dropped from the round-tripped output, is now preserved with its blank-line gap | **Intended fix** | Old golden started directly at `# Body under an empty frontmatter block` (the seam had already proven the delimiters were destroyed); new output is byte-identical to the fixture source |
+| `synthetic/frontmatter-implicit.md` | The blank line between `created: 2024-01-15` and the `---` separator, previously collapsed by the template's `trim()`, is restored | **Intended fix** | Old golden shows `created:` flush against `---`; new output is byte-identical to the fixture source |
+| `seams/frontmatter.txt` | Three previously-lossy cases flip to byte-for-byte (`implicit`, `empty-delimiters`, `blank-line-only`); five cases added (`trailing-space-delimiters`, `no-blank-line-after-fm`, `no-blank-line-after-empty-delims`, `two-blank-lines-after-fm` from the follow-up, all `yes`); parse/validate lines unchanged on every pre-existing case | **Intended fix** | The `parse:` and `validateYaml(...)` lines are byte-identical to the old golden, proving validity did not move; only the reconstruct verdicts and new cases changed |
+
 ## The other two seams
 
 Besides the markdown corpus, the same single command runs two pure,
@@ -354,11 +373,13 @@ no-DOM seams against their own goldens (`harness/golden/seams/`):
   `src/utils/frontmatter-parser.ts` and the webview's `validateYaml` from
   `src/webview/frontmatter.ts`, through their existing exported signatures.
   It records each supported frontmatter form (standard, implicit, empty
-  delimiters, comment-only, blank-line-only, none), whether comment-only and
-  blank-line-only blocks validate, the reported line of a YAML error, and
-  whether untouched frontmatter reconstructs byte for byte. Where it does
-  not (implicit form, empty delimiters), the reconstructed output is
-  recorded next to the input so the diff shows exactly what changed.
+  delimiters, comment-only, blank-line-only, none, plus the
+  block-to-body gap and delimiter whitespace variants), whether
+  comment-only and blank-line-only blocks validate, the reported line of a
+  YAML error, and whether untouched frontmatter reconstructs byte for
+  byte. Every case in the current golden reconstructs byte for byte; if a
+  future change breaks one, the reconstructed output is recorded next to
+  the input so the diff shows exactly what changed.
 
 - **File search seam** (`filesearch-seam.ts`) exercises `searchFiles` from
   `src/webview/file-search-utils.ts` with a fixed twelve-file fixture list.

@@ -10,11 +10,15 @@ export interface ParseResult {
   error?: string;
   format: FrontmatterFormat;
   /**
-   * Exact original text of the frontmatter block (delimiters included),
-   * or null when the document has no frontmatter. Reconstruction replays
-   * these bytes verbatim while the frontmatter stays untouched, so empty
-   * delimiters, blank-line-only blocks, implicit separators and trailing
-   * whitespace on delimiter lines all survive a save round-trip.
+   * Exact original text from the start of the document up to the first body
+   * character: the frontmatter block (delimiters included) plus whatever
+   * blank-line gap followed it (none, one, or several). Null when the
+   * document has no frontmatter. Reconstruction replays these bytes verbatim
+   * while the frontmatter stays untouched, so empty delimiters,
+   * blank-line-only blocks, implicit separators, trailing whitespace on
+   * delimiter lines and the original block-to-body gap all survive a save
+   * round-trip. The gap is folded in here (not left in `body`) because a
+   * body re-serialized by the editor loses its leading newlines.
    */
   rawBlock?: string | null;
 }
@@ -22,14 +26,23 @@ export interface ParseResult {
 const FRONTMATTER_REGEX = /^---[ \t]*\n([\s\S]*?)\n---[ \t]*(?:\n|$)/;
 const EMPTY_FRONTMATTER_REGEX = /^---[ \t]*\n---[ \t]*(?:\n|$)/;
 const IMPLICIT_SEPARATOR_REGEX = /\n---[ \t]*(?:\n|$)/;
-const RAW_STANDARD_BLOCK_REGEX = /^---[ \t]*\n([\s\S]*?)\n---[ \t]*(?:\n|$)$/;
-const RAW_EMPTY_BLOCK_REGEX = /^---[ \t]*\n---[ \t]*(?:\n|$)$/;
-const RAW_IMPLICIT_SEPARATOR_REGEX = /^\n---[ \t]*(?:\n|$)$/;
+// Like the parse regexes, but anchored on both ends and tolerant of the
+// trailing blank-line gap rawBlock carries after the closing delimiter.
+const RAW_STANDARD_BLOCK_REGEX = /^---[ \t]*\n([\s\S]*?)\n---[ \t]*\n*$/;
+const RAW_EMPTY_BLOCK_REGEX = /^---[ \t]*\n---[ \t]*\n*$/;
+const RAW_IMPLICIT_SEPARATOR_REGEX = /^\n---[ \t]*\n*$/;
+
+function leadingNewlines(text: string): string {
+  return text.match(/^\n*/)![0];
+}
 
 /**
  * A raw block may only be replayed when it still embeds the current
  * frontmatter text; after a metadata-panel edit the stale block must be
- * ignored and reconstruction falls back to the canonical template.
+ * ignored and reconstruction falls back to the canonical template. The
+ * YAML-interior comparison below is that guard; the trailing `\n*`
+ * tolerance in the structural regexes only absorbs the blank-line gap the
+ * block owns and lets no additional stale shape through.
  */
 function rawBlockMatchesFrontmatter(
   rawBlock: string,
@@ -100,7 +113,11 @@ function detectImplicitFrontmatter(
     const body = markdown.slice(
       sepMatch.index + sepMatch[0].length
     );
-    return { rawYaml, body, raw: rawYaml + sepMatch[0] };
+    return {
+      rawYaml,
+      body,
+      raw: rawYaml + sepMatch[0] + leadingNewlines(body),
+    };
   } catch {
     return null;
   }
@@ -125,12 +142,13 @@ export function parseContent(markdown: string): ParseResult {
   // 1. Empty standard frontmatter (---\n---)
   const emptyMatch = markdown.match(EMPTY_FRONTMATTER_REGEX);
   if (emptyMatch) {
+    const body = markdown.slice(emptyMatch[0].length);
     return {
       frontmatter: "",
-      body: markdown.slice(emptyMatch[0].length),
+      body,
       isValid: true,
       format: "standard",
-      rawBlock: emptyMatch[0],
+      rawBlock: emptyMatch[0] + leadingNewlines(body),
     };
   }
 
@@ -139,12 +157,13 @@ export function parseContent(markdown: string): ParseResult {
   if (stdMatch) {
     const rawYaml = stdMatch[1];
     const body = markdown.slice(stdMatch[0].length);
+    const rawBlock = stdMatch[0] + leadingNewlines(body);
     if (isBlankOrCommentOnly(rawYaml)) {
-      return { frontmatter: rawYaml, body, isValid: true, format: "standard", rawBlock: stdMatch[0] };
+      return { frontmatter: rawYaml, body, isValid: true, format: "standard", rawBlock };
     }
     try {
       yaml.load(rawYaml);
-      return { frontmatter: rawYaml, body, isValid: true, format: "standard", rawBlock: stdMatch[0] };
+      return { frontmatter: rawYaml, body, isValid: true, format: "standard", rawBlock };
     } catch (err) {
       return {
         frontmatter: rawYaml,
@@ -152,7 +171,7 @@ export function parseContent(markdown: string): ParseResult {
         isValid: false,
         error: err instanceof Error ? err.message : "Invalid YAML",
         format: "standard",
-        rawBlock: stdMatch[0],
+        rawBlock,
       };
     }
   }
@@ -184,15 +203,17 @@ export function reconstructContent(
     return safeBody;
   }
 
-  // Untouched frontmatter: replay the original block bytes so every
-  // delimiter variant round-trips without re-deriving it from a template.
+  // Untouched frontmatter: replay the original block bytes — including the
+  // exact blank-line gap the file had between block and body (none, one, or
+  // several) — so every delimiter variant round-trips without re-deriving
+  // it from a template. Leading newlines on the body are editor-serialization
+  // noise; the authoritative gap is the one rawBlock carries.
   if (
     rawBlock !== undefined &&
     rawBlock !== null &&
     rawBlockMatchesFrontmatter(rawBlock, frontmatter, format)
   ) {
-    const block = rawBlock.endsWith("\n") ? rawBlock.slice(0, -1) : rawBlock;
-    return `${block}\n\n${safeBody.replace(/^\n+/, "")}`;
+    return rawBlock + safeBody.replace(/^\n+/, "");
   }
 
   if (frontmatter.trim() === "") {
