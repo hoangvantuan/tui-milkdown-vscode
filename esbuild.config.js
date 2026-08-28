@@ -123,7 +123,7 @@ async function build() {
       mermaidLoaderCtx.watch(),
       webCtx.watch(),
     ]);
-    console.log('Watching for files...');
+    console.log('Watching for changes...');
   } else {
     await esbuild.build(extensionConfig);
     await esbuild.build(markdownAstConfig);

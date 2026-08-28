@@ -1,8 +1,8 @@
 # Dependency Upgrade Sweep Record (2.15.0)
 
 The closing record of the dependency upgrade sweep (parent spec: issue #64,
-closing ticket: issue #73): what moved, what was declined and why, what was
-verified by hand because no harness seam can see it, and what the next person
+closing ticket: issue #73): what moved, what was declined and why, what is
+verified by which command, what still needs a human, and what the next person
 should run before touching a dependency again. Per-bump diff classifications
 live in `harness/README.md`; this document does not repeat them.
 
@@ -11,17 +11,18 @@ live in `harness/README.md`; this document does not repeat them.
 Base: commit `59d31af` (version 2.14.0, Tiptap 3.26.0). Head: the commit that
 references this file.
 
-| Area                                                                                            | Before                      | After                 | Commit / ticket                                   |
-| ----------------------------------------------------------------------------------------------- | --------------------------- | --------------------- | ------------------------------------------------- |
-| Markdown roundtrip harness (corpus + goldens, 2 seams)                                          | none                        | `harness/`            | `16fde3b`, `0431713`, `10ffeff` (issues #65, #66) |
-| `@tiptap/*` (14 packages)                                                                       | `^3.26.0`                   | `3.30.1` exact pins   | `e956174` (issue #67)                             |
-| `esbuild` / `typescript`                                                                        | 0.20.2 / 5.9.3              | 0.28.2 / 7.0.2        | `aa64e2d`                                         |
-| `js-yaml` (+ drop `@types/js-yaml`, empty-frontmatter guard)                                    | `^4.1.1`                    | `5.3.0` exact pin     | `8ccf9da` (issue #69)                             |
-| `fuzzysort` (+ remove redundant diacritic pass, threshold fix)                                  | `^3.1.0`                    | `4.0.2` exact pin     | `7af313c` (issue #70)                             |
-| `mermaid` 11.12.2→11.17.2, `@mermaid-js/layout-elk` 0.2.1→0.2.3, `@types/node`, `@types/vscode` | in-range floors             | latest in range       | `5008846` (issue #71)                             |
-| Mermaid lazy-load artifact + `@types/vscode` pinned back to `~1.85.0`                           | eager 9.2 MB webview bundle | lazy 8.46 MB artifact | `3c7c695` (Refs #71)                              |
-| Search: `prosemirror-search` → `@tiptap/extension-find-and-replace` 3.30.1                      | direct PM integration       | Tiptap extension      | `df996e1` (issue #72)                             |
-| `puppeteer-core`                                                                                | 24.42.0                     | 24.43.1               | major held, see below                             |
+| Area                                                                                            | Before                      | After                   | Commit / ticket                                   |
+| ----------------------------------------------------------------------------------------------- | --------------------------- | ----------------------- | ------------------------------------------------- |
+| Markdown roundtrip harness (corpus + goldens, 4 seams)                                          | none                        | `harness/`              | `16fde3b`, `0431713`, `10ffeff` (issues #65, #66) |
+| VS Code floor check (runs the extension on `engines.vscode`)                                    | none                        | `harness/vscode-floor/` | this ticket                                       |
+| `@tiptap/*` (14 packages)                                                                       | `^3.26.0`                   | `3.30.1` exact pins     | `e956174` (issue #67)                             |
+| `esbuild` / `typescript`                                                                        | 0.20.2 / 5.9.3              | 0.28.2 / 7.0.2          | `aa64e2d`                                         |
+| `js-yaml` (+ drop `@types/js-yaml`, empty-frontmatter guard)                                    | `^4.1.1`                    | `5.3.0` exact pin       | `8ccf9da` (issue #69)                             |
+| `fuzzysort` (+ remove redundant diacritic pass, threshold fix)                                  | `^3.1.0`                    | `4.0.2` exact pin       | `7af313c` (issue #70)                             |
+| `mermaid` 11.12.2→11.17.2, `@mermaid-js/layout-elk` 0.2.1→0.2.3, `@types/node`, `@types/vscode` | in-range floors             | latest in range         | `5008846` (issue #71)                             |
+| Mermaid lazy-load artifact + `@types/vscode` pinned back to `~1.85.0`                           | eager 9.2 MB webview bundle | lazy 8.46 MB artifact   | `3c7c695` (Refs #71)                              |
+| Search: `prosemirror-search` → `@tiptap/extension-find-and-replace` 3.30.1                      | direct PM integration       | Tiptap extension        | `df996e1` (issue #72)                             |
+| `puppeteer-core`                                                                                | 24.42.0                     | 24.43.1                 | major held, see below                             |
 
 
 Verified sweep outcomes with direct evidence (full classification per bump in
@@ -43,17 +44,19 @@ redundant second search pass is gone (one ranking path).
 - The search match counter reads the authoritative index from plugin storage
 instead of a position heuristic.
 - Webview startup bundle: `out/webview/main.js` went from 5,023,289 B
-(pre-sweep) to **932,754 B at final HEAD** (the search migration added
-\~149 KB on top of the 783,157 B measured at the lazy-load commit), because
-mermaid moved to a lazily injected artifact (`out/webview/mermaid-loader.js`,
-8,457,219 B) fetched only when a document contains a diagram.
+(pre-sweep) to **933,347 B** (the search migration added \~150 KB on top of
+the 783,157 B measured at the lazy-load commit), because mermaid moved to a
+lazily injected artifact (`out/webview/mermaid-loader.js`, 8,457,219 B)
+fetched only when a document contains a diagram. The figure is a fresh
+`rm -rf out && npm run build` on this tree; an earlier revision of this
+record said 932,754 B, which no longer reproduces.
 - Type checking (`npm run lint`, `tsc --noEmit`): median 0.94 s pre-sweep →
 median 0.27 s at final HEAD (5-run sample: 0.27/0.27/0.27/0.28/0.37 s).
 - js-yaml 4 → 5 removes exposure to the two published parser
 denial-of-service defects.
-- Final harness run on this tree: 34 markdown fixtures + 2 seams = **36
-passed / 0 failed** (33 fixtures + 2 seams = 35 passed / 0 failed before
-this document was added to the corpus).
+- Final harness run on this tree: 34 markdown fixtures + 4 seams = **38
+passed / 0 failed** (the table column-width and placeholder seams are the
+two later additions; before them it was 36 passed / 0 failed).
 
 ## Declined upgrades
 
@@ -118,14 +121,21 @@ not part of the sweep.
 
 ## Manual verification checklist
 
-The harness is jsdom-based and blind to anything positional or temporal, so
-the following items are verified by hand. Method for this record (2026-08-28):
+The harness is jsdom-based and blind to anything positional, so the following
+items are verified by hand. Method for this record (2026-08-28):
 an isolated VS Code **1.134.0** Extension Development Host (separate
 `--user-data-dir`/`--extensions-dir`) launched with the built extension and
 driven via Chrome DevTools Protocol — real input events into the webview
 iframe, DOM-state assertions, and screenshots evaluated per item. Evidence
 artifacts (screenshots `shot1`–`shot10`, CDP console watchers) were captured
 during the run and are summarized below; they are not committed.
+
+Since this record was first written, the mermaid and content-rendering rows
+below are additionally covered by `npm run verify:vscode-floor`, which
+re-checks them on the `engines.vscode` floor without a human (see the section
+after next). The rows stay because they were also verified interactively, and
+because a few of them — real input events, click coordinates, theme legibility
+by eye — remain human-only.
 
 ### Mermaid (lazy-load change, issue #71 follow-up + #71 deferrals)
 
@@ -160,14 +170,26 @@ during the run and are summarized below; they are not committed.
 | Heading level badges (positioned overlays)  | **PASS** | Screenshot of the running editor shows H1/H2/H3 badges rendered next to the corresponding headings                                                                                                                                                                           |
 
 
-### Items that could NOT be performed in this environment (explicitly not verified)
+### Items that used to need a human, and no longer do
 
-| Check                                                                              | Status                                     | Reason                                                                                                                                                                                                                                                                                                                                                                                         |
-| ---------------------------------------------------------------------------------- | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Placeholder does not flicker while typing in a large document (issue #67)          | **NOT PERFORMED**                          | Flicker is a temporal rendering behaviour; the automation here takes static screenshots and DOM probes, which cannot observe a flicker that was never reproduced visually. No claim of a fix is made anywhere in this sweep (deliberately not listed in the 2.15.0 changelog)                                                                                                                  |
-| Table with explicit column widths parses correctly (issue #67)                     | **NOT PERFORMED**                          | GFM table markdown has no width syntax; verifying the `<colgroup>/<col width>` parse requires authoring such HTML in a real session and inspecting the editor's DOM attributes, which was not exercised. Not claimed anywhere (see the harness record for why the string seam is structurally blind to it)                                                                                     |
-| Extension loads and works on the VS Code version declared in `engines` (`^1.85.0`) | **PARTIAL — not runtime-verified on 1.85** | The dev host available here runs 1.134.0, where everything above passes. On the floor itself, the evidence is type-level only: `@types/vscode` is pinned to `~1.85.0` and `npm run lint` is green against that surface, so no API above the floor is called; an actual 1.85 runtime was not available to launch. If a 1.85 install exists, opening any `.md` file in it is the remaining check |
+Three items were previously recorded here as NOT PERFORMED, on the grounds
+that a jsdom harness cannot see them. Two of those three turned out to be
+measurable without a layout engine after all, and the third only needed the
+right VS Code build downloaded. Each is now a committed check with a command
+behind it, so the next person re-runs them instead of re-deferring them.
 
+| Check                                                                              | Status                                      | How it is verified now                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ---------------------------------------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Table with explicit column widths parses correctly (issue #67)                     | **PASS — automated**                        | `harness/table-colwidth-seam.ts`, golden `harness/golden/seams/table-colwidth.txt`, run by `npm run roundtrip`. HTML goes in, cell `colwidth` attributes come out of `editor.getJSON()`. Both branches of the upstream `parseColwidth` are covered: `<colgroup><col width="…">` (the shape pasted HTML tables carry, which is the 3.29 fix) and `colwidth="…"` on the cell (the shape Tiptap emits after a resize). Measured on this tree: widths `[150]`/`[320]` survive both shapes, a partially sized `<colgroup>` leaves the unsized column `null`, a `colspan=2` cell keeps `[150,320]`, and a plain table reports `null` everywhere. The same golden records the serialized markdown for each case, which is what makes the string seam's blindness explicit rather than assumed                                                                                                                                                                                                    |
+| Placeholder does not flicker while typing in a large document (issue #67)          | **PASS — automated, within a stated limit** | `harness/placeholder-seam.ts`, golden `harness/golden/seams/placeholder.txt`, run by `npm run roundtrip`. Flicker is temporal, but its mechanism is not invisible: a flickering placeholder is one whose DOM is written more often than its state changes. A MutationObserver counts exactly that per keystroke. Measured on this tree, typing 12 characters into a 300-paragraph document: **0** DOM writes in any paragraph other than the one being typed into, and the placeholder markers (`data-placeholder`, `is-empty`) change exactly **once** — when the empty paragraph stops being empty — and never toggle back. The stated limit: this proves the DOM is not being rewritten, not that a human eye sees no flash; a flicker caused purely by CSS or compositing would not appear in these counts                                                                                                                                                                            |
+| Extension loads and works on the VS Code version declared in `engines` (`^1.85.0`) | **PASS — runtime-verified on 1.85.0**       | `npm run verify:vscode-floor` (see `harness/vscode-floor/`) downloads the exact version named by `engines.vscode`, launches it as an Extension Development Host, runs in-host checks through `--extensionTestsPath`, and inspects the live webview over the DevTools protocol. Run on VS Code **1.85.0** (darwin-arm64) against this tree: 14/14 checks passed, twice in a row — extension resolves and activates, both commands register, `vscode.openWith` opens the document in `tuiMarkdown.editor`, the document stays unmodified across a 25 s hold, the webview mounts (`.tiptap`), the content renders (heading, bold, 3 table rows, 2 task items, 2 code blocks, 1 alert), the **lazily injected mermaid artifact loads and renders** with no stuck placeholder and no error, toolbar and metadata panel are present, and zero CSP violations appear in the console. This replaces the previous type-level-only evidence (`@types/vscode` pinned to `~1.85.0` plus a green lint) |
+
+
+The two seams add no new dependency and run inside the existing
+`npm run roundtrip`. The floor check needs a display and downloads ~~120 MB of
+VS Code on first use (cached in \`~~/.cache/tui-markdown-vscode-floor/`), so it stays a separate command rather than part of the default harness run, and it is deliberately not in` ci.yml`: a Linux runner needs` xvfb-run\` plus the
+Electron libraries, which has not been verified from here. Adding that job is
+a follow-up for whoever can watch the first CI run.
 
 ## Findings
 
@@ -219,10 +241,11 @@ The harness exists so the next dependency change is one command away from
 attributable evidence. Full guide: `harness/README.md`.
 
 ```bash
-npm run roundtrip          # run corpus + seams, diff against goldens
-npm run roundtrip:update   # re-capture goldens (deliberate use only)
-npm run lint               # type check — necessary, NOT sufficient
-npm run build              # bundle — catches what tsc cannot (see finding 2)
+npm run roundtrip            # run corpus + seams, diff against goldens
+npm run roundtrip:update     # re-capture goldens (deliberate use only)
+npm run lint                 # type check — necessary, NOT sufficient
+npm run build                # bundle — catches what tsc cannot (see finding 2)
+npm run verify:vscode-floor  # run the extension on the engines.vscode floor
 ```
 
 - Goldens live in `harness/golden/`, mirroring the corpus (synthetic
@@ -233,9 +256,13 @@ this file).
 classification in the commit that caused it (examples in
 `harness/README.md`).
 - Know the limit: the harness runs on jsdom, which has no layout engine.
-Anything positional or temporal (lightbox, context menus, positioned
-badges, scrolling, flicker, rendering) is invisible to it and needs the
-manual checklist treatment above.
+Anything genuinely positional (lightbox placement, context menus at click
+coordinates, positioned badges, scroll offsets) is invisible to it and
+needs the manual checklist treatment above. "Temporal" is a weaker excuse
+than it looks: the placeholder seam shows that a rendering behaviour can
+often be counted (DOM writes per keystroke) even when it cannot be
+watched. Before deferring an item to a human, ask what the behaviour
+writes, and whether that is countable.
 
 ## Packaging note (this ticket)
 

@@ -13,6 +13,7 @@ npm run watch      # Watch mode for development
 npm run lint       # TypeScript type checking (tsc --noEmit)
 npm run roundtrip  # Markdown roundtrip harness: corpus vs golden baselines (see harness/README.md)
 npm run roundtrip:update  # Re-capture golden baselines (deliberate use only)
+npm run verify:vscode-floor  # Run the extension on the VS Code version in engines.vscode (see harness/vscode-floor/)
 npm run package    # Package extension as .vsix
 ```
 
@@ -90,6 +91,9 @@ harness/                            # Dependency-verification harness (see harne
 ├── roundtrip.ts                    # Runner: check (default) / --update modes
 ├── frontmatter-seam.ts             # Frontmatter parse/reconstruct + validateYaml seam
 ├── filesearch-seam.ts              # File search ranking seam (diacritic ordering = recorded measurement)
+├── table-colwidth-seam.ts          # Table column widths: <colgroup>/<col width> and cell colwidth parsing
+├── placeholder-seam.ts             # Placeholder DOM writes per keystroke (the flicker measurement)
+├── vscode-floor/                   # VS Code floor check: run.mjs (driver) + extension-tests.ts (in-host checks)
 ├── fixtures/synthetic/*.md         # One feature per fixture
 └── golden/                         # Committed baselines (corpus + seams), captured on the pre-upgrade dependency tree
 ```
@@ -155,6 +159,7 @@ Implementation details for each feature area:
 **Dependency Upgrades:**
 
 - Before and after ANY dependency change: run `npm run roundtrip` (see `harness/README.md`) and `npm run build` — a green `npm run lint` is NOT sufficient evidence (a default-import break once passed tsc while breaking the bundle)
+- When a change can affect what the extension host or the webview does at runtime, also run `npm run verify:vscode-floor`: it downloads the VS Code version in `engines.vscode` and checks activation, the custom editor and the live webview there
 - Classify every golden diff as intended fix / accepted change / regression, in the commit that caused it
 - Declined-upgrade decisions and their reasoning: `docs/internals/dependency-upgrade-sweep.md`
 
@@ -192,8 +197,8 @@ After every development cycle (new feature, bug fix, refactor), update these fil
 
 **What goes where:**
 
-- **CLAUDE.md**: "Cái gì ở đâu" — file structure, extension list, settings, conventions, pointers
-- **docs/internals/**: "Cái này hoạt động thế nào" — message flows, DOM structure, CSS classes, persistence strategies, gotchas
+- **CLAUDE.md**: "Where things are" — file structure, extension list, settings, conventions, pointers
+- **docs/internals/**: "How this works" — message flows, DOM structure, CSS classes, persistence strategies, gotchas
 
 
 # GitNexus — Code Intelligence

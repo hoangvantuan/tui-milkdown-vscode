@@ -1,12 +1,14 @@
 /**
  * Dependency-verification harness — runner.
  *
- * Single command (npm run roundtrip) runs all three seams and reports
+ * Single command (npm run roundtrip) runs every seam and reports
  * per-item diffs against the committed golden baselines:
  *   1. the markdown corpus (synthetic fixtures + repo documents) roundtripped
  *      through the Tiptap editor (see ./editor.ts),
  *   2. the frontmatter parse/reconstruct seam (see ./frontmatter-seam.ts),
- *   3. the file search ranking seam (see ./filesearch-seam.ts).
+ *   3. the file search ranking seam (see ./filesearch-seam.ts),
+ *   4. the table column-width seam (see ./table-colwidth-seam.ts),
+ *   5. the placeholder rendering seam (see ./placeholder-seam.ts).
  *
  * Exit code 1 on any diff, missing golden or error; 0 when everything
  * matches.
@@ -20,6 +22,8 @@ import { roundtripMarkdown } from "./editor";
 import { loadCorpus, type CorpusEntry } from "./corpus";
 import { runFrontmatterSeam } from "./frontmatter-seam";
 import { runFileSearchSeam } from "./filesearch-seam";
+import { runTableColwidthSeam } from "./table-colwidth-seam";
+import { runPlaceholderSeam } from "./placeholder-seam";
 import { formatUnifiedDiff } from "./diff";
 
 const MAX_DIFF_LINES = 120;
@@ -135,6 +139,16 @@ function main(): number {
       name: "seams/file-search.txt",
       goldenPath: path.join(repoRoot, "harness", "golden", "seams", "file-search.txt"),
       run: runFileSearchSeam,
+    },
+    {
+      name: "seams/table-colwidth.txt",
+      goldenPath: path.join(repoRoot, "harness", "golden", "seams", "table-colwidth.txt"),
+      run: runTableColwidthSeam,
+    },
+    {
+      name: "seams/placeholder.txt",
+      goldenPath: path.join(repoRoot, "harness", "golden", "seams", "placeholder.txt"),
+      run: runPlaceholderSeam,
     },
   ];
 

@@ -195,6 +195,55 @@ function buildMarkdownExtensions() {
   ];
 }
 
+export interface HarnessEditorOptions {
+  /** Initial document content. */
+  content: string;
+  /** How to interpret `content`. Defaults to markdown, as the webview does. */
+  contentType?: "json" | "html" | "markdown";
+  /**
+   * Extensions appended to the markdown-relevant set. Seams that need a
+   * UI extension the markdown path deliberately omits (Placeholder, for
+   * example) pass it here instead of widening the shared set.
+   */
+  extraExtensions?: unknown[];
+}
+
+/**
+ * Build an editor mounted on a throwaway host element. The caller owns the
+ * lifecycle and must call the returned `dispose()`.
+ *
+ * Exists so seams other than the markdown string seam (see
+ * ./table-colwidth-seam.ts, ./placeholder-seam.ts) can observe the same
+ * extension set without duplicating the factory.
+ */
+export function createHarnessEditor(options: HarnessEditorOptions): {
+  editor: Editor;
+  host: HTMLElement;
+  dispose: () => void;
+} {
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+
+  const editor = new Editor({
+    element: host,
+    extensions: [
+      ...buildMarkdownExtensions(),
+      ...((options.extraExtensions ?? []) as any[]),
+    ],
+    content: options.content,
+    contentType: options.contentType ?? "markdown",
+  });
+
+  return {
+    editor,
+    host,
+    dispose: () => {
+      editor.destroy();
+      host.remove();
+    },
+  };
+}
+
 /**
  * Roundtrip one markdown document through the editor, the same way the webview
  * loads and saves it: parse frontmatter out, feed the body to the editor with
@@ -205,13 +254,7 @@ function buildMarkdownExtensions() {
  */
 export function roundtripMarkdown(source: string): string {
   const parsed = parseContent(source);
-
-  const host = document.createElement("div");
-  document.body.appendChild(host);
-
-  const editor = new Editor({
-    element: host,
-    extensions: buildMarkdownExtensions(),
+  const { editor, dispose } = createHarnessEditor({
     content: parsed.body,
     contentType: "markdown",
   });
@@ -221,7 +264,6 @@ export function roundtripMarkdown(source: string): string {
     const body = editor.getMarkdown();
     return reconstructContent(parsed.frontmatter, body, parsed.format, parsed.rawBlock);
   } finally {
-    editor.destroy();
-    host.remove();
+    dispose();
   }
 }

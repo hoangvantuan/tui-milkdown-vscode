@@ -28,6 +28,10 @@ declare global {
  *   them. The nonce is still passed so any future re-enabling of injection
  *   stays compatible with the webview CSP.
  * - searchDebounceMs is 0: the search input in main.ts already debounces.
+ *   This is also what lets `performSearch` read `storage.findAndReplace`
+ *   immediately after `setSearchTerm` — at 0 the term is applied
+ *   synchronously, while any positive value defers it to a timeout and the
+ *   results read back would be the previous query's.
  * - Replace/regex/whole-word stay at the library level; no UI is exposed.
  */
 export const SearchPlugin = FindAndReplace.extend({

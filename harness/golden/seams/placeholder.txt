@@ -1,0 +1,29 @@
+# placeholder rendering seam
+
+Per-keystroke DOM writes observed with a MutationObserver on the
+editor element. Flicker signature: writes in OTHER paragraphs, or
+placeholder markers toggling more than the state actually changes.
+
+[large-doc-typing-at-end] typing into the last paragraph of a 300-paragraph document
+  placeholder rendered: before=false after=false
+  keystrokes: 12
+  DOM writes in the typed paragraph:  total=12 max-per-keystroke=1
+  DOM writes in OTHER paragraphs:     total=0 max-per-keystroke=0
+  data-placeholder attribute writes:  total=0 max-per-keystroke=0
+  is-empty class transitions:         total=0 max-per-keystroke=0
+
+[large-doc-typing-into-empty-paragraph] typing into an empty paragraph in the middle of a large document (the placeholder-bearing node)
+  placeholder rendered: before=true after=false
+  keystrokes: 12
+  DOM writes in the typed paragraph:  total=13 max-per-keystroke=2
+  DOM writes in OTHER paragraphs:     total=0 max-per-keystroke=0
+  data-placeholder attribute writes:  total=1 max-per-keystroke=1
+  is-empty class transitions:         total=1 max-per-keystroke=1
+
+[empty-document-typing] typing the first characters into an empty document (placeholder must disappear once and stay gone)
+  placeholder rendered: before=true after=false
+  keystrokes: 12
+  DOM writes in the typed paragraph:  total=13 max-per-keystroke=2
+  DOM writes in OTHER paragraphs:     total=0 max-per-keystroke=0
+  data-placeholder attribute writes:  total=1 max-per-keystroke=1
+  is-empty class transitions:         total=1 max-per-keystroke=1

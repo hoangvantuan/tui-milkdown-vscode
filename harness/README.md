@@ -10,8 +10,9 @@ issue #64 (harness tickets: #65, #66), and intended to outlive it.
 ## How to run
 
 ```bash
-npm run roundtrip          # check: run the corpus, diff against goldens
-npm run roundtrip:update   # re-capture goldens (do this only deliberately)
+npm run roundtrip            # check: run the corpus, diff against goldens
+npm run roundtrip:update     # re-capture goldens (do this only deliberately)
+npm run verify:vscode-floor  # run the extension on the engines.vscode floor
 ```
 
 The check exits non-zero on any diff, missing golden, or error, so it can
@@ -64,9 +65,14 @@ in the sweep moved. Add a fixture by dropping a `.md` file into
 four markdown defects that the Tiptap upgrade in issue #67 must fix. Their
 goldens were captured on Tiptap 3.26.0 and are expected to contain the
 broken output (lost continuation characters, an absorbed heading, a split
-table column, dropped column widths). Do not "repair" those goldens. When
-#67 moves the version, these fixtures should diff, and each diff is
-classified there as an intended fix.
+table column). Do not "repair" those goldens. When #67 moves the version,
+these fixtures should diff, and each diff is classified there as an
+intended fix.
+
+`table-column-widths.md` is the exception in that group: it never diffs,
+because GFM has no width syntax and the serialized string cannot express
+whether widths parsed. It stays as a corpus document, and the actual width
+question is answered by the table column-width seam described below.
 
 ## Reading a diff after a dependency change
 
@@ -363,7 +369,7 @@ maintenance notes warn about.
 | `synthetic/frontmatter-implicit.md` | The blank line between `created: 2024-01-15` and the `---` separator, previously collapsed by the template's `trim()`, is restored | **Intended fix** | Old golden shows `created:` flush against `---`; new output is byte-identical to the fixture source |
 | `seams/frontmatter.txt` | Three previously-lossy cases flip to byte-for-byte (`implicit`, `empty-delimiters`, `blank-line-only`); five cases added (`trailing-space-delimiters`, `no-blank-line-after-fm`, `no-blank-line-after-empty-delims`, `two-blank-lines-after-fm` from the follow-up, all `yes`); parse/validate lines unchanged on every pre-existing case | **Intended fix** | The `parse:` and `validateYaml(...)` lines are byte-identical to the old golden, proving validity did not move; only the reconstruct verdicts and new cases changed |
 
-## The other two seams
+## The non-markdown seams
 
 Besides the markdown corpus, the same single command runs two pure,
 no-DOM seams against their own goldens (`harness/golden/seams/`):
@@ -393,7 +399,34 @@ no-DOM seams against their own goldens (`harness/golden/seams/`):
   measurement exists so the decision can be revisited against data rather
   than recollection.
 
-Both seam reports are plain deterministic text: whatever the current
+- **Table column-width seam** (`table-colwidth-seam.ts`) feeds HTML tables
+  into the same extension set and records the `colwidth` attribute of every
+  cell from `editor.getJSON()`, plus the `<col>` tags the editor renders
+  back. It covers both branches of the upstream `parseColwidth`:
+  `<colgroup><col width="…">` (what a pasted HTML table carries — reading it
+  is the fix that landed in the Tiptap 3.29 line) and `colwidth="…"` on the
+  cell (what Tiptap emits after a column resize). This is the one issue #67
+  acceptance box the markdown seam is structurally blind to: GFM has no
+  width syntax, so the serialized string is identical whether the widths
+  parsed or were dropped. The golden records that serialized string next to
+  the attributes, so the blindness is visible rather than asserted.
+
+- **Placeholder seam** (`placeholder-seam.ts`) types character by character
+  into a 300-paragraph document and counts, with a MutationObserver, what
+  the DOM does between keystrokes: writes inside the paragraph being typed
+  into, writes anywhere else, and how often the `data-placeholder` /
+  `is-empty` markers change. It exists because "the placeholder flickers on
+  large documents" is a temporal behaviour that was previously deferred to a
+  human — but its mechanism is countable: a flickering placeholder writes
+  the DOM more often than its state changes, and a placeholder implementation
+  that rebuilds decorations across the whole document rewrites paragraphs
+  nobody touched. Today's numbers: zero writes outside the typed paragraph,
+  and the markers change exactly once, when the empty paragraph stops being
+  empty. Limit worth stating: this shows the DOM is not being rewritten, not
+  that an eye sees no flash — a purely CSS or compositing flicker would not
+  appear in these counts.
+
+All seam reports are plain deterministic text: whatever the current
 dependency tree produces is what lands in the golden.
 
 ## Stated limitation: no layout, no coordinates, no measurement
@@ -415,6 +448,59 @@ The harness is adequate for schema and string logic, which is what the
 markdown roundtrip seam exercises, and inadequate for anything positional.
 The limit is stated here rather than papered over.
 
+Two qualifications, both learned by trying:
+
+- **"Temporal" is not the same as "invisible".** The placeholder seam counts
+  DOM writes per keystroke and settles a rendering question without any
+  layout engine. Before deferring a behaviour to a human, ask what it
+  *writes*, and whether that is countable.
+- **The list above is what jsdom cannot see, not what cannot be automated.**
+  `npm run verify:vscode-floor` (see the next section) exercises several of
+  these items in a real VS Code, including mermaid preview rendering.
+
+## Running the extension on the VS Code floor
+
+`npm run verify:vscode-floor` answers a question no amount of type checking
+can: does the extension actually work on the oldest VS Code that
+`engines.vscode` promises? A green lint against a pinned `@types/vscode`
+only proves that no API above the floor is *referenced*.
+
+What it does:
+
+1. Downloads (and caches under `~/.cache/tui-markdown-vscode-floor/`) the
+   exact version named by `engines.vscode`, or by `--version`.
+2. Launches it as an Extension Development Host on a throwaway user-data
+   dir, with `--extensionTestsPath` pointing at
+   `harness/vscode-floor/extension-tests.ts` (compiled). Those checks run
+   inside the extension host: the extension resolves and activates, both
+   contributed commands register, `vscode.openWith` opens the sample in the
+   custom editor, and the document stays unmodified while the editor is open.
+3. Attaches to the same window over the DevTools protocol and inspects the
+   live webview: the editor mounted, the document rendered (heading, bold,
+   table rows, task items, code blocks, alert), the lazily injected mermaid
+   artifact loaded and rendered with no stuck placeholder, toolbar and
+   metadata panel present, and no CSP violation in the console.
+
+```bash
+npm run verify:vscode-floor                  # the floor from engines.vscode
+npm run verify:vscode-floor -- --version 1.95.0
+npm run verify:vscode-floor -- --keep        # keep the temp dirs for inspection
+```
+
+It needs a display (VS Code opens a real window and closes it again) and
+about 120 MB of download the first time per version, which is why it is a
+separate command rather than part of `npm run roundtrip`. Run it when a
+change can affect extension-host or webview runtime behaviour — dependency
+bumps, the webview HTML, CSP, or anything lazily injected.
+
+Where it has been run: **VS Code 1.85.0, darwin-arm64, 14/14 checks passing**,
+repeatedly. It is deliberately **not** wired into `.github/workflows/ci.yml`:
+on a Linux runner it would need `xvfb-run -a` plus the usual Electron
+libraries, and that combination has not been verified from here, so putting
+an unverified job in front of every pull request would trade one unknown for
+a redder one. Wiring it up is a good follow-up for whoever can watch the
+first CI run.
+
 ## Maintenance notes
 
 - `harness/editor.ts` mirrors the markdown-relevant parts of
@@ -424,10 +510,13 @@ The limit is stated here rather than papered over.
   `acquireVsCodeApi()` at module scope). If you edit those in main.ts, update
   the mirrors in the same change, or the harness stops representing the real
   editor.
-- UI-only extensions (Placeholder, line highlight, heading badges, collapse,
-  code block toolbar, table context menu, search, file mention and wiki link
-  autocomplete popups, mermaid preview) are deliberately not loaded: they
-  have no effect on markdown parsing or serialization.
+- UI-only extensions (line highlight, heading badges, collapse, code block
+  toolbar, table context menu, search, file mention and wiki link
+  autocomplete popups, mermaid preview) are deliberately not loaded into the
+  markdown corpus run: they have no effect on markdown parsing or
+  serialization. A seam that needs one loads it explicitly through
+  `createHarnessEditor({ extraExtensions })` — the placeholder seam is the
+  example — rather than widening the shared set.
 - The webview's image path rewriting (`transformForDisplay` /
   `transformForSave`) is identity when the image map is empty, so the
   harness exercises markdown fidelity without the webview-URI layer.

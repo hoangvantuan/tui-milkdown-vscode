@@ -1,0 +1,52 @@
+# table column width seam
+
+HTML in -> document attributes out, per case. `colwidth: null`
+means the width was dropped during parsing.
+
+[colgroup-col-width] widths declared in <colgroup>, the shape pasted HTML tables carry
+  input: <table><colgroup><col width="150"><col width="320"></colgroup><tbody><tr><th>Narrow</th><th>Wide</th></tr><tr><td>a</td><td>b</td></tr></tbody></table>
+  cell r0c0 tableHeader colspan=1 colwidth=[150]
+  cell r0c1 tableHeader colspan=1 colwidth=[320]
+  cell r1c0 tableCell colspan=1 colwidth=[150]
+  cell r1c1 tableCell colspan=1 colwidth=[320]
+  rendered cols: <col style="width: 150px;"> <col style="width: 320px;">
+  serialized markdown: "| Narrow | Wide |\n| ------ | ---- |\n| a      | b    |\n"
+
+[cell-colwidth-attribute] widths on the cells, the shape Tiptap emits after a column resize
+  input: <table><tbody><tr><th colwidth="150">Narrow</th><th colwidth="320">Wide</th></tr><tr><td colwidth="150">a</td><td colwidth="320">b</td></tr></tbody></table>
+  cell r0c0 tableHeader colspan=1 colwidth=[150]
+  cell r0c1 tableHeader colspan=1 colwidth=[320]
+  cell r1c0 tableCell colspan=1 colwidth=[150]
+  cell r1c1 tableCell colspan=1 colwidth=[320]
+  rendered cols: <col style="width: 150px;"> <col style="width: 320px;">
+  serialized markdown: "| Narrow | Wide |\n| ------ | ---- |\n| a      | b    |\n"
+
+[colgroup-partial] only the first column carries a width; the rest must stay null
+  input: <table><colgroup><col width="200"><col></colgroup><tbody><tr><th>Sized</th><th>Auto</th></tr><tr><td>a</td><td>b</td></tr></tbody></table>
+  cell r0c0 tableHeader colspan=1 colwidth=[200]
+  cell r0c1 tableHeader colspan=1 colwidth=null
+  cell r1c0 tableCell colspan=1 colwidth=[200]
+  cell r1c1 tableCell colspan=1 colwidth=null
+  rendered cols: <col style="width: 200px;"> <col style="min-width: 25px;">
+  serialized markdown: "| Sized | Auto |\n| ----- | ---- |\n| a     | b    |\n"
+
+[colspan-multi-width] comma-separated colwidth across a merged cell
+  input: <table><tbody><tr><th colspan="2" colwidth="150,320">Merged</th></tr><tr><td>a</td><td>b</td></tr></tbody></table>
+  cell r0c0 tableHeader colspan=2 colwidth=[150,320]
+  cell r1c0 tableCell colspan=1 colwidth=null
+  cell r1c1 tableCell colspan=1 colwidth=null
+  rendered cols: <col style="width: 150px;"> <col style="width: 320px;">
+  serialized markdown: "| Merged |     |\n| ------ | --- |\n| a      | b   |\n"
+
+[no-widths] control: a plain table must report null everywhere
+  input: <table><tbody><tr><th>One</th><th>Two</th></tr><tr><td>a</td><td>b</td></tr></tbody></table>
+  cell r0c0 tableHeader colspan=1 colwidth=null
+  cell r0c1 tableHeader colspan=1 colwidth=null
+  cell r1c0 tableCell colspan=1 colwidth=null
+  cell r1c1 tableCell colspan=1 colwidth=null
+  rendered cols: <col style="min-width: 25px;"> <col style="min-width: 25px;">
+  serialized markdown: "| One | Two |\n| --- | --- |\n| a   | b   |\n"
+
+Note: the `serialized markdown` lines are why the markdown corpus
+cannot cover this — GFM has no width syntax, so those strings are
+identical whether the widths above parsed or were dropped.

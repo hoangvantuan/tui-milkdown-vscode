@@ -24,21 +24,42 @@ globalThis.requestAnimationFrame = __dom.window.requestAnimationFrame?.bind(__do
 globalThis.cancelAnimationFrame = __dom.window.cancelAnimationFrame?.bind(__dom.window) ?? ((id) => clearTimeout(id));
 `;
 
+// The VS Code floor check (harness/vscode-floor/) runs INSIDE a real
+// extension host, so it gets no jsdom banner and keeps `vscode` external —
+// the host provides that module. Built only when asked for by name, so the
+// ordinary `npm run roundtrip` stays a single fast build.
+const floorTestsConfig = {
+  entryPoints: ['harness/vscode-floor/extension-tests.ts'],
+  outfile: 'out/harness/vscode-floor-tests.js',
+  bundle: true,
+  format: 'cjs',
+  platform: 'node',
+  target: 'node18',
+  sourcemap: false,
+  minify: false,
+  external: ['vscode'],
+  logLevel: 'warning',
+};
+
+const roundtripConfig = {
+  entryPoints: ['harness/roundtrip.ts'],
+  outfile: 'out/harness/roundtrip.js',
+  bundle: true,
+  format: 'cjs',
+  platform: 'node',
+  target: 'node18',
+  sourcemap: false,
+  minify: false,
+  external: ['jsdom'],
+  banner: { js: DOM_SHIM },
+  logLevel: 'warning',
+};
+
+const target = process.argv.includes('--floor-tests') ? floorTestsConfig : roundtripConfig;
+
 esbuild
-  .build({
-    entryPoints: ['harness/roundtrip.ts'],
-    outfile: 'out/harness/roundtrip.js',
-    bundle: true,
-    format: 'cjs',
-    platform: 'node',
-    target: 'node18',
-    sourcemap: false,
-    minify: false,
-    external: ['jsdom'],
-    banner: { js: DOM_SHIM },
-    logLevel: 'warning',
-  })
-  .then(() => console.log('harness built: out/harness/roundtrip.js'))
+  .build(target)
+  .then(() => console.log(`harness built: ${target.outfile}`))
   .catch((err) => {
     console.error(err);
     process.exit(1);
