@@ -4,7 +4,7 @@ Simple image:
 
 Image with a space in the path:
 
-![my photo](images/my photo.png)
+![my photo](<images/my photo.png>)
 
 Image with an encoded space:
 
@@ -16,8 +16,8 @@ Image with a title:
 
 Image with angle brackets and a subfolder:
 
-![nested](assets/sub folder/icon.svg)
+![nested](<assets/sub folder/icon.svg>)
 
 Unicode path:
 
-![vietnamese](ảnh/hình 01.png)
+![vietnamese](<ảnh/hình 01.png>)

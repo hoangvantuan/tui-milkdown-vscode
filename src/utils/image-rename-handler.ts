@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
+import { wrapMarkdownDestination } from "./markdown-destination";
 
 /**
  * Represents an image rename operation detected from path changes.
@@ -234,10 +235,14 @@ export async function updateWorkspaceReferences(
         const newRef = rename.newRelative;
 
         if (text.includes(oldRef)) {
-          // Context-aware replacement: only in image/link references, skip fenced code blocks
+          // Context-aware replacement: only in image/link references, skip fenced code blocks.
+          // A path with spaces serializes as `](<path>)`, so both the bare and the
+          // pointy-bracket form are recognised, and the new path is re-wrapped when
+          // it needs wrapping in turn.
           const escapedOld = oldRef.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const wrappedNewRef = wrapMarkdownDestination(newRef);
           const contextRegex = new RegExp(
-            `(\\]\\(|src=["'])${escapedOld}([)"'])`,
+            `\\]\\(<${escapedOld}>\\)|\\]\\(${escapedOld}\\)|(src=["'])${escapedOld}(["'])`,
             "g"
           );
 
@@ -259,7 +264,15 @@ export async function updateWorkspaceReferences(
           }
 
           const newText = parts
-            .map(part => part.isCode ? part.text : part.text.replace(contextRegex, `$1${newRef}$2`))
+            .map(part =>
+              part.isCode
+                ? part.text
+                : part.text.replace(contextRegex, (_m, srcOpen, srcClose) =>
+                    srcOpen !== undefined
+                      ? `${srcOpen}${newRef}${srcClose}`
+                      : `](${wrappedNewRef})`
+                  )
+            )
             .join("");
 
           if (newText !== text) {

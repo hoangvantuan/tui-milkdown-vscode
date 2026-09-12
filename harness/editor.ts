@@ -22,10 +22,17 @@
  * EscapeToken, BlankLineHandler and the Blockquote/Document/Paragraph extends
  * below are mirrors of the definitions inside src/webview/main.ts. When
  * editing those in main.ts, update the mirrors here in the same change.
+ *
+ * MarkdownLink and MarkdownImage are NOT mirrors: they are imported from
+ * src/webview/markdown-destination.ts, the same module main.ts uses, so the
+ * destination-escaping the goldens pin is the code that actually ships.
  */
 import { Editor, Extension } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
-import { Image } from "@tiptap/extension-image";
+import {
+  MarkdownLink,
+  MarkdownImage,
+} from "../src/webview/markdown-destination";
 import { Highlight } from "@tiptap/extension-highlight";
 import { Table, TableRow, TableCell, TableHeader } from "@tiptap/extension-table";
 import { CodeBlockLowlight } from "@tiptap/extension-code-block-lowlight";
@@ -106,11 +113,12 @@ function buildMarkdownExtensions() {
       paragraph: false,
       document: false,
       blockquote: false,
-      link: {
-        openOnClick: false,
-        autolink: true,
-        linkOnPaste: true,
-      },
+      link: false,
+    }),
+    MarkdownLink.configure({
+      openOnClick: false,
+      autolink: true,
+      linkOnPaste: true,
     }),
     // Mirror of the alert-detecting Blockquote extend in src/webview/main.ts.
     Blockquote.extend({
@@ -157,7 +165,7 @@ function buildMarkdownExtensions() {
         return h.renderChildren(content);
       },
     }),
-    Image.configure({
+    MarkdownImage.configure({
       inline: false,
       allowBase64: true,
     }),
