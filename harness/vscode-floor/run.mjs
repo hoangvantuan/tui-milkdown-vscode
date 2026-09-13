@@ -73,6 +73,28 @@ function shortTempBase() {
   return "/tmp/tuimd-floor";
 }
 
+/**
+ * The environment for the floor VS Code, with the launching editor's own
+ * variables removed.
+ *
+ * When this script is started from inside VS Code (its integrated terminal,
+ * or an extension host), `process.env` carries `ELECTRON_RUN_AS_NODE`, which
+ * makes any Electron binary run as plain Node. The floor build then rejects
+ * every VS Code flag with `bad option: --extensionDevelopmentPath=...` and
+ * exits 1 without a window, so the run reports a webview that never mounted
+ * rather than a launch that never happened. `VSCODE_IPC_HOOK` is just as
+ * damaging in the other direction: it forwards the launch to the editor that
+ * is already running, so the checks would inspect the wrong instance.
+ */
+function childEnv(extra) {
+  const env = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (key.startsWith("ELECTRON_") || key.startsWith("VSCODE_")) continue;
+    env[key] = value;
+  }
+  return { ...env, ...extra };
+}
+
 function platformSlug() {
   const arch = process.arch === "arm64" ? "arm64" : "x64";
   if (process.platform === "darwin") return `darwin-${arch}`;
@@ -87,7 +109,12 @@ function executableIn(dir) {
       .map((entry) => path.join(dir, entry))
       .find((entry) => entry.endsWith(".app"));
     if (!app) return null;
-    return path.join(app, "Contents", "MacOS", "Electron");
+    // The binary inside Contents/MacOS is named "Electron" in older builds
+    // and "Code" in newer ones, so read it rather than assuming either.
+    const macOs = path.join(app, "Contents", "MacOS");
+    if (!fs.existsSync(macOs)) return null;
+    const [binary] = fs.readdirSync(macOs);
+    return binary ? path.join(macOs, binary) : null;
   }
   const stack = [dir];
   while (stack.length) {
@@ -295,11 +322,10 @@ async function main() {
     ],
     {
       stdio: ["ignore", "pipe", "pipe"],
-      env: {
-        ...process.env,
+      env: childEnv({
         TUI_FLOOR_RESULT: resultFile,
         TUI_FLOOR_SAMPLE: sample,
-      },
+      }),
     },
   );
 
@@ -339,6 +365,16 @@ async function main() {
   if (exitCode === null) child.kill("SIGKILL");
 
   const checks = [];
+  // Reported first, and separately: when the build never launches, every
+  // later check fails for a reason that has nothing to do with the extension.
+  checks.push({
+    name: "floor VS Code build launched",
+    ok: sessions.size > 0,
+    detail:
+      sessions.size > 0
+        ? `${sessions.size} debug target(s)`
+        : "no debug target ever appeared; see the host output below",
+  });
   if (fs.existsSync(resultFile)) {
     checks.push(...JSON.parse(fs.readFileSync(resultFile, "utf8")));
   } else {

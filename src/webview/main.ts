@@ -1,6 +1,6 @@
 import { Editor, Extension } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
-import { Image } from "@tiptap/extension-image";
+import { MarkdownLink, MarkdownImage } from "./markdown-destination";
 import { Highlight } from "@tiptap/extension-highlight";
 import { Table, TableRow, TableCell, TableHeader } from "@tiptap/extension-table";
 import { CodeBlockLowlight } from "@tiptap/extension-code-block-lowlight";
@@ -900,11 +900,14 @@ function initEditor(initialContent: string = ""): Editor | null {
           paragraph: false, // Replaced by custom Paragraph below
           document: false, // Replaced by custom Document below
           blockquote: false, // Replaced by custom Blockquote with alert detection
-          link: {
-            openOnClick: false,
-            autolink: true,
-            linkOnPaste: true,
-          },
+          link: false, // Replaced by MarkdownLink below (destination escaping)
+        }),
+        // Link/Image that escape destinations containing spaces, so a file
+        // mention or a pasted image path survives save + reopen.
+        MarkdownLink.configure({
+          openOnClick: false,
+          autolink: true,
+          linkOnPaste: true,
         }),
         // Custom Blockquote that detects GitHub-style alerts [!NOTE], [!TIP], etc.
         Blockquote.extend({
@@ -952,7 +955,7 @@ function initEditor(initialContent: string = ""): Editor | null {
             return h.renderChildren(content);
           },
         }),
-        Image.configure({
+        MarkdownImage.configure({
           inline: false,
           allowBase64: true,
         }),

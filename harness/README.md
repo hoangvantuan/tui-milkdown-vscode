@@ -48,7 +48,8 @@ Two sources, combined:
   cells, tables containing lists, nested task lists, alert blocks, mermaid
   diagrams, code blocks with language annotations, frontmatter in its
   supported forms (standard, implicit, empty, comment-only), wiki links,
-  file mentions, images with awkward paths, and page breaks.
+  file mentions, images with awkward paths, link and image destinations
+  that need escaping, and page breaks.
 - Real repository documents — every top-level `*.md` and every
   `docs/internals/*.md`, enumerated at run time. Long-form documents catch
   cross-feature interactions that single-feature fixtures cannot. A new repo
@@ -487,13 +488,23 @@ npm run verify:vscode-floor -- --version 1.95.0
 npm run verify:vscode-floor -- --keep        # keep the temp dirs for inspection
 ```
 
+The floor build is launched with the `ELECTRON_*` and `VSCODE_*` variables
+stripped from its environment. Without that, running this command from inside
+VS Code (its integrated terminal, or an extension host) hands the downloaded
+build an inherited `ELECTRON_RUN_AS_NODE`, so it runs as plain Node, rejects
+every flag with `bad option: --extensionDevelopmentPath=...` and exits without
+a window; `VSCODE_IPC_HOOK` would instead forward the launch into the editor
+that is already running. Either way the checks would describe the wrong
+process, which is why `floor VS Code build launched` is reported first and
+separately.
+
 It needs a display (VS Code opens a real window and closes it again) and
 about 120 MB of download the first time per version, which is why it is a
 separate command rather than part of `npm run roundtrip`. Run it when a
 change can affect extension-host or webview runtime behaviour — dependency
 bumps, the webview HTML, CSP, or anything lazily injected.
 
-Where it has been run: **VS Code 1.85.0, darwin-arm64, 14/14 checks passing**,
+Where it has been run: **VS Code 1.85.0, darwin-arm64, 15/15 checks passing**,
 repeatedly. It is deliberately **not** wired into `.github/workflows/ci.yml`:
 on a Linux runner it would need `xvfb-run -a` plus the usual Electron
 libraries, and that combination has not been verified from here, so putting

@@ -2,6 +2,18 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## \[2.15.1\] - 2026-09-12
+
+### Fixed
+
+- **Links and images whose path contains spaces no longer degrade into plain text after a save and reopen.** `@tiptap/extension-link` and `@tiptap/extension-image` serialized the raw path, so `Nguồn: [My clip 2026-09-09.mp4](<My clip 2026-09-09.mp4>)` was written to disk as `[My clip 2026-09-09.mp4](My clip 2026-09-09.mp4)`, which is not a CommonMark link. The file looked right until it was reopened, at which point the link had become literal text. Both extensions now wrap a destination in `<...>` when the bare form would not parse back (whitespace, unbalanced parentheses, empty). This affected @ mentions of files with spaces in the name and pasted images saved under such a name. Covered by the harness fixture `link-destination-spaces.md`.
+- **Link titles and image alt text no longer break the same way.** Both are attributes interpolated raw by the same two extensions, so a title containing `"` closed the title early and an alt text containing `]` closed the alt early, in each case turning the link or image into plain text on the next open. Both are now escaped. Found by probing the surfaces adjacent to the destination fix, and pinned in the same fixture.
+- An empty destination is left as `[text]()` instead of being rewritten to `[text](<>)`, so such links no longer churn on save.
+- **Auto-rename of images now updates references written in the `](<path>)` form**, so renaming an image whose path contains spaces propagates to other documents in the workspace instead of silently skipping them.
+- **`npm run verify:vscode-floor` now actually launches the floor build.** Run from inside VS Code (its integrated terminal, or an extension host) it inherited `ELECTRON_RUN_AS_NODE`, so the downloaded VS Code ran as plain Node, rejected every flag with `bad option: --extensionDevelopmentPath=...` and exited without a window. The run then reported "webview never mounted" instead of "the editor never started", which reads like an extension defect and is not one. The child environment is now built without the launching editor's `ELECTRON_*` and `VSCODE_*` variables (`VSCODE_IPC_HOOK` was equally damaging: it forwarded the launch into the already-running editor), a `floor VS Code build launched` check reports a non-launch as one honest failure, and the macOS executable is read from the bundle rather than assumed to be named `Electron`. The check goes from 3 checks with 2 failing to 15 checks all passing.
+
+Documents already saved with a broken link are not repaired automatically: the link is plain text on disk and reopening them reads it as plain text. Re-inserting the link once is enough, and it then survives.
+
 ## \[2.15.0\] - 2026-08-28
 
 Dependency upgrade sweep (#64), verified with the markdown roundtrip harness. Per-bump detail and how to run the harness: `harness/README.md` and `docs/internals/dependency-upgrade-sweep.md`.
@@ -27,6 +39,7 @@ Dependency upgrade sweep (#64), verified with the markdown roundtrip harness. Pe
 ### Fixed
 
 - **Mermaid lazy-load hanging forever (#75)**: when the artifact finished loading but did not register `window.__tuiMermaidBundle` (a broken or truncated build), the next retry attached a fresh `load` listener to a `<script>` element that had already fired `load` (an element fires `load`/`error` exactly once), so the promise never settled and every diagram sat at "Rendering..." with no error. A settled element is now removed from the DOM and the "executed but did not register" failure is latched for the lifetime of the page: later calls reject immediately instead of re-downloading the same broken bytes (a webview reload picks up the fixed build); network failures still remove the element and stay genuinely retryable; and every load failure surfaces through the placeholder's existing `.mermaid-err-msg` instead of hanging. Concurrent callers still share exactly one load and one registration (evidenced by a five-scenario jsdom probe)
+- **Packaging**: `.vscodeignore` excluded `.agent/**` but not `.agents/**`, so `.agents/skills/create-readme/SKILL.md` was shipping inside the .vsix; the extension package is now 13 files, all of them things a user needs
 - **File search threshold**: the old `-1000` value (a fuzzysort v1/v2-era number) evaluates to `NaN` on the new scale, which had silently disabled filtering long ago; it is now `0` (today's behaviour unchanged, but the option finally states it honestly)
 - **Frontmatter round-trip (#74)**: untouched frontmatter is now saved back byte for byte. Three forms used to be corrupted: `---` immediately followed by `---` (both delimiters lost), `---`, blank line, `---` (both delimiters lost), and the implicit form (the blank line before the separator lost). Cause: `parseContent()` discarded the original block, so `reconstructContent()` could not tell "no frontmatter" from "empty frontmatter". Parsing now also returns `rawBlock` (the raw text of the block, delimiters included, plus the whitespace between block and body) and reconstruction replays it verbatim while the frontmatter has not been edited through the metadata panel; that whitespace keeps its original shape (none, one, or several blank lines), and trailing spaces on a delimiter line (`---` ) survive too. Validity is unchanged for every form
 

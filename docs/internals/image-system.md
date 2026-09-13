@@ -42,6 +42,7 @@ Image display, upload, editing, lightbox, clipboard fallback.
 * If confirmed: Renames image file on disk, updates all `.md` files in workspace with new path
 * Controlled by `tuiMarkdown.autoRenameImages` setting (boolean, default: true)
 * Only triggers when image folder remains the same
+* Reference rewriting in other documents (`src/utils/image-rename-handler.ts`) matches both `](path)` and `](<path>)`, and re-wraps the new path when it needs wrapping. An image path containing spaces is serialized in the angle-bracket form (see `src/utils/markdown-destination.ts`), so matching only the bare form would silently skip exactly those files
 
 ## Auto Delete Images
 

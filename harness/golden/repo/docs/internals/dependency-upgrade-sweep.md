@@ -278,3 +278,9 @@ emit no maps, but a stale `npm run build:dev` output was not cleaned and
 artifact's map alone is 29.9 MB). `out/**/*.map` is now excluded the same
 way; the listing ships zero maps, zero harness files, and still ships
 `mermaid-loader.js`.
+
+Second follow-up, found while re-checking the publish path: `.vscodeignore`
+excluded `.agent/**` but not `.agents/**`, and the repository has both, so
+`.agents/skills/create-readme/SKILL.md` was being packaged into the .vsix.
+The pattern is now `.agents/**` as well; `vsce ls` is down to 13 files, all
+of them things a user needs.
