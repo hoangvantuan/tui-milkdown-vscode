@@ -40,6 +40,7 @@ Shared module used by both file-mention and wiki-link plugins.
 - File type icons from shared `getFileIcon()`
 - Matched characters highlighted with `<mark>` tags via `highlightMatches()`
 - Insert: `[escapedName](<path>)` — angle brackets handle spaces, `]` escaped in filename
+- Those angle brackets have to survive serialization too. `@tiptap/extension-link` writes the raw `href`, so a mention of a file whose name contains spaces used to be saved as `[name](name with spaces.mp4)`: not a link any more, and plain text the next time the document was opened. `MarkdownLink` in `src/webview/markdown-destination.ts` re-wraps such a destination on the way out; see `src/utils/markdown-destination.ts` for the rule and `harness/fixtures/synthetic/link-destination-spaces.md` for the pinned behaviour.
 - Popup appended to `#editor-container` (not `.tiptap`) — avoids CSS zoom issues
 
 **Cache strategy:**

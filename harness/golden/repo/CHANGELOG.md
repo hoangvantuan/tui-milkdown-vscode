@@ -2,6 +2,18 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## \[2.15.1\] - 2026-09-12
+
+### Fixed
+
+- **Links and images whose path contains spaces no longer degrade into plain text after a save and reopen.** `@tiptap/extension-link` and `@tiptap/extension-image` serialized the raw path, so `Nguồn: [My clip 2026-09-09.mp4](<My clip 2026-09-09.mp4>)` was written to disk as `[My clip 2026-09-09.mp4](My clip 2026-09-09.mp4)`, which is not a CommonMark link. The file looked right until it was reopened, at which point the link had become literal text. Both extensions now wrap a destination in `<...>` when the bare form would not parse back (whitespace, unbalanced parentheses, empty). This affected @ mentions of files with spaces in the name and pasted images saved under such a name. Covered by the harness fixture `link-destination-spaces.md`.
+- **Link titles and image alt text no longer break the same way.** Both are attributes interpolated raw by the same two extensions, so a title containing `"` closed the title early and an alt text containing `]` closed the alt early, in each case turning the link or image into plain text on the next open. Both are now escaped. Found by probing the surfaces adjacent to the destination fix, and pinned in the same fixture.
+- An empty destination is left as `[text]()` instead of being rewritten to `[text](<>)`, so such links no longer churn on save.
+- **Auto-rename of images now updates references written in the `](<path>)` form**, so renaming an image whose path contains spaces propagates to other documents in the workspace instead of silently skipping them.
+- **`npm run verify:vscode-floor` now actually launches the floor build.** Run from inside VS Code (its integrated terminal, or an extension host) it inherited `ELECTRON_RUN_AS_NODE`, so the downloaded VS Code ran as plain Node, rejected every flag with `bad option: --extensionDevelopmentPath=...` and exited without a window. The run then reported "webview never mounted" instead of "the editor never started", which reads like an extension defect and is not one. The child environment is now built without the launching editor's `ELECTRON_*` and `VSCODE_*` variables (`VSCODE_IPC_HOOK` was equally damaging: it forwarded the launch into the already-running editor), a `floor VS Code build launched` check reports a non-launch as one honest failure, and the macOS executable is read from the bundle rather than assumed to be named `Electron`. The check goes from 3 checks with 2 failing to 15 checks all passing.
+
+Documents already saved with a broken link are not repaired automatically: the link is plain text on disk and reopening them reads it as plain text. Re-inserting the link once is enough, and it then survives.
+
 ## \[2.15.0\] - 2026-08-28
 
 Dependency upgrade sweep (#64), verified with the markdown roundtrip harness. Per-bump detail and how to run the harness: `harness/README.md` and `docs/internals/dependency-upgrade-sweep.md`.

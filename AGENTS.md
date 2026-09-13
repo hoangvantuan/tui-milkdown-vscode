@@ -44,6 +44,7 @@ src/
 │   ├── clean-image-path.ts   # Shared image path cleaning utility (removes titles, angle brackets)
 │   ├── frontmatter-parser.ts # Shared frontmatter parse/reconstruct (standard + implicit format)
 │   ├── image-rename-handler.ts # Image rename/delete detection, execution, workspace reference updates
+│   ├── markdown-destination.ts # Link/image destination escaping (wraps paths with spaces in <...>)
 │   ├── markdown-ast.ts       # Shared MDAST pipeline (parse + mermaid image substitution)
 │   ├── export-docx.ts        # MDAST → DOCX via mdast2docx (lazy-loaded bundle)
 │   ├── export-pdf.ts         # MDAST → HTML → Chromium page.pdf (lazy-loaded bundle)
@@ -51,6 +52,7 @@ src/
 └── webview/
     ├── main.ts               # Browser-side Tiptap editor
     ├── index.html            # HTML template for webview (loaded by markdownEditorProvider)
+    ├── markdown-destination.ts # Tiptap Link/Image with destination-safe markdown serialization
     ├── frontmatter.ts        # YAML parsing & validation utilities
     ├── alert-extension.ts    # GitHub-style alert blocks ([!NOTE], [!TIP], etc.)
     ├── mermaid-plugin.ts     # Mermaid diagram rendering (SVG preview, view/edit mode, caching)
