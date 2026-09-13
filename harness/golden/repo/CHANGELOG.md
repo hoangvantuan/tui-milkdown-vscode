@@ -2,7 +2,7 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
-## \[Unreleased\]
+## \[2.15.2\] - 2026-09-13
 
 ### Fixed
 
