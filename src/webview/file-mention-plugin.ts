@@ -1,4 +1,4 @@
-import { Extension } from "@tiptap/core";
+import { Extension, type Editor, type Range } from "@tiptap/core";
 import Suggestion, {
   type SuggestionProps,
   type SuggestionKeyDownProps,
@@ -26,6 +26,39 @@ export function setFileMentionFiles(
 }
 
 const fileMentionPluginKey = new PluginKey("fileMention");
+
+/**
+ * Replace `range` with a link to `file`, as an inline node.
+ *
+ * Inline, not a markdown string: `insertContent(md, { contentType: "markdown" })`
+ * parses `[name](<path>)` into a *paragraph*, and Tiptap's insertContentAt only
+ * widens the replaced range for a block when the parent textblock is empty.
+ * Inserted into a paragraph that already has text, the block splits it and the
+ * link lands on its own line. Handing it a text node with a link mark keeps the
+ * insert inline wherever the caret is.
+ *
+ * Building the node directly also leaves escaping to MarkdownLink's
+ * `renderMarkdown` on save, which escapes every markdown-significant character
+ * in the link text, not just `]`.
+ *
+ * Exported for harness/filemention-seam.ts.
+ */
+export function insertFileMention(
+  editor: Editor,
+  range: Range,
+  file: FileItem,
+): void {
+  editor
+    .chain()
+    .focus()
+    .deleteRange(range)
+    .insertContent({
+      type: "text",
+      text: file.name,
+      marks: [{ type: "link", attrs: { href: file.path } }],
+    })
+    .run();
+}
 
 export const FileMention = Extension.create({
   name: "fileMention",
@@ -60,15 +93,7 @@ export const FileMention = Extension.create({
         },
 
         command({ editor, range, props }) {
-          const escapedName = props.file.name.replace(/\]/g, "\\]");
-          const linkText = `[${escapedName}](<${props.file.path}>)`;
-
-          editor
-            .chain()
-            .focus()
-            .deleteRange(range)
-            .insertContent(linkText, { contentType: "markdown" })
-            .run();
+          insertFileMention(editor, range, props.file);
         },
 
         render() {

@@ -2,6 +2,15 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## [2.15.2] - 2026-09-13
+
+### Fixed
+
+- **Picking a file from the `@` mention popup no longer pushes the link onto a new line.** The insert went through `insertContent(markdown, { contentType: "markdown" })`, which parses `[name](<path>)` into a paragraph; Tiptap widens the replaced range for a block node only when the parent textblock is empty, so inserting into a paragraph that already had text split it and left the link alone on the next line. Typing `- **Bài toán số 1:** @` and choosing a file produced two lines instead of one. The mention is now inserted as an inline node (a text node with a link mark), the same shape the wiki link plugin uses, so it lands wherever the caret is. A mention on an otherwise empty line was never affected and still behaves the same.
+- **Filenames containing `*`, `_` or `[` no longer produce a broken mention link.** The old markdown-string path escaped only `]`, so `a]b*c_d[e.md` was re-parsed as emphasis and the link came out mangled. Escaping now happens once, in `MarkdownLink.renderMarkdown` on save, which covers every markdown-significant character in the link text.
+
+Both are pinned by a new harness seam, `harness/filemention-seam.ts`, which exercises the production `insertFileMention()` and observes the resulting markdown string (`npm run roundtrip`).
+
 ## [2.15.1] - 2026-09-12
 
 ### Fixed
