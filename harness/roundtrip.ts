@@ -8,7 +8,8 @@
  *   2. the frontmatter parse/reconstruct seam (see ./frontmatter-seam.ts),
  *   3. the file search ranking seam (see ./filesearch-seam.ts),
  *   4. the table column-width seam (see ./table-colwidth-seam.ts),
- *   5. the placeholder rendering seam (see ./placeholder-seam.ts).
+ *   5. the placeholder rendering seam (see ./placeholder-seam.ts),
+ *   6. the file-mention insert seam (see ./filemention-seam.ts).
  *
  * Exit code 1 on any diff, missing golden or error; 0 when everything
  * matches.
@@ -24,6 +25,7 @@ import { runFrontmatterSeam } from "./frontmatter-seam";
 import { runFileSearchSeam } from "./filesearch-seam";
 import { runTableColwidthSeam } from "./table-colwidth-seam";
 import { runPlaceholderSeam } from "./placeholder-seam";
+import { runFileMentionSeam } from "./filemention-seam";
 import { formatUnifiedDiff } from "./diff";
 
 const MAX_DIFF_LINES = 120;
@@ -149,6 +151,11 @@ function main(): number {
       name: "seams/placeholder.txt",
       goldenPath: path.join(repoRoot, "harness", "golden", "seams", "placeholder.txt"),
       run: runPlaceholderSeam,
+    },
+    {
+      name: "seams/file-mention.txt",
+      goldenPath: path.join(repoRoot, "harness", "golden", "seams", "file-mention.txt"),
+      run: runFileMentionSeam,
     },
   ];
 

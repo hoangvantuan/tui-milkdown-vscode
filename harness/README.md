@@ -1,8 +1,8 @@
 # Dependency-Verification Harness
 
-A golden-baseline harness that verifies markdown fidelity and the two
-non-editor seams (frontmatter parsing, file search ranking) across dependency
-changes. It exists so a maintainer can run one command before and after any
+A golden-baseline harness that verifies markdown fidelity and the non-editor
+seams (frontmatter parsing, file search ranking, table column widths,
+placeholder rendering, @-mention insertion) across dependency changes. It exists so a maintainer can run one command before and after any
 dependency bump and attribute a fidelity regression to one specific version
 change instead of a vague suspicion. Introduced for the upgrade sweep in
 issue #64 (harness tickets: #65, #66), and intended to outlive it.
@@ -74,6 +74,22 @@ intended fix.
 because GFM has no width syntax and the serialized string cannot express
 whether widths parsed. It stays as a corpus document, and the actual width
 question is answered by the table column-width seam described below.
+
+## The seams
+
+Besides the corpus, `npm run roundtrip` runs one golden per seam:
+
+| Seam | Golden | Observes |
+| --- | --- | --- |
+| `frontmatter-seam.ts` | `seams/frontmatter.txt` | Frontmatter parse/reconstruct fidelity and `validateYaml` verdicts |
+| `filesearch-seam.ts` | `seams/file-search.txt` | File search ranking; diacritic ordering is a recorded measurement, not a verdict |
+| `table-colwidth-seam.ts` | `seams/table-colwidth.txt` | `<colgroup>`/`<col width>` and cell `colwidth` parsing |
+| `placeholder-seam.ts` | `seams/placeholder.txt` | Placeholder DOM writes per keystroke (the flicker measurement) |
+| `filemention-seam.ts` | `seams/file-mention.txt` | `insertFileMention()`: the @-mention insert stays inline, and escaping happens on save |
+
+The file-mention seam is the one seam whose lines are verdicts rather than
+measurements: every `yes` in its golden is an assertion, so a `NO` appearing
+there is a regression, not a behaviour change to classify.
 
 ## Reading a diff after a dependency change
 

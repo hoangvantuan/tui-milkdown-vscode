@@ -93,6 +93,7 @@ harness/                            # Dependency-verification harness (see harne
 ├── roundtrip.ts                    # Runner: check (default) / --update modes
 ├── frontmatter-seam.ts             # Frontmatter parse/reconstruct + validateYaml seam
 ├── filesearch-seam.ts              # File search ranking seam (diacritic ordering = recorded measurement)
+├── filemention-seam.ts             # @-mention insert seam (inline insert + escaping on save)
 ├── table-colwidth-seam.ts          # Table column widths: <colgroup>/<col width> and cell colwidth parsing
 ├── placeholder-seam.ts             # Placeholder DOM writes per keystroke (the flicker measurement)
 ├── vscode-floor/                   # VS Code floor check: run.mjs (driver) + extension-tests.ts (in-host checks)
