@@ -58,6 +58,10 @@ A popup opened by typing `/` at the start of an empty paragraph, offering blocks
 A GitHub-style callout block (`[!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]`) written as a blockquote whose first line is the marker.
 *Avoid*: callout, admonition, note box
 
+**Raw HTML**:
+HTML written directly in the Markdown source (`<details>`, `<kbd>`, `<img width>`, comments). The editor keeps it verbatim and writes it back unchanged; whether a given tag is also rendered is a separate, per-tag decision.
+*Avoid*: inline HTML, embedded HTML, HTML passthrough
+
 **Metadata panel**:
 The collapsible YAML frontmatter editor shown above the document body.
 *Avoid*: frontmatter editor, properties, header panel
