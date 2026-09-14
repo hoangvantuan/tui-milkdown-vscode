@@ -1,3 +1,9 @@
+/**
+ * Extension host entry point. Registers the `.md` custom editor
+ * (MarkdownEditorProvider) and the two title-bar commands that switch a tab
+ * between the rich editor and VS Code's text editor (viewSource /
+ * viewRichText). Everything else lives in markdownEditorProvider.ts.
+ */
 import * as vscode from 'vscode';
 import { MarkdownEditorProvider } from './markdownEditorProvider';
 

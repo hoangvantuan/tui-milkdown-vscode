@@ -1,3 +1,14 @@
+/**
+ * Wiki links `[[file]]` / `[[file|alias]]`: an inline node with its own
+ * MarkedJS tokenizer (`markdownTokenizer`) plus parse/render hooks so the
+ * syntax round-trips, and a `[[` autocomplete built on @tiptap/suggestion.
+ *
+ * Search runs against a module-level cache filled from the extension
+ * (`wikiLinkSearch` -> `wikiLinkSearchResults`) on popup open and cleared on
+ * close; typing filters locally via file-search-utils.ts. The popup is
+ * appended to `#editor-container`, not `.tiptap`, because of CSS zoom.
+ * Ctrl/Cmd+click resolves the target through the `openWikiLink` message.
+ */
 import { Node, mergeAttributes, Extension } from "@tiptap/core";
 import Suggestion, {
   type SuggestionProps,

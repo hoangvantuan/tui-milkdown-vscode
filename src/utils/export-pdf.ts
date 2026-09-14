@@ -15,7 +15,23 @@ export { clearChromiumCache };
  * prints it to PDF. The extension ships no Chromium binary — we locate
  * one installed on the user's machine (see `chromium-discovery.ts`).
  *
- * Bundled as `out/export-pdf.js` (lazy-loaded on demand).
+ * Bundled as `out/export-pdf.js` (lazy-loaded on demand). `puppeteer-core`
+ * is bundled INTO it by esbuild (not external): `.vscodeignore` drops
+ * `node_modules/**`, so an external require would not ship.
+ *
+ * Security invariants (user markdown is untrusted input):
+ * - JavaScript stays disabled on the page (`setJavaScriptEnabled(false)`).
+ *   Never re-enable it and never add `--disable-web-security`.
+ * - `--no-sandbox` is granted only on Linux as root (`puppeteerLaunchArgs`);
+ *   do not widen that gate.
+ * - `stripDangerousHtmlTags` and `inlineRelativeImages` are load-bearing:
+ *   they are why `<iframe src="file:///...">` in a document stays inert and
+ *   why `![](./img.png)` renders instead of 404-ing on `about:blank`.
+ *
+ * Dependency note: puppeteer-core is held at the 24.x major. 25.x requires
+ * Node >= 22.12, while `engines.vscode` (^1.85.0) has an extension host on
+ * Node 18. The export code path is identical across both majors; the only
+ * gain from 25 is bundle size. Revisit when the VS Code floor rises.
  */
 
 export type PageSize = "A4" | "Letter";

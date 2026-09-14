@@ -15,6 +15,9 @@
  * script (see markdownEditorProvider.ts) that sets
  * `window.__tuiMermaidBootstrap` BEFORE main.js runs. The injected script
  * element reuses that nonce, so the CSP stays exactly as strict as it is.
+ * What IS given up is nonce hiding: an XSS inside the webview could read
+ * `__tuiMermaidBootstrap.nonce` and run further scripts. Weigh this
+ * together with mermaid's `securityLevel: "loose"` (mermaid-plugin.ts).
  *
  * Race safety: concurrent callers (two diagrams rendering at once) share
  * one in-flight promise and one <script> element; exactly one network

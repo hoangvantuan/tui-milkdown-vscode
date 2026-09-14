@@ -1,3 +1,18 @@
+/**
+ * Webview entry point: builds the Tiptap editor, wires the toolbar and the
+ * message protocol with the extension host (markdownEditorProvider.ts).
+ *
+ * Load / save path: `parseContent()` splits frontmatter, the body is parsed
+ * with `contentType: "markdown"`, then `transformTableCellsAfterParse()`;
+ * on save `editor.getMarkdown()` + `reconstructContent()`. Edits are
+ * debounced 300 ms into an `edit` message; the provider's `pendingEdit`
+ * flag (markdownEditorProvider.ts) keeps the resulting document change from
+ * echoing back as an `update`. harness/editor.ts mirrors the
+ * markdown-relevant extension set below: change both together.
+ *
+ * Module scope calls `acquireVsCodeApi()`, so this file cannot be imported
+ * from Node. Persist webview state with `{ ...getState(), key }`.
+ */
 import { Editor, Extension } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { MarkdownLink, MarkdownImage } from "./markdown-destination";
@@ -824,7 +839,14 @@ function clampZoom(value: number): number {
   return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, rounded));
 }
 
-/** Apply zoom scale to editor content only (the .tiptap element). */
+/**
+ * Apply zoom scale to editor content only (the .tiptap element).
+ *
+ * Toolbar, TOC, metadata panel and popups are untouched. CSS `zoom` is
+ * transparent to JS coordinate APIs (getBoundingClientRect, clientX/Y,
+ * posAtCoords), so plugins stay correct as long as their overlays attach to
+ * `#editor-container` (the non-zoomed parent) rather than `.tiptap`.
+ */
 function applyZoom(value: number): void {
   const tiptapEl = document.querySelector(".tiptap") as HTMLElement | null;
   if (tiptapEl) {

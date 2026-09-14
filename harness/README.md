@@ -50,8 +50,9 @@ Two sources, combined:
   supported forms (standard, implicit, empty, comment-only), wiki links,
   file mentions, images with awkward paths, link and image destinations
   that need escaping, and page breaks.
-- Real repository documents — every top-level `*.md` and every
-  `docs/internals/*.md`, enumerated at run time. Long-form documents catch
+- Real repository documents — every top-level `*.md`, enumerated at run
+  time (`docs/internals/` was part of the corpus until the internals docs
+  were retired in favour of comments at the code site). Long-form documents catch
   cross-feature interactions that single-feature fixtures cannot. A new repo
   document appears as a `MISSING` golden until you capture it.
 
@@ -231,10 +232,8 @@ is byte-identical, so `harness/golden/seams/file-search.txt` still
 represents the 3.1.0 baseline and also the 4.0.2 present. `npm run lint`
 and `npm run build` green.
 
-Pre-existing staleness carried forward (not touched here, docs edits are
-out of scope for #70): `docs/internals/autocomplete-plugins.md` still
-says "Threshold -1000" and lists `fuzzysort@^3.1.0` in its dependency
-line.
+The threshold rationale now lives as a comment at the call site in
+`src/webview/file-search-utils.ts`.
 
 ## Classification record: remaining in-range bumps (issue #71)
 

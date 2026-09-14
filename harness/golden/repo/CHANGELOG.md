@@ -2,6 +2,13 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## \[Unreleased\]
+
+### Changed
+
+- **Retired `docs/internals/` and `docs/superpowers/`; the source is now the reference.** Everything those documents said that could not be read from the code (why PDF export keeps JavaScript off and what the tag strip protects, the mermaid `securityLevel: "loose"` and nonce-exposure trade-offs, why the table serializer is custom, why the file search threshold is `0`, the puppeteer-core major hold) moved into comments at the code site. Files that had no header comment (`extension.ts`, `main.ts`, `image-lightbox-plugin.ts`, `wiki-link-plugin.ts`, `table-markdown-serializer.ts`) got one. `AGENTS.md` lost its Feature Docs table and points at module headers instead. The historical design specs are in git history.
+- The roundtrip harness corpus no longer enumerates `docs/internals/*.md`; its goldens were removed and the `AGENTS.md` / `CHANGELOG.md` goldens re-captured for this change (intended, documentation only).
+
 ## \[2.15.2\] - 2026-09-13
 
 ### Fixed

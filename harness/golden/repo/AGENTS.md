@@ -1,4 +1,4 @@
-This file is a **map**, not an encyclopedia. It tells you where things are and how they connect. Implementation details live in `docs/internals/`.
+This file is a **map**, not an encyclopedia. It tells you where things are and how they connect. The source is the reference: every module starts with a header comment stating its role, and the reason behind a non-obvious choice is a comment at the code site, not a separate document.
 
 ## Project Overview
 
@@ -48,6 +48,7 @@ src/
 │   ├── markdown-ast.ts       # Shared MDAST pipeline (parse + mermaid image substitution)
 │   ├── export-docx.ts        # MDAST → DOCX via mdast2docx (lazy-loaded bundle)
 │   ├── export-pdf.ts         # MDAST → HTML → Chromium page.pdf (lazy-loaded bundle)
+│   ├── vscode-resource.ts    # Detect webview resource URLs and recover the local file path
 │   └── chromium-discovery.ts # Locate Chrome/Edge/Chromium/Brave executable for PDF export
 └── webview/
     ├── main.ts               # Browser-side Tiptap editor
@@ -56,6 +57,8 @@ src/
     ├── frontmatter.ts        # YAML parsing & validation utilities
     ├── alert-extension.ts    # GitHub-style alert blocks ([!NOTE], [!TIP], etc.)
     ├── mermaid-plugin.ts     # Mermaid diagram rendering (SVG preview, view/edit mode, caching)
+    ├── mermaid-bridge.ts     # Lazy-loads the mermaid artifact with the page nonce (retry/latch semantics)
+    ├── mermaid-loader.ts     # Separate esbuild entry → out/webview/mermaid-loader.js (mermaid + ELK)
     ├── line-highlight-plugin.ts # ProseMirror plugin for cursor line highlight
     ├── heading-level-plugin.ts # ProseMirror plugin for H1-H6 level badges
     ├── heading-collapse-plugin.ts # ProseMirror plugin for heading collapse/expand toggles
@@ -137,25 +140,8 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 - Task list selectors MUST use direct child combinator (`ul[data-type="taskList"] > li`) — descendant combinator leaks `display: flex` to nested items
 - CSS `zoom` on `.tiptap` is transparent to JS coordinate APIs — plugins using `posAtCoords`, context menus, overlays all safe because they attach to `#editor-container` (parent, not zoomed)
 - Popup elements (file mention, wiki link, context menus) append to `#editor-container`, not `.tiptap`, to avoid CSS zoom issues
-
-## Feature Docs
-
-Implementation details for each feature area:
-
-| Doc                           | Covers                                                                                                                                       |
-| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `editor-core.md`              | Toolbar, glassmorphic styling, appearance popover, auto-hide, zoom, line highlight, reading progress, word count, page break, search (Cmd+F) |
-| `image-system.md`             | Image display, upload, auto rename/delete, URL editing, clipboard fallback, lightbox                                                         |
-| `table-system.md`             | Table styling, context menu, GFM serializer, cell content parser                                                                             |
-| `mermaid-system.md`           | Mermaid rendering, copy as PNG, `securityLevel: "loose"` trade-off                                                                           |
-| `heading-navigation.md`       | Heading level badges, collapse/expand, TOC sidebar, link click navigation                                                                    |
-| `autocomplete-plugins.md`     | File mention (@), wiki link ([[...]]), cache strategy, click navigation                                                                      |
-| `export-system.md`            | DOCX/PDF export, MDAST pipeline, Chromium discovery, security notes                                                                          |
-| `metadata-panel.md`           | Frontmatter YAML panel, bidirectional sync                                                                                                   |
-| `theming.md`                  | Theme system, font strategy, typography, micro-interactions, font selector                                                                   |
-| `alerts-codeblock.md`         | GitHub-style alerts, code block language badge + copy                                                                                        |
-| `dependency-upgrade-sweep.md` | Sweep record (2.15.0): versions moved, declined upgrades, manual verification checklist, findings, harness usage for future upgrades         |
-
+- Tiptap 3.30's decorations hook was considered for the badge/collapse/code-block plugins and not adopted: widget decorations render inside the zoomed `.tiptap`, so the hand-managed ProseMirror plugins stay until the zoom interaction is tested by hand
+- Security trade-offs are documented where they are made: mermaid `securityLevel: "loose"` and nonce exposure in `mermaid-plugin.ts` / `mermaid-bridge.ts`, PDF export invariants in `export-pdf.ts`
 
 ## Development Guidelines
 
@@ -164,7 +150,7 @@ Implementation details for each feature area:
 - Before and after ANY dependency change: run `npm run roundtrip` (see `harness/README.md`) and `npm run build` — a green `npm run lint` is NOT sufficient evidence (a default-import break once passed tsc while breaking the bundle)
 - When a change can affect what the extension host or the webview does at runtime, also run `npm run verify:vscode-floor`: it downloads the VS Code version in `engines.vscode` and checks activation, the custom editor and the live webview there
 - Classify every golden diff as intended fix / accepted change / regression, in the commit that caused it
-- Declined-upgrade decisions and their reasoning: `docs/internals/dependency-upgrade-sweep.md`
+- Per-bump diff classifications and declined-upgrade reasoning: `harness/README.md`, plus the dependency notes in the affected module headers (e.g. puppeteer-core in `export-pdf.ts`)
 
 **Tiptap-First Approach:**
 
@@ -176,7 +162,6 @@ Implementation details for each feature area:
 
 - Tiptap docs: [https://tiptap.dev/docs](https://tiptap.dev/docs)
 - @tiptap/markdown: [https://tiptap.dev/docs/editor/markdown](https://tiptap.dev/docs/editor/markdown)
-- Local reference: `docs/tiptap-markdown-reference.md` (API spec, extension patterns, tokenizer guides)
 
 **Performance &amp; Bundle Optimization:**
 
@@ -190,15 +175,15 @@ Implementation details for each feature area:
 
 After every development cycle (new feature, bug fix, refactor), update these files:
 
-| File                  | When to Update    | What to Include                                                                 |
-| --------------------- | ----------------- | ------------------------------------------------------------------------------- |
-| `CHANGELOG.md`        | Every change      | New features, bug fixes, breaking changes, improvements                         |
-| `README.md`           | New features only | User-facing feature descriptions (keep concise)                                 |
-| `docs/internals/*.md` | Feature changes   | Implementation details, message flows, CSS classes, gotchas                     |
-| `CLAUDE.md`           | Map changes only  | New files in File Structure, new entries in Feature Docs table, new conventions |
+| File                  | When to Update    | What to Include                                                                   |
+| --------------------- | ----------------- | --------------------------------------------------------------------------------- |
+| `CHANGELOG.md`        | Every change      | New features, bug fixes, breaking changes, improvements                           |
+| `README.md`           | New features only | User-facing feature descriptions (keep concise)                                   |
+| Module header comment | Feature changes   | Role of the file plus the non-obvious constraints; put the *why* next to the code |
+| `AGENTS.md`           | Map changes only  | New files in File Structure, new conventions                                      |
 
 
 **What goes where:**
 
-- **CLAUDE.md**: "Where things are" — file structure, extension list, settings, conventions, pointers
-- **docs/internals/**: "How this works" — message flows, DOM structure, CSS classes, persistence strategies, gotchas
+- **AGENTS.md**: "Where things are" — file structure, extension list, settings, conventions, pointers
+- **Source comments**: "How and why this works" — a header per module, and a comment at the site of each non-obvious decision. There is no separate internals documentation; if a fact cannot be verified from the code, it does not belong in a comment either

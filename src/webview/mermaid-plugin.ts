@@ -47,6 +47,14 @@ function initializeMermaid(bundle: MermaidBundle, isDark: boolean): void {
         startOnLoad: false,
         layout: elkAvailable ? "elk" : "dagre",
         theme: isDark ? "dark" : "default",
+        // "loose" is required for ELK to render foreignObject HTML labels
+        // ("strict" strips the HTML and the layout goes flat). Trade-off: a
+        // label may carry inline HTML such as `<img onerror=...>` that reaches
+        // the SVG, which is then written via innerHTML into the preview host
+        // and the lightbox. Untrusted mermaid source is therefore potentially
+        // executable inside the webview; we rely on VS Code's webview sandbox
+        // and on the PDF exporter running Chromium with JavaScript disabled.
+        // Do not relax the sandbox or CSP to accommodate mermaid.
         securityLevel: "loose",
         flowchart: MERMAID_FLOWCHART_CFG,
     });

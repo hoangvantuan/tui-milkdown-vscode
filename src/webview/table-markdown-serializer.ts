@@ -1,3 +1,16 @@
+/**
+ * Custom GFM table serializer, wired into `Table.extend({ renderMarkdown })`
+ * in main.ts.
+ *
+ * Why not the upstream @tiptap/markdown table serializer: it flattens lists
+ * inside table cells to plain text. This one keeps bullet / ordered / task
+ * lists and multi-line cells (as `<br>`), and pads columns for aligned
+ * output. The reverse direction (cell text -> lists / paragraphs) lives in
+ * table-cell-content-parser.ts.
+ *
+ * Not supported: column alignment markers (`:---:`, `---:`) are neither
+ * emitted nor consumed.
+ */
 import type { JSONContent, MarkdownRendererHelpers } from '@tiptap/core';
 
 /** Collapse whitespace within a single inline segment */

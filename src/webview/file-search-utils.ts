@@ -96,6 +96,10 @@ export function searchFiles(options: FileSearchOptions): FileSearchResult[] {
 
   const results = fuzzysort.go(query, files, {
     keys: ["name", "path"],
+    // 0 admits every match on fuzzysort 4's 0..1 scale, i.e. filtering is
+    // off by design (ranking only). The old v2-era value -1000 became NaN on
+    // this scale and silently disabled filtering anyway; a non-zero threshold
+    // is a UX decision about which suggestions disappear, not a bug fix.
     threshold: 0,
     limit: maxResults * 3,
   });
