@@ -100,6 +100,7 @@ harness/                            # Dependency-verification harness (see harne
 ├── filemention-seam.ts             # @-mention insert seam (inline insert + escaping on save)
 ├── table-colwidth-seam.ts          # Table column widths: <colgroup>/<col width> and cell colwidth parsing
 ├── placeholder-seam.ts             # Placeholder DOM writes per keystroke (the flicker measurement)
+├── crlf-seam.ts                    # Line-ending normalization on save (normalizeLineEndings, CRLF/LF/mixed)
 ├── vscode-floor/                   # VS Code floor check: run.mjs (driver) + extension-tests.ts (in-host checks)
 ├── fixtures/synthetic/*.md         # One feature per fixture
 └── golden/                         # Committed baselines (corpus + seams), captured on the pre-upgrade dependency tree

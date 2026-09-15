@@ -87,6 +87,7 @@ Besides the corpus, `npm run roundtrip` runs one golden per seam:
 | `table-colwidth-seam.ts` | `seams/table-colwidth.txt` | `<colgroup>`/`<col width>` and cell `colwidth` parsing |
 | `placeholder-seam.ts` | `seams/placeholder.txt` | Placeholder DOM writes per keystroke (the flicker measurement) |
 | `filemention-seam.ts` | `seams/file-mention.txt` | `insertFileMention()`: the @-mention insert stays inline, and escaping happens on save |
+| `crlf-seam.ts` | `seams/crlf.txt` | `normalizeLineEndings()`: the document's own line endings survive a save |
 
 The file-mention seam is the one seam whose lines are verdicts rather than
 measurements: every `yes` in its golden is an assertion, so a `NO` appearing
@@ -441,6 +442,16 @@ no-DOM seams against their own goldens (`harness/golden/seams/`):
   empty. Limit worth stating: this shows the DOM is not being rewritten, not
   that an eye sees no flash — a purely CSS or compositing flicker would not
   appear in these counts.
+
+- **CRLF seam** (`crlf-seam.ts`) exercises `normalizeLineEndings` from
+  `src/markdownEditorProvider.ts`: for a CRLF, LF and mixed-ending document it
+  records the ending the function emits for each `vscode.EndOfLine` target and
+  whether the content is otherwise byte-identical. This is host-side code, so
+  the harness build stubs the `vscode` module (the `vscode-mock` esbuild plugin
+  in `esbuild.harness.config.js`, which exposes only `EndOfLine` and a few empty
+  shapes). The stub is what makes a pure host-side function seam-testable at
+  all; anything needing real editor behaviour belongs in the floor check, not
+  here.
 
 All seam reports are plain deterministic text: whatever the current
 dependency tree produces is what lands in the golden.
