@@ -41,6 +41,21 @@ const floorTestsConfig = {
   logLevel: 'warning',
 };
 
+const vscodePlugin = {
+  name: 'vscode-mock',
+  setup(build) {
+    build.onResolve({ filter: /^vscode$/ }, (args) => ({
+      path: args.path,
+      namespace: 'vscode-mock',
+    }));
+    build.onLoad({ filter: /.*/, namespace: 'vscode-mock' }, () => ({
+      contents:
+        'module.exports = { EndOfLine: { LF: 1, CRLF: 2 }, Range: class {}, Position: class {}, WorkspaceEdit: class {}, Uri: { file: () => ({}), parse: () => ({}) }, window: {}, workspace: {}, commands: {} };',
+      loader: 'js',
+    }));
+  },
+};
+
 const roundtripConfig = {
   entryPoints: ['harness/roundtrip.ts'],
   outfile: 'out/harness/roundtrip.js',
@@ -52,6 +67,7 @@ const roundtripConfig = {
   minify: false,
   external: ['jsdom'],
   banner: { js: DOM_SHIM },
+  plugins: [vscodePlugin],
   logLevel: 'warning',
 };
 
