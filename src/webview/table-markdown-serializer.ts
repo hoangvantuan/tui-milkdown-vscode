@@ -10,8 +10,8 @@
  *
  * Literal pipes inside cell text are escaped as `\|` so they do not split cells on subsequent roundtrips.
  *
- * Not supported: column alignment markers (`:---:`, `---:`) are neither
- * emitted nor consumed.
+ * Column alignment markers (`:--`, `:-:`, `--:`) are preserved from cell attributes
+ * (`textAlign` or `align`).
  */
 import type { JSONContent, MarkdownRendererHelpers } from '@tiptap/core';
 
@@ -133,22 +133,53 @@ function renderCellContent(cellNode: JSONContent, h: MarkdownRendererHelpers): s
   return parts.join(' <br> ');
 }
 
+type TableCellAlignment = 'left' | 'center' | 'right';
+
+/** Normalize cell alignment value to 'left' | 'center' | 'right' | null */
+function normalizeAlignment(value: unknown): TableCellAlignment | null {
+  if (typeof value !== 'string') return null;
+  const lower = value.trim().toLowerCase();
+  if (lower === 'left' || lower === 'center' || lower === 'right') {
+    return lower;
+  }
+  return null;
+}
+
 /**
- * Custom table serializer that preserves multi-line cell content.
+ * Format a separator cell with alignment markers (:--, :-:, --:, ---),
+ * scaled to the column width.
+ */
+function formatSeparatorCell(align: TableCellAlignment | null, width: number): string {
+  const w = Math.max(3, width);
+  switch (align) {
+    case 'left':
+      return `:${'-'.repeat(w - 1)}`;
+    case 'center':
+      return `:${'-'.repeat(w - 2)}:`;
+    case 'right':
+      return `${'-'.repeat(w - 1)}:`;
+    default:
+      return '-'.repeat(w);
+  }
+}
+
+/**
+ * Custom table serializer that preserves multi-line cell content and column alignment.
  * Uses <br> tags for line breaks within GFM table cells.
  */
 export function renderTableToMarkdown(node: JSONContent, h: MarkdownRendererHelpers): string {
   if (!node?.content?.length) return '';
 
-  const rows: { text: string; isHeader: boolean }[][] = [];
+  const rows: { text: string; isHeader: boolean; align: TableCellAlignment | null }[][] = [];
 
   for (const rowNode of node.content) {
-    const cells: { text: string; isHeader: boolean }[] = [];
+    const cells: { text: string; isHeader: boolean; align: TableCellAlignment | null }[] = [];
     if (rowNode.content) {
       for (const cellNode of rowNode.content) {
         cells.push({
           text: renderCellContent(cellNode, h),
           isHeader: cellNode.type === 'tableHeader',
+          align: normalizeAlignment(cellNode.attrs?.textAlign || cellNode.attrs?.align),
         });
       }
     }
@@ -171,6 +202,16 @@ export function renderTableToMarkdown(node: JSONContent, h: MarkdownRendererHelp
   const headerRow = rows[0];
   const hasHeader = headerRow?.some(c => c.isHeader) ?? false;
 
+  const colAlignments: Array<TableCellAlignment | null> = Array.from({ length: colCount }, (_, i) => {
+    if (hasHeader && headerRow[i]?.align) {
+      return headerRow[i].align;
+    }
+    for (const r of rows) {
+      if (r[i]?.align) return r[i].align;
+    }
+    return null;
+  });
+
   let out = '';
 
   // Header row
@@ -180,7 +221,7 @@ export function renderTableToMarkdown(node: JSONContent, h: MarkdownRendererHelp
   out += `| ${headerTexts.map((t, i) => pad(t, colWidths[i])).join(' | ')} |\n`;
 
   // Separator
-  out += `| ${colWidths.map(w => '-'.repeat(w)).join(' | ')} |\n`;
+  out += `| ${colWidths.map((w, i) => formatSeparatorCell(colAlignments[i], w)).join(' | ')} |\n`;
 
   // Body rows
   const body = hasHeader ? rows.slice(1) : rows;
