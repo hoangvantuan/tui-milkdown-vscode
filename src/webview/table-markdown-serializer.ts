@@ -8,10 +8,25 @@
  * output. The reverse direction (cell text -> lists / paragraphs) lives in
  * table-cell-content-parser.ts.
  *
+ * Literal pipes inside cell text are escaped as `\|` so they do not split cells on subsequent roundtrips.
+ *
  * Not supported: column alignment markers (`:---:`, `---:`) are neither
  * emitted nor consumed.
  */
 import type { JSONContent, MarkdownRendererHelpers } from '@tiptap/core';
+
+/**
+ * Escape unescaped literal pipes in table cells (including inside code spans)
+ * so that subsequent GFM table parsing does not split the cell.
+ */
+function escapeCellPipes(text: string): string {
+  return text.replace(/(\\*)(\|)/g, (match, backslashes, pipe) => {
+    if (backslashes && backslashes.length % 2 === 1) {
+      return match;
+    }
+    return (backslashes || '') + '\\' + pipe;
+  });
+}
 
 /** Collapse whitespace within a single inline segment */
 function cleanInline(s: string): string {
@@ -20,7 +35,7 @@ function cleanInline(s: string): string {
 
 /** Render inline content of a node via helpers */
 function renderInline(node: JSONContent, h: MarkdownRendererHelpers): string {
-  return cleanInline(h.renderChildren(node));
+  return escapeCellPipes(cleanInline(h.renderChildren(node)));
 }
 
 /**
@@ -47,7 +62,7 @@ function renderCellParagraph(para: JSONContent, h: MarkdownRendererHelpers): str
   }
 
   return segments
-    .map(seg => seg.length === 0 ? '' : cleanInline(h.renderChildren({ type: 'paragraph', content: seg } as JSONContent)))
+    .map(seg => seg.length === 0 ? '' : renderInline({ type: 'paragraph', content: seg } as JSONContent, h))
     .filter(s => s)
     .join('\\n');
 }
