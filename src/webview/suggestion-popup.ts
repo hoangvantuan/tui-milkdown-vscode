@@ -1,6 +1,5 @@
 /**
- * Shared suggestion popup for autocomplete plugins (@ mentions, [[ wiki links,
- * and future slash commands).
+ * Shared suggestion popup for autocomplete plugins (@ mentions, [[ wiki links).
  *
  * Why not a Tiptap BubbleMenu?
  * Tiptap's BubbleMenu anchors to the current ProseMirror selection (typically a
@@ -26,11 +25,7 @@ export interface SuggestionPopupOptions<T> {
   itemClass: string;
   emptyClass: string;
   emptyText: string;
-  renderItem: (
-    item: T,
-    index: number,
-    row: HTMLElement,
-  ) => HTMLElement | DocumentFragment | void;
+  renderItem: (item: T) => HTMLElement | DocumentFragment | void;
 }
 
 export class SuggestionPopup<T> {
@@ -44,22 +39,6 @@ export class SuggestionPopup<T> {
 
   constructor(options: SuggestionPopupOptions<T>) {
     this.options = options;
-  }
-
-  public get element(): HTMLDivElement | null {
-    return this.popup;
-  }
-
-  public get isOpen(): boolean {
-    return this.popup !== null;
-  }
-
-  public get items(): T[] {
-    return this._items;
-  }
-
-  public get selectedIndex(): number {
-    return this._selectedIndex;
   }
 
   public get query(): string {
@@ -78,9 +57,7 @@ export class SuggestionPopup<T> {
     return el;
   }
 
-  public position(
-    clientRect?: (() => DOMRect | null) | null,
-  ): void {
+  private position(clientRect?: (() => DOMRect | null) | null): void {
     if (!this.popup || !clientRect) return;
     const rect = clientRect();
     if (!rect) return;
@@ -94,7 +71,7 @@ export class SuggestionPopup<T> {
     this.popup.style.top = `${rect.bottom - containerRect.top + container.scrollTop}px`;
   }
 
-  public renderItems(): void {
+  private renderItems(): void {
     if (!this.popup) return;
     this.popup.innerHTML = "";
 
@@ -113,7 +90,7 @@ export class SuggestionPopup<T> {
         row.classList.add("is-selected");
       }
 
-      const content = this.options.renderItem(item, index, row);
+      const content = this.options.renderItem(item);
       if (content) {
         row.appendChild(content);
       }
