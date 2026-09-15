@@ -10,8 +10,10 @@
  *
  * Literal pipes inside cell text are escaped as `\|` so they do not split cells on subsequent roundtrips.
  *
- * Column alignment markers (`:--`, `:-:`, `--:`) are preserved from cell attributes
- * (`textAlign` or `align`).
+ * Column alignment markers (`:--`, `:-:`, `--:`) are preserved. The alignment is
+ * read from the cell's `align` attribute, which @tiptap/extension-table already
+ * parses from the separator row and renders back as `style="text-align: ..."`;
+ * this file only has to put it back into the separator row on save.
  */
 import type { JSONContent, MarkdownRendererHelpers } from '@tiptap/core';
 
@@ -179,7 +181,7 @@ export function renderTableToMarkdown(node: JSONContent, h: MarkdownRendererHelp
         cells.push({
           text: renderCellContent(cellNode, h),
           isHeader: cellNode.type === 'tableHeader',
-          align: normalizeAlignment(cellNode.attrs?.textAlign || cellNode.attrs?.align),
+          align: normalizeAlignment(cellNode.attrs?.align),
         });
       }
     }
