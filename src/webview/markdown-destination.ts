@@ -17,6 +17,11 @@
  *      enclosing link if a link mark is present (upstream `@tiptap/markdown`
  *      ignores marks on non-text nodes during serialization).
  *
+ * All three are needed; fixing any two still loses the link. The upstream
+ * report, with the code behind each of the three, is in
+ * docs/upstream/tiptap-linked-image.md. It was never filed, so check it against
+ * the release notes before dropping any of these overrides on a Tiptap bump.
+ *
  * Exported from here rather than defined at each call site so
  * src/webview/main.ts and harness/editor.ts serialize through the same code
  * instead of two copies that can drift apart. Callers still apply their own
