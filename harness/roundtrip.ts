@@ -26,6 +26,7 @@ import { runFileSearchSeam } from "./filesearch-seam";
 import { runTableColwidthSeam } from "./table-colwidth-seam";
 import { runPlaceholderSeam } from "./placeholder-seam";
 import { runFileMentionSeam } from "./filemention-seam";
+import { runCrlfSeam } from "./crlf-seam";
 import { formatUnifiedDiff } from "./diff";
 
 const MAX_DIFF_LINES = 120;
@@ -156,6 +157,11 @@ function main(): number {
       name: "seams/file-mention.txt",
       goldenPath: path.join(repoRoot, "harness", "golden", "seams", "file-mention.txt"),
       run: runFileMentionSeam,
+    },
+    {
+      name: "seams/crlf.txt",
+      goldenPath: path.join(repoRoot, "harness", "golden", "seams", "crlf.txt"),
+      run: runCrlfSeam,
     },
   ];
 

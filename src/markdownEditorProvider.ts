@@ -156,6 +156,19 @@ function openLocalFileInEditor(relativePath: string, document: vscode.TextDocume
 }
 
 /**
+ * Normalize line endings in markdown content to match the document's EOL sequence.
+ * Converts CRLF, lone CR, and LF to the target EOL string (CRLF or LF).
+ */
+export function normalizeLineEndings(
+  content: string,
+  eol: vscode.EndOfLine | "\n" | "\r\n",
+): string {
+  const targetEol =
+    eol === vscode.EndOfLine.CRLF || eol === "\r\n" ? "\r\n" : "\n";
+  return content.replace(/\r\n|\r|\n/g, targetEol);
+}
+
+/**
  * CustomTextEditorProvider for Markdown WYSIWYG editing.
  * Registers for .md files via package.json customEditors.
  */
@@ -349,7 +362,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     };
 
     const applyEdit = async (newContent: string) => {
-      if (newContent === document.getText()) return;
+      const normalizedContent = normalizeLineEndings(newContent, document.eol);
+      if (normalizedContent === document.getText()) return;
 
       // === Image Rename Detection (BEFORE applying edit) ===
       // Rename files first so webviewUri resolves correctly after edit
@@ -358,7 +372,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       if (config.get<boolean>("autoRenameImages", true) && !renameInProgress) {
         const originalMap = this.originalImagePaths.get(docKey);
         if (originalMap && originalMap.size > 0) {
-          const newPaths = extractImagePaths(newContent).filter(
+          const newPaths = extractImagePaths(normalizedContent).filter(
             (p) => !isRemoteUrl(p),
           );
           const renames = detectImageRenames(
@@ -422,7 +436,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           document.positionAt(0),
           document.positionAt(document.getText().length),
         );
-        edit.replace(document.uri, fullRange, newContent);
+        edit.replace(document.uri, fullRange, normalizedContent);
         await vscode.workspace.applyEdit(edit);
       } finally {
         queueMicrotask(() => {

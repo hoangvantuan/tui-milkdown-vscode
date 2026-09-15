@@ -4,6 +4,10 @@ All notable changes to "TUI Markdown Editor" extension.
 
 ## \[Unreleased\]
 
+### Fixed
+
+- **CRLF line endings preserved on save (#103)**: Documents with CRLF line endings were rewritten with LF on the first edit because `applyEdit` replaced the document with serialized markdown joined with `\n`. The save path now reads `document.eol` and normalizes the serialized content to that sequence before building the `WorkspaceEdit`. Documents with mixed line endings are normalized to `document.eol`, matching VS Code's own behavior.
+
 ### Changed
 
 - **Retired `docs/internals/` and `docs/superpowers/`; the source is now the reference.** Everything those documents said that could not be read from the code (why PDF export keeps JavaScript off and what the tag strip protects, the mermaid `securityLevel: "loose"` and nonce-exposure trade-offs, why the table serializer is custom, why the file search threshold is `0`, the puppeteer-core major hold) moved into comments at the code site. Files that had no header comment (`extension.ts`, `main.ts`, `image-lightbox-plugin.ts`, `wiki-link-plugin.ts`, `table-markdown-serializer.ts`) got one. `AGENTS.md` lost its Feature Docs table and points at module headers instead. The historical design specs are in git history.
