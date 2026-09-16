@@ -69,6 +69,7 @@ import { initLightbox } from "./image-lightbox-plugin";
 import { svgToPngBlob } from "./svg-to-png";
 import { FileMention, setFileMentionFiles } from "./file-mention-plugin";
 import { WikiLink, WikiLinkSuggestion, setWikiLinkFiles } from "./wiki-link-plugin";
+import { RawHtmlBlock, RawHtmlInline } from "./raw-html";
 
 // Fix: @tiptap/markdown v3.19.0 drops `escape` tokens from marked parser,
 // causing escaped characters like \_ to be silently lost during roundtrip.
@@ -1021,6 +1022,8 @@ function initEditor(initialContent: string = ""): Editor | null {
         FileMention,
         WikiLink,
         WikiLinkSuggestion,
+        RawHtmlBlock,
+        RawHtmlInline,
         ...conditionalExtensions,
       ],
       content: initialContent,
