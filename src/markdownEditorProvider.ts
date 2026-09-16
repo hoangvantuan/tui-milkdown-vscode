@@ -1,10 +1,6 @@
 import * as path from "path";
-import { exec } from "child_process";
 import * as vscode from "vscode";
-import type {
-  WebviewToHostMessage,
-  HostToWebviewMessage,
-} from "./shared/messages";
+import type { WebviewToHostMessage } from "./shared/messages";
 import { MAX_FILE_SIZE } from "./constants";
 import { getNonce } from "./utils/getNonce";
 import {
@@ -13,11 +9,17 @@ import {
   updateWorkspaceReferences,
   detectImageDeletes,
   executeImageDeletes,
-  hasPathTraversal,
   normalizePath,
 } from "./utils/image-rename-handler";
 import { cleanImagePath } from "./utils/clean-image-path";
-import { parseContent } from "./utils/frontmatter-parser";
+import type { TypedWebview } from "./host/typedWebview";
+import { getSystemFonts } from "./host/systemFonts";
+import { sendSavedPreferences } from "./host/savedPreferences";
+import { handleSaveImage } from "./host/saveImage";
+import { handleReadClipboardImage } from "./host/readClipboardImage";
+import { handleRequestImageRename } from "./host/requestImageRename";
+import { openWikiLink } from "./host/openWikiLink";
+import { handleExport } from "./host/exportDocument";
 
 // Image URL helpers
 function isRemoteUrl(url: string): boolean {
@@ -172,10 +174,6 @@ export function normalizeLineEndings(
   return content.replace(/\r\n|\r|\n/g, targetEol);
 }
 
-interface TypedWebview extends Omit<vscode.Webview, "postMessage"> {
-  postMessage(message: HostToWebviewMessage): Thenable<boolean>;
-}
-
 /**
  * CustomTextEditorProvider for Markdown WYSIWYG editing.
  * Registers for .md files via package.json customEditors.
@@ -192,9 +190,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
   /** Tracks clipboard error reasons shown during this session to avoid warning spam */
   private clipboardWarningsShown = new Set<string>();
-
-  /** Cached system font list — enumerated once, shared across all editors */
-  private static cachedFonts: string[] | null = null;
 
   constructor(private readonly context: vscode.ExtensionContext) { }
 
@@ -215,54 +210,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       this.clipboardWarningsShown.add(reason);
       vscode.window.showWarningMessage(warningMessage);
     }
-  }
-
-  /** Enumerate system font families (cached after first call) */
-  private async getSystemFonts(): Promise<string[]> {
-    if (MarkdownEditorProvider.cachedFonts) {
-      return MarkdownEditorProvider.cachedFonts;
-    }
-
-    const fonts = await new Promise<string[]>((resolve) => {
-      const platform = process.platform;
-      let cmd: string;
-
-      if (platform === "darwin") {
-        // macOS: use NSFontManager via JXA (fast, reliable, no dependencies)
-        cmd = `osascript -l JavaScript -e 'ObjC.import("AppKit"); var fm = $.NSFontManager.sharedFontManager; var f = fm.availableFontFamilies; var r = []; for (var i = 0; i < f.count; i++) r.push(f.objectAtIndex(i).js); JSON.stringify(r);'`;
-      } else if (platform === "win32") {
-        cmd = `powershell -NoProfile -Command "[Console]::OutputEncoding = [Text.Encoding]::UTF8; [System.Reflection.Assembly]::LoadWithPartialName('System.Drawing') | Out-Null; (New-Object System.Drawing.Text.InstalledFontCollection).Families | ForEach-Object { $_.Name }"`;
-      } else {
-        cmd = `fc-list : family`;
-      }
-
-      exec(cmd, { timeout: 15000 }, (err, stdout) => {
-        if (err) {
-          resolve([]);
-          return;
-        }
-
-        let result: string[];
-        if (platform === "darwin") {
-          try {
-            result = JSON.parse(stdout.trim());
-          } catch {
-            result = [];
-          }
-        } else {
-          // fc-list may return comma-separated families per line
-          result = stdout
-            .split(/[\n,]/)
-            .map((f) => f.trim())
-            .filter((f) => f.length > 0);
-        }
-
-        resolve([...new Set(result)].sort((a, b) => a.localeCompare(b)));
-      });
-    });
-
-    MarkdownEditorProvider.cachedFonts = fonts;
-    return fonts;
   }
 
   async resolveCustomTextEditor(
@@ -567,41 +514,12 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
         switch (msg.type) {
           case "ready": {
-            // Send saved global theme FIRST, before VS Code theme
-            const savedTheme = this.context.globalState.get<string>(
-              "markdownEditorTheme",
-            );
-            if (savedTheme) {
-              webview.postMessage({
-                type: "savedTheme",
-                theme: savedTheme,
-              });
-            }
-            // Send saved font
-            const savedFont = this.context.globalState.get<string>(
-              "markdownEditorFont",
-            );
-            if (savedFont) {
-              webview.postMessage({
-                type: "savedFont",
-                font: savedFont,
-              });
-            }
-            // Send saved zoom
-            const savedZoom = this.context.globalState.get<number>(
-              "markdownEditorZoom",
-            );
-            if (typeof savedZoom === "number") {
-              webview.postMessage({
-                type: "savedZoom",
-                zoom: savedZoom,
-              });
-            }
+            sendSavedPreferences(webview, this.context.globalState);
             sendTheme();
             sendConfig();
             updateWebview();
             // Send system fonts asynchronously (non-blocking)
-            this.getSystemFonts().then((fonts) => {
+            getSystemFonts().then((fonts) => {
               try {
                 webview.postMessage({
                   type: "systemFonts",
@@ -663,95 +581,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             break;
           }
           case "saveImage": {
-            const imgMsg = msg;
-            if (!imgMsg.data || !imgMsg.filename || !imgMsg.blobUrl) break;
-
-            // Security: Strong filename validation
-            const filename = imgMsg.filename;
-            // Block: path traversal, separators, null bytes, control chars, Windows reserved chars
-            const INVALID_FILENAME_CHARS = /[<>:"|?*\x00-\x1F\u202E]/;
-            // Windows reserved device names (case-insensitive)
-            const RESERVED_NAMES = /^(CON|PRN|AUX|NUL|COM\d|LPT\d)(\.|$)/i;
-
-            if (
-              !filename ||
-              filename.includes("..") ||
-              filename.includes("/") ||
-              filename.includes("\\") ||
-              INVALID_FILENAME_CHARS.test(filename) ||
-              RESERVED_NAMES.test(filename)
-            ) {
-              console.error("[Image Save] Invalid filename:", filename);
-              vscode.window.showErrorMessage("Invalid filename");
-              break;
-            }
-
-            try {
-              // Get configured folder
-              const config = vscode.workspace.getConfiguration("tuiMarkdown");
-              let saveFolder = config.get<string>("imageSaveFolder", "images")?.trim() || "images";
-
-              // Security: Validate saveFolder to prevent path traversal
-              const isAbsolute = saveFolder.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(saveFolder);
-              const hasTraversal = saveFolder.split(/[\\/]/).includes("..");
-              if (saveFolder !== "." && (isAbsolute || hasTraversal)) {
-                vscode.window.showErrorMessage(
-                  "imageSaveFolder must be a relative path (or '.') within the document folder."
-                );
-                break;
-              }
-
-              // Resolve folder path relative to document
-              const documentFolder = vscode.Uri.joinPath(document.uri, "..");
-              const imageFolder = vscode.Uri.joinPath(documentFolder, saveFolder);
-
-              // Security: Verify resolved path is within document directory
-              const rel = path.relative(documentFolder.fsPath, imageFolder.fsPath);
-              if (rel.startsWith('..') || path.isAbsolute(rel)) {
-                vscode.window.showErrorMessage(
-                  "imageSaveFolder resolves outside document folder."
-                );
-                break;
-              }
-
-              // Create folder if not exists
-              try {
-                await vscode.workspace.fs.createDirectory(imageFolder);
-              } catch {
-                // Folder may already exist
-              }
-
-              // Decode base64 and save file
-              // Note: Use [^;]+ to match MIME types like image/svg+xml
-              const base64Data = imgMsg.data.replace(
-                /^data:image\/[^;]+;base64,/i,
-                "",
-              );
-              const buffer = Buffer.from(base64Data, "base64");
-              const fileUri = vscode.Uri.joinPath(imageFolder, filename);
-              await vscode.workspace.fs.writeFile(fileUri, buffer);
-
-              // Build relative path for markdown
-              const relativePath =
-                saveFolder === "." ? filename : `${saveFolder}/${filename}`;
-
-              // Create webview URI for immediate display
-              const webviewUri =
-                webviewPanel.webview.asWebviewUri(fileUri).toString();
-
-              // Send back the saved path and webviewUri
-              webview.postMessage({
-                type: "imageSaved",
-                blobUrl: imgMsg.blobUrl,
-                savedPath: relativePath,
-                webviewUri,
-              });
-            } catch (err) {
-              console.error("[Image Save] Failed:", err);
-              vscode.window.showErrorMessage(
-                `Failed to save image: ${err instanceof Error ? err.message : String(err)}`,
-              );
-            }
+            await handleSaveImage(msg, document, webview);
             break;
           }
           case "showWarning": {
@@ -762,158 +592,11 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             break;
           }
           case "readClipboardImage": {
-            // Read image from system clipboard via native command (fallback for webviews
-            // where paste event clipboardData doesn't contain image items).
-            try {
-              const { execFile } = require("child_process") as typeof import("child_process");
-              const os = require("os") as typeof import("os");
-              const fs = require("fs") as typeof import("fs");
-              const id = `clipboard-${Date.now()}`;
-              const tmpPng = path.join(os.tmpdir(), `${id}.png`);
-              const tmpTiff = path.join(os.tmpdir(), `${id}.tiff`);
-              const cleanup = () => {
-                try { fs.unlinkSync(tmpPng); } catch { /* ok */ }
-                try { fs.unlinkSync(tmpTiff); } catch { /* ok */ }
-              };
-
-              const finalize = () => {
-                try {
-                  const buffer = fs.readFileSync(tmpPng);
-                  webview.postMessage({
-                    type: "clipboardImage",
-                    data: `data:image/png;base64,${buffer.toString("base64")}`,
-                  });
-                } catch (readErr) {
-                  this.notifyClipboardError(
-                    webview,
-                    "clipboard-file-read-failed",
-                    `Failed to read clipboard image: ${readErr instanceof Error ? readErr.message : String(readErr)}`,
-                  );
-                }
-                cleanup();
-              };
-
-              if (process.platform === "darwin") {
-                // macOS: try PNG first via osascript, fall back to TIFF + sips convert
-                const script = `
-                  try
-                    set theImage to the clipboard as «class PNGf»
-                    set theFile to open for access POSIX file "${tmpPng}" with write permission
-                    write theImage to theFile
-                    close access theFile
-                    return "png"
-                  on error
-                    try
-                      set theImage to the clipboard as «class TIFF»
-                      set theFile to open for access POSIX file "${tmpTiff}" with write permission
-                      write theImage to theFile
-                      close access theFile
-                      return "tiff"
-                    on error
-                      return "none"
-                    end try
-                  end try
-                `;
-                execFile("osascript", ["-e", script], { timeout: 5000 }, (err, stdout) => {
-                  if (err) {
-                    cleanup();
-                    this.notifyClipboardError(
-                      webview,
-                      "macos-clipboard-failed",
-                      `Failed to read clipboard image: ${err.message}`,
-                    );
-                    return;
-                  }
-                  const fmt = (stdout || "").trim();
-                  if (fmt === "none") {
-                    cleanup();
-                    return;
-                  }
-
-                  if (fmt === "tiff") {
-                    // Convert TIFF → PNG via sips
-                    execFile("sips", ["-s", "format", "png", tmpTiff, "--out", tmpPng],
-                      { timeout: 5000 }, (sipsErr) => {
-                        if (sipsErr) {
-                          cleanup();
-                          this.notifyClipboardError(
-                            webview,
-                            "sips-convert-failed",
-                            `Failed to convert clipboard image: ${sipsErr.message}`,
-                          );
-                          return;
-                        }
-                        finalize();
-                      });
-                  } else {
-                    finalize();
-                  }
-                });
-              } else if (process.platform === "win32") {
-                const psCmd = `$img = Get-Clipboard -Format Image; if ($img) { $img.Save('${tmpPng.replace(/'/g, "''")}', [System.Drawing.Imaging.ImageFormat]::Png); Write-Output 'ok' }`;
-                execFile("powershell", ["-NoProfile", "-Command", psCmd],
-                  { timeout: 5000 }, (err, stdout) => {
-                    if (err) {
-                      cleanup();
-                      this.notifyClipboardError(
-                        webview,
-                        "windows-clipboard-failed",
-                        `Failed to read clipboard image: ${err.message}`,
-                      );
-                      return;
-                    }
-                    if ((stdout || "").includes("ok")) {
-                      finalize();
-                    } else {
-                      cleanup();
-                    }
-                  });
-              } else {
-                // Linux: try xclip (X11), fall back to wl-paste (Wayland)
-                let xclipFailed = false;
-                let wlPasteFailed = false;
-
-                const tryCmd = (prog: string, args: string[]) => {
-                  execFile(prog, args, { timeout: 5000 }, (err, _stdout, stderr) => {
-                    if (!err) {
-                      finalize();
-                    } else if (prog === "xclip") {
-                      xclipFailed = true;
-                      // Fallback to wl-paste for Wayland
-                      tryCmd("sh", ["-c", `wl-paste --type image/png > "${tmpPng}"`]);
-                    } else {
-                      wlPasteFailed = true;
-                      cleanup();
-                      const errMsg = (stderr || err.message || "").toLowerCase();
-                      const isMissingTool =
-                        err.code === 127 ||
-                        errMsg.includes("not found") ||
-                        (xclipFailed && wlPasteFailed);
-                      if (isMissingTool) {
-                        this.notifyClipboardError(
-                          webview,
-                          "linux-missing-tools",
-                          "Install xclip or wl-clipboard to paste images",
-                        );
-                      } else {
-                        this.notifyClipboardError(
-                          webview,
-                          "linux-clipboard-failed",
-                          `Failed to read clipboard image: ${err.message}`,
-                        );
-                      }
-                    }
-                  });
-                };
-                tryCmd("sh", ["-c", `xclip -selection clipboard -t image/png -o > "${tmpPng}"`]);
-              }
-            } catch (err) {
-              this.notifyClipboardError(
-                webview,
-                "clipboard-native-unavailable",
-                `Failed to read clipboard image: ${err instanceof Error ? err.message : String(err)}`,
-              );
-            }
+            handleReadClipboardImage(
+              webview,
+              (target, reason, warningMessage) =>
+                this.notifyClipboardError(target, reason, warningMessage),
+            );
             break;
           }
           case "requestImageUrlEdit": {
@@ -982,106 +665,16 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             break;
           }
           case "requestImageRename": {
-            const renameMsg = msg;
-            if (!renameMsg.renameId || !renameMsg.oldPath || !renameMsg.newPath) break;
-
-            const { renameId, oldPath, newPath } = renameMsg;
-
-            // Security: Validate paths to prevent path traversal attacks
-            if (hasPathTraversal(oldPath) || hasPathTraversal(newPath)) {
-              console.error("[Image Rename] Path traversal detected:", { oldPath, newPath });
-              webview.postMessage({
-                type: "imageRenameResponse",
-                renameId,
-                success: false,
-                newPath,
-              });
-              vscode.window.showErrorMessage("Invalid path: path traversal detected");
-              break;
-            }
-
-            (async () => {
-              try {
-                // Resolve paths
-                const documentFolder = vscode.Uri.joinPath(document.uri, "..");
-                const oldUri = vscode.Uri.joinPath(documentFolder, oldPath);
-                const newUri = vscode.Uri.joinPath(documentFolder, newPath);
-
-                // Create parent directory if not exists
-                const newDir = vscode.Uri.joinPath(documentFolder, newPath, "..");
-                try {
-                  await vscode.workspace.fs.createDirectory(newDir);
-                } catch {
-                  // Directory may already exist
-                }
-
-                // Execute rename
-                await vscode.workspace.fs.rename(oldUri, newUri, { overwrite: false });
-
-                // Update document content with new path
-                const currentText = document.getText();
-                // Escape regex special chars and use context-aware replacement
-                const escapedOld = oldPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-                // Match in markdown image/link contexts: ![...](...) or <img src="...">
-                const updatedText = currentText.replace(
-                  new RegExp(`(\\]\\(|src=["'])${escapedOld}([)"'])`, "g"),
-                  `$1${newPath}$2`
-                );
-                if (updatedText !== currentText) {
-                  pendingEdit = true;
-                  try {
-                    const edit = new vscode.WorkspaceEdit();
-                    const fullRange = new vscode.Range(
-                      document.positionAt(0),
-                      document.positionAt(currentText.length),
-                    );
-                    edit.replace(document.uri, fullRange, updatedText);
-                    await vscode.workspace.applyEdit(edit);
-                  } finally {
-                    queueMicrotask(() => { pendingEdit = false; });
-                  }
-                }
-
-                // Update originalImagePaths
-                const originalMap = this.originalImagePaths.get(docKey);
-                if (originalMap) {
-                  originalMap.delete(oldPath);
-                  originalMap.set(newPath, newUri.fsPath);
-                }
-
-                // Build webviewUri for new path
-                const webviewUri = webviewPanel.webview.asWebviewUri(newUri).toString();
-
-                // Send success response
-                webview.postMessage({
-                  type: "imageRenameResponse",
-                  renameId,
-                  success: true,
-                  newPath,
-                  webviewUri,
-                });
-
-                // Update workspace references
-                await updateWorkspaceReferences([{
-                  oldRelative: oldPath,
-                  newRelative: newPath,
-                  oldAbsolute: oldUri.fsPath,
-                  newAbsolute: newUri.fsPath,
-                }], document.uri);
-
-              } catch (err) {
-                console.error("[Image Rename] Failed:", err);
-                webview.postMessage({
-                  type: "imageRenameResponse",
-                  renameId,
-                  success: false,
-                  newPath,
-                });
-                vscode.window.showWarningMessage(
-                  `Failed to rename image: ${err instanceof Error ? err.message : String(err)}`,
-                );
-              }
-            })();
+            handleRequestImageRename(
+              msg,
+              document,
+              webview,
+              this.originalImagePaths,
+              docKey,
+              (value) => {
+                pendingEdit = value;
+              },
+            );
             break;
           }
           case "fileSearch": {
@@ -1127,173 +720,19 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             break;
           }
           case "openWikiLink": {
-            const wikiFilename = msg.filename;
-            if (!wikiFilename) break;
-
-            const slugified = wikiFilename.trim().replace(/\s+/g, "-");
-            const candidates = [wikiFilename, slugified];
-            const patterns = candidates.flatMap((name) =>
-              name.includes("/")
-                ? [`${name}.md`]
-                : [`**/${name}.md`]
-            );
-
-            let results: vscode.Uri[] = [];
-            for (const pattern of patterns) {
-              const found = await vscode.workspace.findFiles(
-                pattern,
-                "{**/node_modules/**,**/.git/**}",
-                10,
-              );
-              for (const uri of found) {
-                if (!results.some((r) => r.fsPath === uri.fsPath)) {
-                  results.push(uri);
-                }
-              }
-            }
-
-            if (results.length === 0) {
-              const mdFiles = await vscode.workspace.findFiles(
-                "**/*.md",
-                "{**/node_modules/**,**/.git/**}",
-                5000,
-              );
-              const needle = slugified.toLowerCase();
-              results = mdFiles.filter((uri) => {
-                const stem = path.basename(uri.fsPath, ".md").toLowerCase();
-                return stem === needle || stem === wikiFilename.toLowerCase();
-              });
-            }
-
-            if (results.length === 0) {
-              vscode.window.showWarningMessage(`Wiki link: file "${wikiFilename}.md" not found`);
-            } else if (results.length === 1) {
-              await vscode.commands.executeCommand("vscode.open", results[0]);
-            } else {
-              const picks = results.map((uri) => ({
-                label: path.basename(uri.fsPath),
-                description: vscode.workspace.asRelativePath(uri),
-                uri,
-              }));
-              const chosen = await vscode.window.showQuickPick(picks, {
-                placeHolder: `Multiple files match "${wikiFilename}.md"`,
-              });
-              if (chosen) {
-                await vscode.commands.executeCommand("vscode.open", chosen.uri);
-              }
-            }
+            await openWikiLink(msg.filename);
             break;
           }
           case "export": {
-            const exportMsg = msg;
-
-            // Reject duplicate export requests so two save dialogs / two
-            // Chromium instances cannot race to the same output path.
-            if (exportInProgress) {
-              webview.postMessage({
-                type: "exportDone",
-                success: false,
-                reason: "busy",
-              });
-              vscode.window.showWarningMessage(
-                "Export in progress, please wait for the current export to finish.",
-              );
-              break;
-            }
-
-            const mermaidImages = exportMsg.mermaidImages || [];
-            const exportFormat = exportMsg.format || "docx";
-            const fontFamily = exportMsg.fontFamily || "";
-            const configuredPageSize = vscode.workspace
-              .getConfiguration("tuiMarkdown")
-              .get<string>("exportPageSize", "A4");
-            const pageSize: "A4" | "Letter" =
-              configuredPageSize === "Letter" ? "Letter" : "A4";
-
-            const rawText = document.getText();
-            const stripped = rawText.replace(/^﻿/, "");
-            const parsedFm = parseContent(stripped);
-            const normalized = parsedFm.body;
-
-            exportInProgress = true;
-            (async () => {
-              try {
-                const markdownAstPath = require("path").join(__dirname, "markdown-ast.js");
-                const {
-                  parseMarkdownToMdast,
-                  replaceMermaidBlocks,
-                  hashMermaidCode,
-                  countMermaidBlocks,
-                  stripWikiLinks,
-                } = require(markdownAstPath);
-
-                const mdast = await parseMarkdownToMdast(normalized);
-
-                // Drop the frontmatter node so it is not rendered as content.
-                if (
-                  mdast?.children?.[0] &&
-                  (mdast.children[0].type === "yaml" || mdast.children[0].type === "toml")
-                ) {
-                  mdast.children.shift();
-                }
-
-                if (!mdast?.children || mdast.children.length === 0) {
-                  vscode.window.showWarningMessage(
-                    "Document is empty, nothing to export.",
-                  );
-                  return;
-                }
-
-                const imageMap = new Map<string, string>(
-                  mermaidImages.map(({ code, base64 }: { code: string; base64: string }) => [
-                    hashMermaidCode(code),
-                    base64,
-                  ]),
-                );
-                const totalMermaid = countMermaidBlocks(mdast);
-                const replaced = await replaceMermaidBlocks(mdast, imageMap);
-                if (replaced < totalMermaid) {
-                  vscode.window.showWarningMessage(
-                    `${totalMermaid - replaced} of ${totalMermaid} Mermaid diagram(s) could not be embedded (still rendering or parse error). They will appear as code in the export.`,
-                  );
-                }
-
-                stripWikiLinks(mdast);
-
-                if (exportFormat === "pdf") {
-                  const exportPdfPath = require("path").join(__dirname, "export-pdf.js");
-                  const { exportToPdf: doExport } = require(exportPdfPath);
-                  await doExport(mdast, document.uri, fontFamily, pageSize);
-                } else {
-                  const exportDocxPath = require("path").join(__dirname, "export-docx.js");
-                  const { exportToDocx: doExport } = require(exportDocxPath);
-                  await doExport(mdast, document.uri, fontFamily, pageSize);
-                }
-
-                // Notify webview on success so the button can re-enable without
-                // relying on the 3-second timeout.
-                try {
-                  webview.postMessage({ type: "exportDone", success: true });
-                } catch {
-                  /* webview may have been disposed */
-                }
-              } catch (err) {
-                const errMsg = err instanceof Error ? err.message : String(err);
-                vscode.window.showErrorMessage(`Export failed: ${errMsg}`);
-                console.error("[Export]", err);
-                try {
-                  webview.postMessage({
-                    type: "exportDone",
-                    success: false,
-                    reason: errMsg,
-                  });
-                } catch {
-                  /* webview may have been disposed */
-                }
-              } finally {
-                exportInProgress = false;
-              }
-            })();
+            handleExport(
+              msg,
+              document,
+              webview,
+              () => exportInProgress,
+              (value) => {
+                exportInProgress = value;
+              },
+            );
             break;
           }
         }
