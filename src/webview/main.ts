@@ -133,6 +133,15 @@ const origParseTokens = (MarkdownManager.prototype as any).parseTokens;
 //   "\n\n" (2) = normal paragraph break -> 0 empty paras
 //   "\n\n\n" (3) = 1 blank line -> 1 empty para
 //   "\n\n\n\n" (4) = 2 blank lines -> 2 empty paras
+//
+// Loose list normalization (#91):
+// A loose list (`- a\n\n- b`) is serialized back as a tight list (`- a\n- b`).
+// This behavior originates upstream in @tiptap/extension-list (bulletList /
+// orderedList serializers join child items with '\n', not '\n\n') rather than
+// in our own code, so it cannot be customized here.
+// Per CONTEXT.md, this is an accepted Normalized change: surface syntax is
+// allowed to normalize on first save as long as it reaches a fixed point and
+// remains stable from the second save onward, which it does.
 const BlankLineHandler = Extension.create({
   name: "blankLineHandler",
   markdownTokenName: "space",
