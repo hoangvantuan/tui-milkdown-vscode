@@ -3,6 +3,7 @@
 // runs, because Tiptap and ProseMirror expect a DOM environment. jsdom is
 // marked external so the bundler does not try to inline it.
 const esbuild = require('esbuild');
+const path = require('path');
 
 const DOM_SHIM = `
 const { JSDOM } = require("jsdom");
@@ -71,11 +72,40 @@ const roundtripConfig = {
   logLevel: 'warning',
 };
 
-const target = process.argv.includes('--floor-tests') ? floorTestsConfig : roundtripConfig;
+const vscodeTestPlugin = {
+  name: 'vscode-test-stub',
+  setup(build) {
+    build.onResolve({ filter: /^vscode$/ }, () => ({
+      path: path.resolve(__dirname, 'test/vscode-stub.ts'),
+    }));
+  },
+};
+
+const testsConfig = {
+  entryPoints: [
+    'test/frontmatter-parser.test.ts',
+    'test/image-rename-handler.test.ts',
+  ],
+  outdir: 'out/test',
+  bundle: true,
+  format: 'cjs',
+  platform: 'node',
+  target: 'node18',
+  sourcemap: false,
+  minify: false,
+  plugins: [vscodeTestPlugin],
+  logLevel: 'warning',
+};
+
+const target = process.argv.includes('--test')
+  ? testsConfig
+  : process.argv.includes('--floor-tests')
+  ? floorTestsConfig
+  : roundtripConfig;
 
 esbuild
   .build(target)
-  .then(() => console.log(`harness built: ${target.outfile}`))
+  .then(() => console.log(`harness built: ${target.outfile || target.outdir}`))
   .catch((err) => {
     console.error(err);
     process.exit(1);
