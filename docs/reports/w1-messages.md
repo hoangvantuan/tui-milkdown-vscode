@@ -69,32 +69,52 @@ Nếu gửi thiếu thuộc tính bắt buộc hoặc sai kiểu dữ liệu c�
 
 ---
 
-## 5. Phân Tích Sai Lệch trong Mô Tả Issue #105 và Giải Pháp Xử Lý
+## 5. Thân Issue #105 Sai Ở Đâu và Cách Xử Lý Đã Chốt
 
-### Vấn đề trong mô tả ban đầu của Issue #105
-Mô tả gốc yêu cầu: "webview gọi showError(message.error) khi đọc clipboard thất bại".
-Khi kiểm tra mã nguồn thực tế tại `src/webview/main.ts:796`:
-```typescript
-function showError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-  editorEl.innerHTML = `
-    <div class="editor-error">
-      <p>Failed to load editor</p>
-      <p class="editor-error-detail">${escapeHtml(message)}</p>
-    </div>
-  `;
-}
-```
-Hàm `showError()` này xóa sạch toàn bộ nội dung DOM của trình soạn thảo (`editorEl.innerHTML`), biến màn hình soạn thảo thành trang báo lỗi fatal không thể phục hồi, làm mất sạch dữ liệu người dùng đang nhập dở.
+### Thân issue #105 sai ở đâu: Nguyên văn câu sai
+Trong mô tả ban đầu của issue #105, tác giả yêu cầu:
+> "khi hỏng để webview bật toast lỗi sẵn có (showError ở main.ts:796; nhánh nhận là case \"clipboardImage\" ở main.ts:1983)"
 
-### Giải pháp kỹ thuật đã thống nhất với điều phối viên
-Vấn đề đã được báo cáo lên điều phối viên qua kênh `orca orchestration ask`. Điều phối viên đã xác nhận sai lệch và hướng dẫn tiêu chuẩn nghiệm thu mới:
-1. Không gọi `showError()` trong webview. Không tạo thêm component toast nổi mới trong webview để tránh xung đột CSS và DOM với Worker W2 chạy song song.
-2. Tại webview: Khi nhận thông điệp `clipboardImage` có `message.error`, webview chỉ cần đặt lại trạng thái chờ dán ảnh và ghi log cảnh báo: `console.warn("[Clipboard]", message.error)`. Trình soạn thảo vẫn giữ nguyên vẹn 100%, thao tác dán văn bản thường không bị ảnh hưởng.
-3. Tại extension host:
-   - Hiển thị thông báo cảnh báo thân thiện cho người dùng thông qua `vscode.window.showWarningMessage`.
-   - Cơ chế chống lặp: Sử dụng `clipboardWarningsShown = new Set<string>()` để mỗi lý do lỗi chỉ hiển thị cảnh báo tối đa một lần trong mỗi phiên làm việc, tránh làm phiền người dùng nếu họ nhấn phím dán nhiều lần liên tiếp.
-   - Hỗ trợ người dùng Linux: Khi clipboard không thể đọc được ảnh trên Linux do thiếu tiện ích hệ thống (`xclip` hoặc `wl-paste`), extension đưa ra hướng dẫn hành động cụ thể: "Install xclip or wl-clipboard to paste images".
+### Mã nguồn chứng minh sai lệch
+1. **`showError` không phải là toast**:
+   Tại `src/webview/main.ts:796`:
+   ```typescript
+   function showError(error: unknown) {
+     const message = error instanceof Error ? error.message : String(error);
+     editorEl.innerHTML = `
+       <div class="editor-error">
+         <p>Failed to load editor</p>
+         <p class="editor-error-detail">${escapeHtml(message)}</p>
+       </div>
+     `;
+   }
+   ```
+   Hàm `showError()` này gán thẳng `editorEl.innerHTML = errorHtml`. Đây là màn hình lỗi chí mạng (fatal error screen) chỉ dùng khi editor không thể khởi tạo (ví dụ không tìm thấy phần tử DOM `#editor`). Nếu gọi nó khi dán ảnh hỏng, toàn bộ nội dung tài liệu người dùng đang mở sẽ bị xóa trắng ngay lập tức.
+2. **Không có "trạng thái chờ" nào để hủy**:
+   Tại `src/webview/main.ts:2121-2130`, handler paste của webview chỉ bắn thông điệp lên host:
+   ```typescript
+   storedPostMessage({ type: "readClipboardImage" });
+   // Text paste continues normally
+   ```
+   Sau đó đường dán văn bản thường vẫn tiếp tục diễn ra độc lập. Phía webview không hề lưu biến trạng thái hay promise treo chờ nào, nên không có trạng thái chờ nào để thoát hay hủy.
+
+### Cách xử lý đã chốt với điều phối viên
+Vấn đề đã được báo cáo lên điều phối viên qua kênh `orca orchestration ask`. Điều phối viên đã xác nhận sai lệch và ban hành chỉ thị "SỬA ĐỔI GIỮA SÓNG số 2":
+1. **Không gọi `showError()`**: Tuyệt đối không chạm vào DOM của editor.
+2. **Không dựng toast mới**: Tránh thêm CSS mới gây xung đột với Worker W2 đang dời khối `<style>` với tiêu chí nghiệm thu "diff CSS rỗng".
+3. **Phía webview chỉ làm hai việc**:
+   - Bổ sung trường `error?: string` vào loại thông điệp `clipboardImage` trong `src/shared/messages.ts`.
+   - Trong `case "clipboardImage"` tại `src/webview/main.ts`, khi có `message.error` thì ghi log cảnh báo: `console.warn("[Clipboard]", message.error)`. Không chạm DOM. Editor giữ nguyên 100%, đường dán văn bản thường không bị chặn.
+4. **Toàn bộ phần hiển thị cho người dùng do host đảm nhiệm**:
+   - Hiển thị thông báo qua `vscode.window.showWarningMessage`.
+   - Cơ chế chống lặp: Lưu `clipboardWarningsShown = new Set<string>()`, đảm bảo mỗi lý do lỗi chỉ hiện cảnh báo đúng một lần trong mỗi phiên làm việc.
+   - Hướng dẫn hữu ích trên Linux: Nếu thiếu công cụ clipboard hệ thống (`xclip` hoặc `wl-paste`), hiển thị rõ: "Install xclip or wl-clipboard to paste images".
+
+### Mô tả cách ép lỗi khi kiểm thử
+Để kiểm thử nhánh xử lý lỗi clipboard:
+- Giả lập lỗi tại hàm đọc clipboard trong `src/markdownEditorProvider.ts` (ném ngoại lệ `new Error("Command failed: xclip -selection clipboard -t TARGETS -o")` hoặc giả lập không tìm thấy tiện ích clipboard).
+- Thực hiện thao tác dán ảnh: Extension host hiển thị thông báo `vscode.window.showWarningMessage("Failed to paste image from clipboard: ... Install xclip or wl-clipboard to paste images")` đúng một lần. Khi thực hiện dán ảnh hỏng tiếp lần thứ hai, cảnh báo không bị hiển thị lặp lại.
+- Trên console của webview: Xuất hiện log `[Clipboard] Command failed: xclip...`. Trình soạn thảo không bị treo, nội dung tài liệu đang mở giữ nguyên vẹn, và thao tác dán văn bản thuần vẫn hoạt động bình thường.
 
 ---
 
@@ -115,6 +135,11 @@ Khi người dùng đóng tab soạn thảo hoặc webview bị hủy (`onDidDis
 Do nguyên tắc không sửa trực tiếp các tệp tài liệu ở thư mục gốc trong quá trình làm việc của worker, nội dung đề xuất cập nhật được tổng hợp dưới đây để điều phối viên gộp sau:
 
 ### Đề xuất cho AGENTS.md
+
+Thêm vào mục **Architecture (Extension ↔ Webview communication flow)**:
+```markdown
+- All communication adheres to the typed protocol in `src/shared/messages.ts` (`WebviewToHostMessage` and `HostToWebviewMessage`).
+```
 
 Thêm vào mục **File Structure**:
 ```markdown
