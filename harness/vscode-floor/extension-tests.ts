@@ -18,6 +18,21 @@
  * the DevTools protocol, can inspect the live webview DOM — the part the
  * extension host cannot see. Results are written to the JSON file named by
  * `TUI_FLOOR_RESULT`, which the runner reads after the process exits.
+ *
+ * Everything above is READ-ONLY, and two of its checks assert the document is
+ * not dirty. A second phase then deliberately modifies it, which is why the
+ * order is fixed and the two phases rendezvous on marker files rather than
+ * overlapping: this side writes `phase-interact` once its read-only checks
+ * have been recorded, the runner drives the webview's own UI, the runner
+ * writes `phase-driven`, and this side then asserts what the driving produced.
+ *
+ * What the second phase is for: `resolveCustomTextEditor` carries the whole
+ * per-document contract — `pendingEdit`, `inFlightEdit`, the debounce timer —
+ * and the markdown roundtrip harness cannot see any of it, because that
+ * harness measures a string through an editor, not a provider through VS Code.
+ * A typed character proving that (a) it reaches the document and (b) it does
+ * NOT bounce back as a second update is the cheapest evidence that contract
+ * still holds. It is what a refactor of that method has to keep green.
  */
 import * as fs from "fs";
 import * as path from "path";
@@ -28,6 +43,10 @@ const VIEW_TYPE = "tuiMarkdown.editor";
 const EXPECTED_COMMANDS = ["tuiMarkdown.viewSource", "tuiMarkdown.viewRichText"];
 /** How long the custom editor stays open for the runner's DOM inspection. */
 const HOLD_MS = Number(process.env.TUI_FLOOR_HOLD_MS ?? 25000);
+/** The text the runner types in. Spelled once, in run.mjs, and passed here. */
+const SENTINEL = process.env.TUI_FLOOR_SENTINEL ?? "FLOORPROBE";
+/** How long to wait for the runner to finish driving before giving up. */
+const DRIVEN_TIMEOUT_MS = 60000;
 
 interface Check {
   name: string;
@@ -43,6 +62,16 @@ function record(name: string, ok: boolean, detail: string): boolean {
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Wait for a file to appear, or give up. Used for the phase rendezvous. */
+async function waitForFile(file: string, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (fs.existsSync(file)) return true;
+    await sleep(250);
+  }
+  return false;
+}
 
 /** The active tab, once it is the custom editor — or null after `timeoutMs`. */
 async function waitForCustomTab(timeoutMs: number): Promise<vscode.Tab | null> {
@@ -115,6 +144,62 @@ export async function run(): Promise<void> {
       !!afterHold && !afterHold.isDirty,
       afterHold ? `isDirty=${afterHold.isDirty}` : "document not open in the text model",
     );
+
+    // ---- Phase two: the document is modified from here on. ----
+    if (afterHold && resultPath) {
+      const base = path.dirname(resultPath);
+      const versionBeforeEdit = afterHold.version;
+      fs.writeFileSync(path.join(base, "phase-interact"), "go", "utf8");
+
+      const drivenPath = path.join(base, "phase-driven");
+      if (!(await waitForFile(drivenPath, DRIVEN_TIMEOUT_MS))) {
+        record("runner drove the webview", false, "phase-driven never appeared");
+      } else {
+        const text = afterHold.getText();
+        record(
+          "a typed character reaches the document",
+          afterHold.isDirty && text.includes(SENTINEL),
+          `isDirty=${afterHold.isDirty} sentinelInText=${text.includes(SENTINEL)} version ${versionBeforeEdit}\u2192${afterHold.version}`,
+        );
+
+        // The `pendingEdit` guard is what stops the host's own WorkspaceEdit
+        // from being echoed back to the webview as an `update`, re-serialized
+        // and posted again as a new `edit`. A broken guard is a runaway
+        // version count, not a wrong character, so the only way to see it is
+        // to look twice with the editor idle in between.
+        const versionAfterEdit = afterHold.version;
+        await sleep(3000);
+        record(
+          "the edit does not bounce between host and webview",
+          afterHold.version === versionAfterEdit,
+          `version ${versionAfterEdit} then ${afterHold.version} after 3s idle`,
+        );
+
+        // The runner clicked `#btn-source`, so the `viewSource` case must have
+        // opened the raw markdown in an ordinary text editor.
+        const sourceEditor = vscode.window.visibleTextEditors.find(
+          (editor) =>
+            editor.document.uri.fsPath === samplePath &&
+            editor.document.uri.scheme === "file",
+        );
+        record(
+          "view source opens the raw markdown in a text editor",
+          !!sourceEditor,
+          sourceEditor
+            ? `${vscode.window.visibleTextEditors.length} visible text editor(s)`
+            : `no text editor for the sample; visible=${vscode.window.visibleTextEditors.length}`,
+        );
+
+        // Leave nothing dirty behind: VS Code can block its own shutdown on a
+        // modified document, and the runner would then SIGKILL the host and
+        // report a timeout instead of these results.
+        try {
+          await afterHold.save();
+        } catch {
+          /* the run is over either way; the checks above are already recorded */
+        }
+      }
+    }
   } catch (err) {
     record(
       "extension host run completed without throwing",
