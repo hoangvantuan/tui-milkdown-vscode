@@ -69,6 +69,10 @@ import { initLightbox } from "./image-lightbox-plugin";
 import { svgToPngBlob } from "./svg-to-png";
 import { FileMention, setFileMentionFiles } from "./file-mention-plugin";
 import { WikiLink, WikiLinkSuggestion, setWikiLinkFiles } from "./wiki-link-plugin";
+import { installMarkdownTextEscape } from "./markdown-text-escape";
+
+// Install unified text escape overrides on MarkdownManager (#97, #99, #100, #101).
+installMarkdownTextEscape();
 
 // Fix: @tiptap/markdown v3.19.0 drops `escape` tokens from marked parser,
 // causing escaped characters like \_ to be silently lost during roundtrip.
