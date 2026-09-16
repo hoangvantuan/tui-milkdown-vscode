@@ -75,6 +75,7 @@ import { WikiLink } from "../src/webview/wiki-link-plugin";
 import { RawHtmlBlock, RawHtmlInline } from "../src/webview/raw-html";
 import { installMarkdownTextEscape } from "../src/webview/markdown-text-escape";
 import { CustomOrderedList } from "../src/webview/ordered-list-extension";
+import { ListKeymapExtension } from "../src/webview/list-keymap-extension";
 import {
   parseContent,
   reconstructContent,
@@ -321,6 +322,7 @@ function buildMarkdownExtensions(
       nested: true,
     }),
     CustomOrderedList,
+    ListKeymapExtension,
     Markdown.configure({
       marked: customMarked,
       indentation,

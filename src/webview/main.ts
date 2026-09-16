@@ -73,6 +73,7 @@ import { WikiLink, WikiLinkSuggestion, setWikiLinkFiles } from "./wiki-link-plug
 import { RawHtmlBlock, RawHtmlInline } from "./raw-html";
 import { installMarkdownTextEscape } from "./markdown-text-escape";
 import { CustomOrderedList } from "./ordered-list-extension";
+import { ListKeymapExtension } from "./list-keymap-extension";
 
 // Install unified text escape overrides on MarkdownManager (#97, #99, #100, #101).
 installMarkdownTextEscape();
@@ -1139,6 +1140,7 @@ function initEditor(initialContent: string = ""): Editor | null {
           nested: true,
         }),
         CustomOrderedList,
+        ListKeymapExtension,
         Placeholder.configure({
           placeholder: "Type something...",
         }),
