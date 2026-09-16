@@ -1,13 +1,13 @@
 # Underline
 
-This paragraph contains <ins>underlined text</ins> using the ins tag.
+Pasted HTML: <u>u tag text</u> here.
 
-This paragraph contains **bold text with <ins>underlined text</ins>** inside it.
+Legacy syntax: ++plus syntax text++ here.
 
-This paragraph contains <ins>pasted underline text</ins> using the u tag.
+Ins tag: <ins>ins tag text</ins> here.
 
-This paragraph contains <ins>old underline syntax</ins> from earlier versions.
+Bold wrap: **bold with <u>u inside</u>** here.
 
-| Column 1                        | Column 2     |
-| ------------------------------- | ------------ |
-| <ins>table cell underline</ins> | regular text |
+| Column 1 | Column 2 |
+| --- | --- |
+| ++cell plus++ | regular text |

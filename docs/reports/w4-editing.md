@@ -12,8 +12,8 @@
   - Phản chiếu chính xác `CustomUnderline` và cấu hình `underline: false` sang `harness/editor.ts`.
   - Bổ sung nút Underline vào nhóm định dạng văn bản của thanh toolbar trong `src/markdownEditorProvider.ts` bằng cách tái sử dụng class `toolbar-btn` sẵn có và thêm đúng 0 khai báo CSS.
   - Bổ sung lệnh `underline` vào `TOOLBAR_COMMANDS` và kiểm tra trạng thái kích hoạt trong `updateToolbarActiveState` ở `src/webview/main.ts`.
-  - Thêm khai báo `"@tiptap/extension-underline": "3.30.1"` vào `dependencies` của `package.json`.
-  - Tạo fixture mới `harness/fixtures/synthetic/underline.md` và golden tương ứng, kiểm tra đạt độ ổn định tuyệt đối ở vòng hai.
+  - Thêm khai báo `"@tiptap/extension-underline": "3.30.1"` vào `dependencies` của `package.json` và đồng bộ vào `package-lock.json`.
+  - Tạo fixture mới `harness/fixtures/synthetic/underline.md` chứa toàn bộ cú pháp thô đầu vào (`<u>`, `++`, `<ins>`, `**bold with <u>**`, ô bảng `++`) và golden chuẩn hóa tương ứng (`<ins>`), kiểm tra chứng minh fixture thực sự ghim chặt tính năng (bỏ extension thì fail, có extension thì pass) và đạt độ ổn định tuyệt đối ở vòng hai.
 - **#108 (Phím tắt hai chiều)**:
   - Thêm cấu hình `contributes.keybindings` vào `package.json` cho hai lệnh `tuiMarkdown.viewSource` (điều kiện: `activeCustomEditorId == 'tuiMarkdown.editor'`) và `tuiMarkdown.viewRichText` (điều kiện: `editorLangId == 'markdown' && !activeCustomEditorId`), gán tổ hợp `ctrl+shift+m` trên Windows/Linux và `cmd+shift+m` trên macOS.
   - Giữ nguyên bộ lắng nghe sự kiện keydown trong webview để phím tắt vẫn hoạt động khi webview đang giữ focus.
@@ -57,23 +57,76 @@
 ### 2.2. Issue #106
 
 - **Tiêu chí 1**: Fixture mới `harness/fixtures/synthetic/underline.md` có `<ins>` trong paragraph, trong đậm, trong ô bảng, một `<u>x</u>` kiểu dán vào, và một `++x++` cũ; golden cho `<ins>` ở mọi chỗ và ổn định ở vòng hai.
-  - *Bằng chứng*: Nội dung `harness/golden/synthetic/underline.md`:
+  - *Nội dung fixture thô đầu vào (`harness/fixtures/synthetic/underline.md`)*:
   ```markdown
   # Underline
 
-  This paragraph contains <ins>underlined text</ins> using the ins tag.
+  Pasted HTML: <u>u tag text</u> here.
 
-  This paragraph contains **bold text with <ins>underlined text</ins>** inside it.
+  Legacy syntax: ++plus syntax text++ here.
 
-  This paragraph contains <ins>pasted underline text</ins> using the u tag.
+  Ins tag: <ins>ins tag text</ins> here.
 
-  This paragraph contains <ins>old underline syntax</ins> from earlier versions.
+  Bold wrap: **bold with <u>u inside</u>** here.
 
-  | Column 1                        | Column 2     |
-  | ------------------------------- | ------------ |
-  | <ins>table cell underline</ins> | regular text |
+  | Column 1 | Column 2 |
+  | --- | --- |
+  | ++cell plus++ | regular text |
   ```
-  - Kiểm tra vòng hai xác nhận `underline.md` đạt điểm bất động (0 diff).
+  - *Nội dung golden chuẩn hóa (`harness/golden/synthetic/underline.md`)*:
+  ```markdown
+  # Underline
+
+  Pasted HTML: <ins>u tag text</ins> here.
+
+  Legacy syntax: <ins>plus syntax text</ins> here.
+
+  Ins tag: <ins>ins tag text</ins> here.
+
+  Bold wrap: **bold with <ins>u inside</ins>** here.
+
+  | Column 1             | Column 2     |
+  | -------------------- | ------------ |
+  | <ins>cell plus</ins> | regular text |
+  ```
+  - *Bằng chứng chứng minh fixture thực sự chốt chặn tính năng (Pinning Proof)*:
+    Khi tạm thời gỡ bỏ `CustomUnderline` khỏi danh sách extension trong `harness/editor.ts`, lệnh `npm run roundtrip` lập tức báo lỗi đỏ (RED) trên chính fixture `synthetic/underline.md`:
+  ```
+  FAIL     synthetic/underline.md (+0 -0 lines)
+    --- golden/synthetic/underline.md
+    +++ current/synthetic/underline.md
+    @@ -1,14 +1,14 @@
+     # Underline
+     
+    -Pasted HTML: <ins>u tag text</ins> here.
+    +Pasted HTML: u tag text here.
+     
+    -Legacy syntax: <ins>plus syntax text</ins> here.
+    +Legacy syntax: ++plus syntax text++ here.
+     
+    -Ins tag: <ins>ins tag text</ins> here.
+    +Ins tag: ins tag text here.
+     
+    -Bold wrap: **bold with <ins>u inside</ins>** here.
+    +Bold wrap: **bold with u inside** here.
+     
+    -| Column 1             | Column 2     |
+    -| -------------------- | ------------ |
+    -| <ins>cell plus</ins> | regular text |
+    +| Column 1      | Column 2     |
+    +| ------------- | ------------ |
+    +| ++cell plus++ | regular text |
+     
+
+  ──────────────────────────────────────────
+  ──────────────────────────────────────────
+  38 markdown fixtures + 6 seams: 43 passed, 1 failed, 0 missing, 0 errored
+  ```
+    Khi khôi phục `CustomUnderline`, toàn bộ 44 kiểm thử xanh trở lại (GREEN):
+  ```
+  38 markdown fixtures + 6 seams: 44 passed, 0 failed, 0 missing, 0 errored
+  ```
+  - *Kiểm tra vòng hai (Second-pass stability check)*: Sao chép toàn bộ golden sang fixtures và chạy roundtrip, xác nhận `underline.md` có 0 diff, toàn bộ corpus chỉ duy nhất 1 failed do fixture `list-continuation-underindented.md` cũ từ W3.
 - **Tiêu chí 2**: Ctrl/Cmd+U bật tắt gạch chân và nút toolbar hiện trạng thái active.
   - *Bằng chứng*: Extension Underline đăng ký shortcut `Mod-u` / `Mod-U` gọi `toggleUnderline()`. Nút toolbar `data-command="underline"` kết nối với `TOOLBAR_COMMANDS['underline']` và được `updateToolbarActiveState` cập nhật class `is-active` dựa trên `ed.isActive('underline')`:
   ```
@@ -103,6 +156,8 @@
   - *Bằng chứng*: Kiểm tra `git status` sau khi cập nhật golden chỉ xuất hiện tệp mới `harness/golden/synthetic/underline.md`. Toàn bộ 37 fixture cũ và 6 seam giữ nguyên 100%.
 - **Tiêu chí 5**: `harness/editor.ts` và `initEditor()` khớp nhau về phần mark.
   - *Bằng chứng*: Cả hai đều cấu hình `StarterKit.configure({ ... underline: false })` và nạp `CustomUnderline` mở rộng từ `Underline` với cùng luật `parseHTML` và `renderMarkdown`.
+- **Tiêu chí 6**: Khai báo phụ thuộc trong `package.json` và đồng bộ `package-lock.json`.
+  - *Bằng chứng*: Đã ghi nhận `"@tiptap/extension-underline": "3.30.1"` vào `dependencies` của `package.json` và đồng bộ đầy đủ vào `package-lock.json`.
 
 ### 2.3. Issue #108
 
@@ -224,3 +279,6 @@ Cập nhật mục Rich Text Editing và Keyboard Shortcuts:
    - Thân issue #106 chỉ lưu ý về `Underline.parseHTML` hôm nay chỉ nhận `u` và `text-decoration: underline`. Tuy nhiên khi kiểm tra thực tế, module `src/webview/raw-html.ts` (được đưa vào từ issue #96) có một danh sách loại trừ các thẻ native (`br`, `u`, `table`...). Nếu không thêm `ins` vào điều kiện loại trừ của `RawHtmlInline` (`if (tagName === "u" || tagName === "ins") return;`), thì Marked lexer sẽ phân giải thẻ `<ins>` thành các node nguyên tử `rawHtmlInline` thay vì chuyển thành mark `underline`.
 2. **Issue #104 và giới hạn kỹ thuật của sự kiện `pagehide` trong VS Code Webview**:
    - Thân issue #104 kỳ vọng flush triệt để. Tuy nhiên trên thực tế kiến trúc webview của VS Code chạy trong process Electron riêng, việc gửi thông điệp `postMessage` trong sự kiện `pagehide` phụ thuộc vào việc webview host có bị giải phóng trước khi thông điệp IPC được chuyển giao sang extension host hay không. Module header comment đã được cập nhật trung thực để nêu rõ ranh giới kỹ thuật này.
+3. **Kỷ luật đối với synthetic fixtures và tính năng mới**:
+   - Fixture synthetic dùng để chốt chặn tính năng phải chứa cú pháp thô đầu vào chưa chuẩn hóa (`<u>`, `++`), không được chứa sẵn cú pháp đích (`<ins>`). Nếu fixture chứa sẵn cú pháp đích, khi gỡ bỏ extension xử lý thì harness vẫn vượt qua (false positive), làm mất hoàn toàn giá trị chốt chặn của fixture trong hệ thống kiểm thử tự động.
+
