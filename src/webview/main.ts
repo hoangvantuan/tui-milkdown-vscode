@@ -697,9 +697,13 @@ function debouncedPostEdit(): void {
   if (debounceTimer !== null) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(async () => {
     if (!editor) { debounceTimer = null; return; }
-    // Serialize only once per debounce window (300ms after last keystroke)
-    currentBody = serializeEditorBody()!;
-    const content = buildContent(currentBody);
+    // Serialize only once per debounce window (300ms after last keystroke).
+    // Held locally until the post actually happens: `currentBody` is what the
+    // host is believed to hold, and `sendFullContent` ships it verbatim on a
+    // metadata edit. Assigning it for a post that the gate below suppresses
+    // would smuggle the serializer's normalizations into the next real edit.
+    const body = serializeEditorBody()!;
+    const content = buildContent(body);
 
     // Nothing the host does not already have. Typically the document was
     // changed and changed back inside one debounce window, or a transaction
@@ -724,14 +728,14 @@ function debouncedPostEdit(): void {
       } else {
         // Max retries reached - send edit anyway to avoid stuck state
         blobRetryCount = 0;
-        postEdit(content);
+        if (postEdit(content)) currentBody = body;
         debounceTimer = null;
       }
       return;
     }
 
     blobRetryCount = 0;
-    postEdit(content);
+    if (postEdit(content)) currentBody = body;
     debounceTimer = null;
   }, DEBOUNCE_MS);
 }
@@ -758,8 +762,8 @@ function flushPendingEdit(): void {
 
   if (!editor) return;
 
-  currentBody = serializeEditorBody()!;
-  postEdit(buildContent(currentBody));
+  const body = serializeEditorBody()!;
+  if (postEdit(buildContent(body))) currentBody = body;
 }
 
 // DOM elements
