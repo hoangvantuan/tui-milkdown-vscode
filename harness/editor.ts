@@ -34,6 +34,7 @@ import {
   MarkdownImage,
 } from "../src/webview/markdown-destination";
 import { Highlight } from "@tiptap/extension-highlight";
+import { Underline } from "@tiptap/extension-underline";
 import { Table, TableRow, TableCell, TableHeader } from "@tiptap/extension-table";
 import { CodeBlockLowlight } from "@tiptap/extension-code-block-lowlight";
 import { TaskList, TaskItem } from "@tiptap/extension-list";
@@ -148,6 +149,28 @@ const BlankLineHandler = Extension.create({
   },
 });
 
+// Mirror of CustomUnderline in src/webview/main.ts.
+const CustomUnderline = Underline.extend({
+  parseHTML() {
+    return [
+      {
+        tag: "ins",
+      },
+      {
+        tag: "u",
+      },
+      {
+        style: "text-decoration",
+        consuming: false,
+        getAttrs: (style: any) => (style.includes("underline") ? {} : false),
+      },
+    ];
+  },
+  renderMarkdown(node: any, helpers: any) {
+    return `<ins>${helpers.renderChildren(node)}</ins>`;
+  },
+});
+
 // Expands leading tab indentation and tabs after list markers into spaces according
 // to 4-space tab stops, avoiding marked list tokenizer bug where `-\ta\n\tcontinuation`
 // preserves extra leading spaces and causes continuation lines to detach on subsequent saves.
@@ -228,7 +251,9 @@ function buildMarkdownExtensions(
       document: false,
       blockquote: false,
       link: false,
+      underline: false,
     }),
+    CustomUnderline,
     MarkdownLink.configure({
       openOnClick: false,
       autolink: true,

@@ -3758,6 +3758,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             <button class="toolbar-btn" data-command="italic" title="Italic (Ctrl+I)" aria-label="Italic">
               <svg viewBox="0 0 24 24"><line x1="19" y1="4" x2="10" y2="4"/><line x1="14" y1="20" x2="5" y2="20"/><line x1="15" y1="4" x2="9" y2="20"/></svg>
             </button>
+            <button class="toolbar-btn" data-command="underline" title="Underline (Ctrl+U)" aria-label="Underline">
+              <svg viewBox="0 0 24 24"><path d="M6 4v6a6 6 0 0 0 12 0V4"/><line x1="4" y1="20" x2="20" y2="20"/></svg>
+            </button>
             <button class="toolbar-btn" data-command="strike" title="Strikethrough" aria-label="Strikethrough">
               <svg viewBox="0 0 24 24"><path d="M16 4H9a3 3 0 0 0-2.83 4"/><path d="M14 12a4 4 0 0 1 0 8H6"/><line x1="4" y1="12" x2="20" y2="12"/></svg>
             </button>

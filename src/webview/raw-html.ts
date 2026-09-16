@@ -10,7 +10,7 @@
  *
  * Recognized tags that have dedicated extensions keep working natively:
  *   - <br> -> HardBreak
- *   - <u> -> Underline
+ *   - <u>, <ins> -> Underline
  *   - <table>, <thead>, <tbody>, <tr>, <th>, <td>, <colgroup>, <col> -> Table
  *   - <img> without unmodeled attributes -> Image (MarkdownImage)
  *
@@ -167,7 +167,7 @@ export const RawHtmlInline = Node.create({
 
       // Recognized tags handled natively by dedicated extensions:
       if (tagName === "br") return;
-      if (tagName === "u") return;
+      if (tagName === "u" || tagName === "ins") return;
       if (/^(table|thead|tbody|tfoot|tr|th|td|colgroup|col)$/.test(tagName)) return;
 
       return {

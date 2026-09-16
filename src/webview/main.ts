@@ -20,6 +20,7 @@ import { Editor, Extension } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { MarkdownLink, MarkdownImage } from "./markdown-destination";
 import { Highlight } from "@tiptap/extension-highlight";
+import { Underline } from "@tiptap/extension-underline";
 import { Table, TableRow, TableCell, TableHeader } from "@tiptap/extension-table";
 import { CodeBlockLowlight } from "@tiptap/extension-code-block-lowlight";
 import { TaskList, TaskItem } from "@tiptap/extension-list";
@@ -144,6 +145,27 @@ const BlankLineHandler = Extension.create({
     return Array.from({ length: emptyCount }, () =>
       helpers.createNode("paragraph", undefined, []),
     );
+  },
+});
+
+export const CustomUnderline = Underline.extend({
+  parseHTML() {
+    return [
+      {
+        tag: "ins",
+      },
+      {
+        tag: "u",
+      },
+      {
+        style: "text-decoration",
+        consuming: false,
+        getAttrs: (style: any) => (style.includes("underline") ? {} : false),
+      },
+    ];
+  },
+  renderMarkdown(node: any, helpers: any) {
+    return `<ins>${helpers.renderChildren(node)}</ins>`;
   },
 });
 
@@ -1075,7 +1097,9 @@ function initEditor(initialContent: string = ""): Editor | null {
           document: false, // Replaced by custom Document below
           blockquote: false, // Replaced by custom Blockquote with alert detection
           link: false, // Replaced by MarkdownLink below (destination escaping)
+          underline: false, // Replaced by CustomUnderline below (<ins> serialization)
         }),
+        CustomUnderline,
         // Link/Image that escape destinations containing spaces, so a file
         // mention or a pasted image path survives save + reopen.
         MarkdownLink.configure({
@@ -1356,6 +1380,7 @@ function applyTheme(theme: "dark" | "light"): void {
 const TOOLBAR_COMMANDS: Record<string, (ed: Editor) => void> = {
   bold: (ed) => ed.chain().focus().toggleBold().run(),
   italic: (ed) => ed.chain().focus().toggleItalic().run(),
+  underline: (ed) => ed.chain().focus().toggleUnderline().run(),
   strike: (ed) => ed.chain().focus().toggleStrike().run(),
   code: (ed) => ed.chain().focus().toggleCode().run(),
   highlight: (ed) => ed.chain().focus().toggleHighlight().run(),
@@ -1395,15 +1420,16 @@ function updateToolbarActiveState(ed: Editor): void {
     const isActive =
       cmd === 'bold' ? ed.isActive('bold') :
         cmd === 'italic' ? ed.isActive('italic') :
-          cmd === 'strike' ? ed.isActive('strike') :
-            cmd === 'code' ? ed.isActive('code') :
-              cmd === 'highlight' ? ed.isActive('highlight') :
-                cmd === 'bulletList' ? ed.isActive('bulletList') :
-                  cmd === 'orderedList' ? ed.isActive('orderedList') :
-                    cmd === 'taskList' ? ed.isActive('taskList') :
-                      cmd === 'blockquote' ? ed.isActive('blockquote') :
-                        cmd === 'codeBlock' ? ed.isActive('codeBlock') :
-                          false;
+          cmd === 'underline' ? ed.isActive('underline') :
+            cmd === 'strike' ? ed.isActive('strike') :
+              cmd === 'code' ? ed.isActive('code') :
+                cmd === 'highlight' ? ed.isActive('highlight') :
+                  cmd === 'bulletList' ? ed.isActive('bulletList') :
+                    cmd === 'orderedList' ? ed.isActive('orderedList') :
+                      cmd === 'taskList' ? ed.isActive('taskList') :
+                        cmd === 'blockquote' ? ed.isActive('blockquote') :
+                          cmd === 'codeBlock' ? ed.isActive('codeBlock') :
+                            false;
     btn.classList.toggle('is-active', isActive);
   }
 
