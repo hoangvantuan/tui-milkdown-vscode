@@ -317,6 +317,29 @@ let currentFormat: FrontmatterFormat = "none";
 // it while it still embeds the current frontmatter text.
 let currentRawBlock: string | null = null;
 let lastSentState: string | null = null;
+/**
+ * The content string this webview last agreed with the host on: either the
+ * last `edit` it posted, or the re-serialization of the last `update` it
+ * parsed. An `edit` whose content equals it is not sent (#111).
+ *
+ * Why the comparison lives at the MARKDOWN layer and not at the ProseMirror
+ * one: the webview posts `editor.getMarkdown()`, never the text the host
+ * handed it, and a document is not always a fixed point under that
+ * serializer. So a transaction that changes the document without changing
+ * what it serializes to — and equally one that merely changes and reverts —
+ * would otherwise rewrite the user's file with normalizations they never
+ * typed. Merely opening a file could leave it modified.
+ *
+ * Why this is not `document.getText()`: the host already compares against
+ * that (`EditorSession.applyEdit`) and it does not help, because the
+ * normalized string genuinely differs from the file. The baseline has to be
+ * what THIS side would produce, measured at the moment the two sides agreed.
+ *
+ * It is updated on every real post, which is what keeps undo honest: type a
+ * character and undo it after the edit has gone, and the undone content no
+ * longer matches the baseline, so it is posted and the host follows.
+ */
+let contentBaseline: string | null = null;
 let highlightCurrentLine = true;
 let currentImageMap: Record<string, string> = {};
 
@@ -617,9 +640,7 @@ function replaceInlineImage(
     setImageMap(currentImageMap);
   }
 
-  const fullContent = reconstructContent(currentFrontmatter, currentBody, currentFormat, currentRawBlock);
-  lastSentState = serializeStateForEcho(fullContent, currentImageMap);
-  vscode.postMessage({ type: "edit", content: fullContent });
+  postEdit(buildContent(currentBody));
 
   if (editor && webviewUri) {
     updateImageNodeSrc(imageUrl, webviewUri);
@@ -632,6 +653,41 @@ function serializeStateForEcho(content: string, _imageMap: Record<string, string
   return content + '\0' + imageMapVersion;
 }
 
+/** The body as this webview would write it, without touching `currentBody`. */
+function serializeEditorBody(): string | null {
+  if (!editor) return null;
+  return transformForSave(editor.getMarkdown(), currentImageMap);
+}
+
+/** The full document (frontmatter + body) as it would be written out. */
+function buildContent(body: string): string {
+  return reconstructContent(currentFrontmatter, body, currentFormat, currentRawBlock);
+}
+
+/**
+ * The ONE place an `edit` leaves the webview (#111).
+ *
+ * Every caller used to repeat the `lastSentState` assignment next to its own
+ * `postMessage`, so a new call site was one forgotten line away from an echo
+ * loop — and there was nowhere to put the baseline check that stops a
+ * round-tripped document from being written back as a user edit.
+ *
+ * Returns whether anything was sent.
+ */
+function postEdit(content: string): boolean {
+  if (content === contentBaseline) return false;
+  contentBaseline = content;
+  lastSentState = serializeStateForEcho(content, currentImageMap);
+  vscode.postMessage({ type: "edit", content });
+  return true;
+}
+
+/** Re-anchor the baseline to what the editor currently holds. */
+function resetContentBaseline(): void {
+  const body = serializeEditorBody();
+  contentBaseline = body === null ? null : buildContent(body);
+}
+
 const MAX_BLOB_RETRIES = 5;
 let blobRetryCount = 0;
 
@@ -642,9 +698,18 @@ function debouncedPostEdit(): void {
   debounceTimer = setTimeout(async () => {
     if (!editor) { debounceTimer = null; return; }
     // Serialize only once per debounce window (300ms after last keystroke)
-    const markdown = editor.getMarkdown();
-    currentBody = transformForSave(markdown, currentImageMap);
-    const content = reconstructContent(currentFrontmatter, currentBody, currentFormat, currentRawBlock);
+    currentBody = serializeEditorBody()!;
+    const content = buildContent(currentBody);
+
+    // Nothing the host does not already have. Typically the document was
+    // changed and changed back inside one debounce window, or a transaction
+    // moved something that does not survive serialization — neither is an
+    // edit the user made, and posting it would dirty their file (#111).
+    if (content === contentBaseline) {
+      blobRetryCount = 0;
+      debounceTimer = null;
+      return;
+    }
 
     const hasPendingBlobs = await processInlineImages(content);
     if (hasPendingBlobs) {
@@ -659,16 +724,14 @@ function debouncedPostEdit(): void {
       } else {
         // Max retries reached - send edit anyway to avoid stuck state
         blobRetryCount = 0;
-        lastSentState = serializeStateForEcho(content, currentImageMap);
-        vscode.postMessage({ type: "edit", content });
+        postEdit(content);
         debounceTimer = null;
       }
       return;
     }
 
     blobRetryCount = 0;
-    lastSentState = serializeStateForEcho(content, currentImageMap);
-    vscode.postMessage({ type: "edit", content });
+    postEdit(content);
     debounceTimer = null;
   }, DEBOUNCE_MS);
 }
@@ -695,11 +758,8 @@ function flushPendingEdit(): void {
 
   if (!editor) return;
 
-  const markdown = editor.getMarkdown();
-  currentBody = transformForSave(markdown, currentImageMap);
-  const content = reconstructContent(currentFrontmatter, currentBody, currentFormat, currentRawBlock);
-  lastSentState = serializeStateForEcho(content, currentImageMap);
-  vscode.postMessage({ type: "edit", content });
+  currentBody = serializeEditorBody()!;
+  postEdit(buildContent(currentBody));
 }
 
 // DOM elements
@@ -771,9 +831,7 @@ async function sendFullContent(): Promise<void> {
   if (hasPendingBlobs) {
     return;
   }
-  const fullContent = reconstructContent(currentFrontmatter, currentBody, currentFormat, currentRawBlock);
-  lastSentState = serializeStateForEcho(fullContent, currentImageMap);
-  vscode.postMessage({ type: "edit", content: fullContent });
+  postEdit(buildContent(currentBody));
 }
 
 function debouncedMetadataEdit(): void {
@@ -1945,6 +2003,29 @@ window.addEventListener("message", async (event) => {
           if (editor) {
             // Transform table cells: convert text patterns (-, N., [x]) to proper list nodes
             transformTableCellsAfterParse(editor);
+            // Anchor the baseline to what the editor now holds, AFTER the
+            // table-cell transform, which legitimately changes the document
+            // as part of parsing. From here on, an `edit` is only posted when
+            // the serialized document differs from this (#111). The guard
+            // below drops on a microtask, so anything deferred past it — a
+            // timer, a rAF, a node view finishing an async load — arrives
+            // unguarded; the baseline is what makes that harmless instead of
+            // a silent rewrite of the user's file.
+            //
+            // One empty transaction first. StarterKit's `trailingNode` keeps a
+            // paragraph at the end of the document so there is somewhere to
+            // click after a table or an alert, and it does that from
+            // `appendTransaction`, which ProseMirror does NOT run while the
+            // editor is being constructed — only from the first transaction
+            // onwards. `sample.md` ends in an alert, so the document grew that
+            // paragraph the moment ANYTHING dispatched, and the paragraph
+            // serializes to a trailing newline. That is #111: not a
+            // mysterious load-time edit, but a document that is a different
+            // document after its first transaction, whenever that happens to
+            // arrive. Settling it here means the baseline describes the
+            // document the user will actually be editing.
+            editor.view.dispatch(editor.state.tr.setMeta("addToHistory", false));
+            resetContentBaseline();
             // Restore collapsed headings from saved state after first init
             if (justInitialized) {
               const saved = vscode.getState();
