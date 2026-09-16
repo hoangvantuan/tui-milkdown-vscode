@@ -6,7 +6,7 @@
   *A beautiful WYSIWYG Markdown editor for VS Code, powered by Tiptap*
 
   [![VS Code](https://img.shields.io/badge/VS_Code-%3E%3D1.85.0-007ACC?style=flat-square&logo=visual-studio-code)](https://code.visualstudio.com/)
-  [![Version](https://img.shields.io/badge/version-2.15.2-blue?style=flat-square)](CHANGELOG.md)
+  [![Version](https://img.shields.io/badge/version-2.16.0-blue?style=flat-square)](CHANGELOG.md)
   [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
   [Features](#features) · [Usage](#usage) · [Configuration](#configuration) · [Themes](#themes) · [Export](#export)
@@ -91,6 +91,7 @@ WYSIWYG export via headless Chromium (`puppeteer-core`). Requires Chrome, Edge, 
 | `tuiMarkdown.autoRenameImages` | `true` | Auto-rename image files when path changes |
 | `tuiMarkdown.autoDeleteImages` | `true` | Auto-delete images removed from markdown (Trash) |
 | `tuiMarkdown.autoHideToolbar` | `false` | Auto-hide toolbar when typing |
+| `tuiMarkdown.listIndent` | `"editor"` | List and code block indent: `editor` follows VS Code, or `2`, `4`, `tab` |
 | `tuiMarkdown.chromiumPath` | `""` | Chrome/Chromium path for PDF export |
 | `tuiMarkdown.exportPageSize` | `A4` | Page size for PDF/DOCX export (`A4` or `Letter`) |
 | `tuiMarkdown.headingSizes.h1`–`h6` | `32`–`16` | Heading font sizes (12–72px) |
