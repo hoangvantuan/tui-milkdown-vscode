@@ -14,6 +14,10 @@
  * from Node. Persist webview state with `{ ...getState(), key }`.
  */
 import { Editor, Extension } from "@tiptap/core";
+import type {
+  WebviewToHostMessage,
+  HostToWebviewMessage,
+} from "../shared/messages";
 import StarterKit from "@tiptap/starter-kit";
 import { MarkdownLink, MarkdownImage } from "./markdown-destination";
 import { Highlight } from "@tiptap/extension-highlight";
@@ -217,7 +221,7 @@ interface WebviewState {
 }
 
 declare function acquireVsCodeApi(): {
-  postMessage(message: unknown): void;
+  postMessage(message: WebviewToHostMessage): void;
   getState(): WebviewState | null;
   setState(state: WebviewState): void;
 };
@@ -1803,24 +1807,21 @@ function scrollToHeading(slug: string): void {
 }
 
 window.addEventListener("message", async (event) => {
-  const message = event.data;
+  const message = event.data as HostToWebviewMessage;
   if (!message || typeof message !== "object") return;
 
-  if (message.type === "exportDone") {
-    const btn = document.getElementById("btn-export-go") as
-      | (HTMLButtonElement & { _safetyTimer?: number })
-      | null;
-    if (btn) {
-      if (btn._safetyTimer !== undefined) {
+  switch (message.type) {
+    case "exportDone": {
+      const btn = document.getElementById("btn-export-go") as
+        | (HTMLButtonElement & { _safetyTimer?: number })
+        | null;
+      if (btn) {
         window.clearTimeout(btn._safetyTimer);
         btn._safetyTimer = undefined;
+        btn.disabled = false;
       }
-      btn.disabled = false;
+      break;
     }
-    return;
-  }
-
-  switch (message.type) {
     case "update":
       if (typeof message.content === "string") {
         const newImageMap = message.imageMap || {};
@@ -1986,7 +1987,10 @@ window.addEventListener("message", async (event) => {
       }
       break;
     case "clipboardImage":
-      // Extension-side clipboard read returned an image (base64 PNG)
+      if (message.error) {
+        console.warn("[Clipboard]", message.error);
+        break;
+      }
       if (typeof message.data === "string" && editor?.view) {
         const file = dataUrlToFile(message.data, "clipboard-image.png");
         if (file) processImagePaste(editor.view, file);
@@ -2112,7 +2116,7 @@ function init() {
     setupImageEditOverlay(
       editorEl,
       () => editor?.view ?? null,
-      (msg) => vscode.postMessage(msg)
+      (msg: WebviewToHostMessage) => vscode.postMessage(msg)
     );
   }
 

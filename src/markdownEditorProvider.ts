@@ -1,6 +1,10 @@
 import * as path from "path";
 import { exec } from "child_process";
 import * as vscode from "vscode";
+import type {
+  WebviewToHostMessage,
+  HostToWebviewMessage,
+} from "./shared/messages";
 import { MAX_FILE_SIZE } from "./constants";
 import { getNonce } from "./utils/getNonce";
 import {
@@ -168,6 +172,10 @@ export function normalizeLineEndings(
   return content.replace(/\r\n|\r|\n/g, targetEol);
 }
 
+interface TypedWebview extends Omit<vscode.Webview, "postMessage"> {
+  postMessage(message: HostToWebviewMessage): Thenable<boolean>;
+}
+
 /**
  * CustomTextEditorProvider for Markdown WYSIWYG editing.
  * Registers for .md files via package.json customEditors.
@@ -182,10 +190,32 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
    */
   private originalImagePaths: Map<string, Map<string, string>> = new Map();
 
+  /** Tracks clipboard error reasons shown during this session to avoid warning spam */
+  private clipboardWarningsShown = new Set<string>();
+
   /** Cached system font list — enumerated once, shared across all editors */
   private static cachedFonts: string[] | null = null;
 
   constructor(private readonly context: vscode.ExtensionContext) { }
+
+  private notifyClipboardError(
+    webview: TypedWebview,
+    reason: string,
+    warningMessage?: string,
+  ): void {
+    try {
+      webview.postMessage({
+        type: "clipboardImage",
+        error: reason,
+      });
+    } catch {
+      /* webview may have been disposed */
+    }
+    if (warningMessage && !this.clipboardWarningsShown.has(reason)) {
+      this.clipboardWarningsShown.add(reason);
+      vscode.window.showWarningMessage(warningMessage);
+    }
+  }
 
   /** Enumerate system font families (cached after first call) */
   private async getSystemFonts(): Promise<string[]> {
@@ -285,6 +315,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
     webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview);
 
+    const webview = webviewPanel.webview as TypedWebview;
+    let isDisposed = false;
+    let inFlightEdit: Promise<void> | null = null;
     let pendingEdit = false;
     let renameInProgress = false;
     let exportInProgress = false;
@@ -300,15 +333,16 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     };
 
     const updateWebview = () => {
-      if (pendingEdit) return;
+      if (pendingEdit || isDisposed) return;
 
       // Debounce rapid calls (e.g., from applyEdit + onDidChangeTextDocument)
       if (updateDebounceTimer) clearTimeout(updateDebounceTimer);
 
       updateDebounceTimer = setTimeout(() => {
+        if (isDisposed) return;
         const content = document.getText();
         const imageMap = buildImageMap(content, document.uri, webviewPanel.webview);
-        webviewPanel.webview.postMessage({
+        webview.postMessage({
           type: "update",
           content,
           imageMap,
@@ -318,7 +352,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     };
 
     const sendTheme = () => {
-      webviewPanel.webview.postMessage({
+      if (isDisposed) return;
+      webview.postMessage({
         type: "theme",
         theme: getThemeKind(),
       });
@@ -412,8 +447,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     };
 
     const sendConfig = () => {
+      if (isDisposed) return;
       const { indentation, tabSize } = getListIndentation();
-      webviewPanel.webview.postMessage({
+      webview.postMessage({
         type: "config",
         fontSize: getFontSize(),
         headingSizes: getHeadingSizes(),
@@ -425,6 +461,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     };
 
     const applyEdit = async (newContent: string) => {
+      if (document.isClosed) return;
       const normalizedContent = normalizeLineEndings(newContent, document.eol);
       if (normalizedContent === document.getText()) return;
 
@@ -507,7 +544,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           // Send updated imageMap AFTER pendingEdit is reset
           // This ensures new image paths get resolved to webviewUris
           // Loop prevented by lastSentContent check in webview
-          updateWebview();
+          if (!isDisposed) {
+            updateWebview();
+          }
         });
       }
     };
@@ -523,9 +562,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         }
       }),
       webviewPanel.webview.onDidReceiveMessage(async (message: unknown) => {
-        if (!message || typeof message !== "object") return;
-        const msg = message as { type?: string; content?: string };
-        if (typeof msg.type !== "string") return;
+        if (!message || typeof message !== "object" || !("type" in message)) return;
+        const msg = message as WebviewToHostMessage;
 
         switch (msg.type) {
           case "ready": {
@@ -534,7 +572,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
               "markdownEditorTheme",
             );
             if (savedTheme) {
-              webviewPanel.webview.postMessage({
+              webview.postMessage({
                 type: "savedTheme",
                 theme: savedTheme,
               });
@@ -544,7 +582,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
               "markdownEditorFont",
             );
             if (savedFont) {
-              webviewPanel.webview.postMessage({
+              webview.postMessage({
                 type: "savedFont",
                 font: savedFont,
               });
@@ -554,7 +592,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
               "markdownEditorZoom",
             );
             if (typeof savedZoom === "number") {
-              webviewPanel.webview.postMessage({
+              webview.postMessage({
                 type: "savedZoom",
                 zoom: savedZoom,
               });
@@ -565,7 +603,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             // Send system fonts asynchronously (non-blocking)
             this.getSystemFonts().then((fonts) => {
               try {
-                webviewPanel.webview.postMessage({
+                webview.postMessage({
                   type: "systemFonts",
                   fonts,
                 });
@@ -574,8 +612,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             break;
           }
           case "edit":
-            if (typeof msg.content === "string") {
-              await applyEdit(msg.content);
+            if (typeof msg.content === "string" && !document.isClosed) {
+              inFlightEdit = applyEdit(msg.content);
+              await inFlightEdit;
             }
             break;
           case "viewSource": {
@@ -589,7 +628,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             break;
           }
           case "themeChange": {
-            const theme = (msg as { theme?: string }).theme;
+            const theme = msg.theme;
             if (typeof theme === "string") {
               await this.context.globalState.update(
                 "markdownEditorTheme",
@@ -599,7 +638,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             break;
           }
           case "fontChange": {
-            const font = (msg as { font?: string }).font;
+            const font = msg.font;
             if (typeof font === "string") {
               await this.context.globalState.update(
                 "markdownEditorFont",
@@ -609,7 +648,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             break;
           }
           case "zoomChange": {
-            const zoom = (msg as { zoom?: number }).zoom;
+            const zoom = msg.zoom;
             if (
               typeof zoom === "number" &&
               Number.isFinite(zoom) &&
@@ -624,11 +663,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             break;
           }
           case "saveImage": {
-            const imgMsg = msg as {
-              data?: string;
-              filename?: string;
-              blobUrl?: string;
-            };
+            const imgMsg = msg;
             if (!imgMsg.data || !imgMsg.filename || !imgMsg.blobUrl) break;
 
             // Security: Strong filename validation
@@ -705,7 +740,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
                 webviewPanel.webview.asWebviewUri(fileUri).toString();
 
               // Send back the saved path and webviewUri
-              webviewPanel.webview.postMessage({
+              webview.postMessage({
                 type: "imageSaved",
                 blobUrl: imgMsg.blobUrl,
                 savedPath: relativePath,
@@ -720,7 +755,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             break;
           }
           case "showWarning": {
-            const warnMsg = (msg as { message?: string }).message;
+            const warnMsg = msg.message;
             if (typeof warnMsg === "string") {
               vscode.window.showWarningMessage(warnMsg);
             }
@@ -739,6 +774,23 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
               const cleanup = () => {
                 try { fs.unlinkSync(tmpPng); } catch { /* ok */ }
                 try { fs.unlinkSync(tmpTiff); } catch { /* ok */ }
+              };
+
+              const finalize = () => {
+                try {
+                  const buffer = fs.readFileSync(tmpPng);
+                  webview.postMessage({
+                    type: "clipboardImage",
+                    data: `data:image/png;base64,${buffer.toString("base64")}`,
+                  });
+                } catch (readErr) {
+                  this.notifyClipboardError(
+                    webview,
+                    "clipboard-file-read-failed",
+                    `Failed to read clipboard image: ${readErr instanceof Error ? readErr.message : String(readErr)}`,
+                  );
+                }
+                cleanup();
               };
 
               if (process.platform === "darwin") {
@@ -763,24 +815,36 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
                   end try
                 `;
                 execFile("osascript", ["-e", script], { timeout: 5000 }, (err, stdout) => {
-                  const fmt = (stdout || "").trim();
-                  if (err || fmt === "none") { cleanup(); return; }
-
-                  const finalize = () => {
-                    try {
-                      const buffer = fs.readFileSync(tmpPng);
-                      webviewPanel.webview.postMessage({
-                        type: "clipboardImage",
-                        data: `data:image/png;base64,${buffer.toString("base64")}`,
-                      });
-                    } catch { /* read failed */ }
+                  if (err) {
                     cleanup();
-                  };
+                    this.notifyClipboardError(
+                      webview,
+                      "macos-clipboard-failed",
+                      `Failed to read clipboard image: ${err.message}`,
+                    );
+                    return;
+                  }
+                  const fmt = (stdout || "").trim();
+                  if (fmt === "none") {
+                    cleanup();
+                    return;
+                  }
 
                   if (fmt === "tiff") {
                     // Convert TIFF → PNG via sips
                     execFile("sips", ["-s", "format", "png", tmpTiff, "--out", tmpPng],
-                      { timeout: 5000 }, () => finalize());
+                      { timeout: 5000 }, (sipsErr) => {
+                        if (sipsErr) {
+                          cleanup();
+                          this.notifyClipboardError(
+                            webview,
+                            "sips-convert-failed",
+                            `Failed to convert clipboard image: ${sipsErr.message}`,
+                          );
+                          return;
+                        }
+                        finalize();
+                      });
                   } else {
                     finalize();
                   }
@@ -789,52 +853,71 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
                 const psCmd = `$img = Get-Clipboard -Format Image; if ($img) { $img.Save('${tmpPng.replace(/'/g, "''")}', [System.Drawing.Imaging.ImageFormat]::Png); Write-Output 'ok' }`;
                 execFile("powershell", ["-NoProfile", "-Command", psCmd],
                   { timeout: 5000 }, (err, stdout) => {
-                    if (!err && (stdout || "").includes("ok")) {
-                      try {
-                        const buffer = fs.readFileSync(tmpPng);
-                        webviewPanel.webview.postMessage({
-                          type: "clipboardImage",
-                          data: `data:image/png;base64,${buffer.toString("base64")}`,
-                        });
-                      } catch { /* read failed */ }
+                    if (err) {
+                      cleanup();
+                      this.notifyClipboardError(
+                        webview,
+                        "windows-clipboard-failed",
+                        `Failed to read clipboard image: ${err.message}`,
+                      );
+                      return;
                     }
-                    cleanup();
+                    if ((stdout || "").includes("ok")) {
+                      finalize();
+                    } else {
+                      cleanup();
+                    }
                   });
               } else {
                 // Linux: try xclip (X11), fall back to wl-paste (Wayland)
+                let xclipFailed = false;
+                let wlPasteFailed = false;
+
                 const tryCmd = (prog: string, args: string[]) => {
-                  execFile(prog, args, { timeout: 5000 }, (err) => {
+                  execFile(prog, args, { timeout: 5000 }, (err, _stdout, stderr) => {
                     if (!err) {
-                      try {
-                        const buffer = fs.readFileSync(tmpPng);
-                        webviewPanel.webview.postMessage({
-                          type: "clipboardImage",
-                          data: `data:image/png;base64,${buffer.toString("base64")}`,
-                        });
-                      } catch { /* read failed */ }
-                      cleanup();
+                      finalize();
                     } else if (prog === "xclip") {
+                      xclipFailed = true;
                       // Fallback to wl-paste for Wayland
                       tryCmd("sh", ["-c", `wl-paste --type image/png > "${tmpPng}"`]);
                     } else {
+                      wlPasteFailed = true;
                       cleanup();
+                      const errMsg = (stderr || err.message || "").toLowerCase();
+                      const isMissingTool =
+                        err.code === 127 ||
+                        errMsg.includes("not found") ||
+                        (xclipFailed && wlPasteFailed);
+                      if (isMissingTool) {
+                        this.notifyClipboardError(
+                          webview,
+                          "linux-missing-tools",
+                          "Install xclip or wl-clipboard to paste images",
+                        );
+                      } else {
+                        this.notifyClipboardError(
+                          webview,
+                          "linux-clipboard-failed",
+                          `Failed to read clipboard image: ${err.message}`,
+                        );
+                      }
                     }
                   });
                 };
                 tryCmd("sh", ["-c", `xclip -selection clipboard -t image/png -o > "${tmpPng}"`]);
               }
-            } catch {
-              // Native clipboard read not available — ignore
+            } catch (err) {
+              this.notifyClipboardError(
+                webview,
+                "clipboard-native-unavailable",
+                `Failed to read clipboard image: ${err instanceof Error ? err.message : String(err)}`,
+              );
             }
             break;
           }
           case "requestImageUrlEdit": {
-            const editMsg = msg as {
-              editId?: string;
-              currentUrl?: string;
-              isLocalImage?: boolean;
-              isBase64?: boolean;
-            };
+            const editMsg = msg;
             if (!editMsg.editId) break;
 
             let prompt: string;
@@ -853,7 +936,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
                 placeHolder: "images/photo.png or https://example.com/image.png",
               })
               .then((newUrl) => {
-                webviewPanel.webview.postMessage({
+                webview.postMessage({
                   type: "imageUrlEditResponse",
                   editId: editMsg.editId,
                   newUrl: newUrl ?? null,
@@ -862,7 +945,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             break;
           }
           case "openLink": {
-            const linkHref = (msg as { href?: string }).href;
+            const linkHref = msg.href;
             if (!linkHref) break;
 
             if (/^https?:\/\//.test(linkHref)) {
@@ -875,13 +958,13 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             break;
           }
           case "openImageInTab": {
-            const imgPath = (msg as { path?: string }).path;
+            const imgPath = msg.path;
             if (!imgPath) break;
             openLocalFileInEditor(imgPath, document);
             break;
           }
           case "requestLinkEdit": {
-            const linkMsg = msg as { editId?: string; currentUrl?: string };
+            const linkMsg = msg;
             if (!linkMsg.editId) break;
             vscode.window
               .showInputBox({
@@ -890,7 +973,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
                 placeHolder: "https://example.com",
               })
               .then((newUrl) => {
-                webviewPanel.webview.postMessage({
+                webview.postMessage({
                   type: "linkEditResponse",
                   editId: linkMsg.editId,
                   newUrl: newUrl ?? null,
@@ -899,11 +982,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             break;
           }
           case "requestImageRename": {
-            const renameMsg = msg as {
-              renameId?: string;
-              oldPath?: string;
-              newPath?: string;
-            };
+            const renameMsg = msg;
             if (!renameMsg.renameId || !renameMsg.oldPath || !renameMsg.newPath) break;
 
             const { renameId, oldPath, newPath } = renameMsg;
@@ -911,7 +990,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             // Security: Validate paths to prevent path traversal attacks
             if (hasPathTraversal(oldPath) || hasPathTraversal(newPath)) {
               console.error("[Image Rename] Path traversal detected:", { oldPath, newPath });
-              webviewPanel.webview.postMessage({
+              webview.postMessage({
                 type: "imageRenameResponse",
                 renameId,
                 success: false,
@@ -974,7 +1053,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
                 const webviewUri = webviewPanel.webview.asWebviewUri(newUri).toString();
 
                 // Send success response
-                webviewPanel.webview.postMessage({
+                webview.postMessage({
                   type: "imageRenameResponse",
                   renameId,
                   success: true,
@@ -992,7 +1071,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
               } catch (err) {
                 console.error("[Image Rename] Failed:", err);
-                webviewPanel.webview.postMessage({
+                webview.postMessage({
                   type: "imageRenameResponse",
                   renameId,
                   success: false,
@@ -1019,7 +1098,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
               name: path.basename(uri.fsPath),
               path: vscode.workspace.asRelativePath(uri),
             }));
-            webviewPanel.webview.postMessage({
+            webview.postMessage({
               type: "fileSearchResults",
               files: fileList,
               currentDocFolder,
@@ -1040,7 +1119,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
               name: path.basename(uri.fsPath),
               path: vscode.workspace.asRelativePath(uri),
             }));
-            webviewPanel.webview.postMessage({
+            webview.postMessage({
               type: "wikiLinkSearchResults",
               files: fileList,
               currentDocFolder,
@@ -1048,7 +1127,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             break;
           }
           case "openWikiLink": {
-            const wikiFilename = (msg as { filename?: string }).filename;
+            const wikiFilename = msg.filename;
             if (!wikiFilename) break;
 
             const slugified = wikiFilename.trim().replace(/\s+/g, "-");
@@ -1106,16 +1185,12 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             break;
           }
           case "export": {
-            const exportMsg = msg as {
-              format?: string;
-              fontFamily?: string;
-              mermaidImages?: { code: string; base64: string }[];
-            };
+            const exportMsg = msg;
 
             // Reject duplicate export requests so two save dialogs / two
             // Chromium instances cannot race to the same output path.
             if (exportInProgress) {
-              webviewPanel.webview.postMessage({
+              webview.postMessage({
                 type: "exportDone",
                 success: false,
                 reason: "busy",
@@ -1198,7 +1273,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
                 // Notify webview on success so the button can re-enable without
                 // relying on the 3-second timeout.
                 try {
-                  webviewPanel.webview.postMessage({ type: "exportDone", success: true });
+                  webview.postMessage({ type: "exportDone", success: true });
                 } catch {
                   /* webview may have been disposed */
                 }
@@ -1207,7 +1282,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
                 vscode.window.showErrorMessage(`Export failed: ${errMsg}`);
                 console.error("[Export]", err);
                 try {
-                  webviewPanel.webview.postMessage({
+                  webview.postMessage({
                     type: "exportDone",
                     success: false,
                     reason: errMsg,
@@ -1312,9 +1387,20 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     );
 
     webviewPanel.onDidDispose(() => {
-      this.originalImagePaths.delete(docKey);
       if (updateDebounceTimer) clearTimeout(updateDebounceTimer);
-      disposables.forEach((d) => d.dispose());
+      // Allow any edit in-flight during teardown (e.g. flushed on pagehide) to be applied if document is still open
+      setImmediate(async () => {
+        if (inFlightEdit) {
+          try {
+            await inFlightEdit;
+          } catch {
+            /* ignore */
+          }
+        }
+        isDisposed = true;
+        this.originalImagePaths.delete(docKey);
+        disposables.forEach((d) => d.dispose());
+      });
     });
   }
 
