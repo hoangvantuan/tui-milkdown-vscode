@@ -74,6 +74,7 @@ import {
 import { WikiLink } from "../src/webview/wiki-link-plugin";
 import { RawHtmlBlock, RawHtmlInline } from "../src/webview/raw-html";
 import { installMarkdownTextEscape } from "../src/webview/markdown-text-escape";
+import { CustomOrderedList } from "../src/webview/ordered-list-extension";
 import {
   parseContent,
   reconstructContent,
@@ -228,6 +229,7 @@ function buildMarkdownExtensions(
       document: false,
       blockquote: false,
       link: false,
+      orderedList: false, // Replaced by CustomOrderedList below (#109)
     }),
     MarkdownLink.configure({
       openOnClick: false,
@@ -318,6 +320,7 @@ function buildMarkdownExtensions(
     TaskItem.configure({
       nested: true,
     }),
+    CustomOrderedList,
     Markdown.configure({
       marked: customMarked,
       indentation,

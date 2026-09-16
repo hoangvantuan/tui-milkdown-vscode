@@ -72,6 +72,7 @@ import { FileMention, setFileMentionFiles } from "./file-mention-plugin";
 import { WikiLink, WikiLinkSuggestion, setWikiLinkFiles } from "./wiki-link-plugin";
 import { RawHtmlBlock, RawHtmlInline } from "./raw-html";
 import { installMarkdownTextEscape } from "./markdown-text-escape";
+import { CustomOrderedList } from "./ordered-list-extension";
 
 // Install unified text escape overrides on MarkdownManager (#97, #99, #100, #101).
 installMarkdownTextEscape();
@@ -1043,6 +1044,7 @@ function initEditor(initialContent: string = ""): Editor | null {
           document: false, // Replaced by custom Document below
           blockquote: false, // Replaced by custom Blockquote with alert detection
           link: false, // Replaced by MarkdownLink below (destination escaping)
+          orderedList: false, // Replaced by CustomOrderedList below (#109)
         }),
         // Link/Image that escape destinations containing spaces, so a file
         // mention or a pasted image path survives save + reopen.
@@ -1136,6 +1138,7 @@ function initEditor(initialContent: string = ""): Editor | null {
         TaskItem.configure({
           nested: true,
         }),
+        CustomOrderedList,
         Placeholder.configure({
           placeholder: "Type something...",
         }),
