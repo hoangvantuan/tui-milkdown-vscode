@@ -361,6 +361,14 @@ async function probeWebview(session) {
     mermaidRendered: document.querySelectorAll('.mermaid-preview[data-rendered="true"]').length,
     mermaidErrors: document.querySelectorAll('.mermaid-err-msg').length,
     mermaidStuck: document.querySelectorAll('.mermaid-loading').length,
+    // Did the plugin ever get as far as SCHEDULING a render? It sets
+    // data-mermaid-src inside a requestAnimationFrame callback, and Chromium
+    // does not run rAF for a window it considers not visible. Scheduled but
+    // not rendered means slow; not even scheduled means the callback never
+    // ran, which no timeout can fix (#112).
+    mermaidScheduled: document.querySelectorAll('.mermaid-preview[data-mermaid-src]').length,
+    hidden: document.hidden,
+    visibility: document.visibilityState,
     metadataPanel: !!document.querySelector('#metadata-panel'),
     toolbar: !!document.querySelector('.editor-toolbar, #toolbar'),
     bodyClass: document.body.className.slice(0, 80)
@@ -804,7 +812,10 @@ async function main() {
     // nothing or rendered an error — #112 was misread as the latter for two
     // waves. The detail says which, and how long it actually took, because the
     // budget below is only defensible next to a measurement.
-    const counts = `rendered=${webview.mermaidRendered} errors=${webview.mermaidErrors} stuckPlaceholders=${webview.mermaidStuck}`;
+    const counts =
+    `rendered=${webview.mermaidRendered} errors=${webview.mermaidErrors} ` +
+    `stuckPlaceholders=${webview.mermaidStuck} scheduled=${webview.mermaidScheduled} ` +
+    `visibility=${webview.visibility}`;
     const sinceMount = (mermaidReadyAt ?? probeEnd) - mountedAt;
     checks.push({
       name: "lazy mermaid artifact loads and renders",
