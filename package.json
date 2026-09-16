@@ -185,7 +185,21 @@
           "group": "navigation"
         }
       ]
-    }
+    },
+    "keybindings": [
+      {
+        "command": "tuiMarkdown.viewSource",
+        "key": "ctrl+shift+m",
+        "mac": "cmd+shift+m",
+        "when": "activeCustomEditorId == 'tuiMarkdown.editor'"
+      },
+      {
+        "command": "tuiMarkdown.viewRichText",
+        "key": "ctrl+shift+m",
+        "mac": "cmd+shift+m",
+        "when": "editorLangId == 'markdown' && !activeCustomEditorId"
+      }
+    ]
   },
   "scripts": {
     "build": "node esbuild.config.js",
