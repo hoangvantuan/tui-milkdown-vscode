@@ -71,10 +71,14 @@ import {
   stripAlertPrefix,
 } from "../src/webview/alert-extension";
 import { WikiLink } from "../src/webview/wiki-link-plugin";
+import { installMarkdownTextEscape } from "../src/webview/markdown-text-escape";
 import {
   parseContent,
   reconstructContent,
 } from "../src/utils/frontmatter-parser";
+
+// Install unified text escape overrides on MarkdownManager (#97, #99, #100, #101).
+installMarkdownTextEscape();
 
 const lowlight = createLowlight();
 lowlight.register({
