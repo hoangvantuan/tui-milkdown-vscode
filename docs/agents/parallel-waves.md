@@ -220,8 +220,11 @@ vô hình.
 **Issue của repo này có thể sai, tỉ lệ cao.** Sóng 3 bắt được `#99` có tiêu chí
 tự mâu thuẫn (đòi sửa bug nhưng cấm golden đang chụp bug đó thay đổi), `#96` sai
 nguyên nhân gốc, `#95` sót một nguyên nhân thứ hai. Cộng với `#93` và `#94` của
-sóng 2 là 5 trên 13 ticket. Sóng 4 thêm hai, thành 7 trên 24. Đọc issue xong VẪN
-phải tự kiểm bằng code.
+sóng 2 là 5 trên 13 ticket. Sóng 4 thêm hai, thành 7 trên 24. Sóng 5 thêm ba,
+thành 8 trên 26. Sóng 6 thêm hai, thành 10 trên 28, và cả hai lần thân issue
+sai ở CƠ CHẾ chứ không ở triệu chứng: `#111` trỏ vào cái guard (`isUpdatingFromExtension`) trong khi nguyên nhân là `trailingNode` của StarterKit, `#112`
+trỏ vào ngân sách 40 giây trong khi nhiều khả năng là `requestAnimationFrame`
+không chạy cho cửa sổ bị che. Đọc issue xong VẪN phải tự kiểm bằng code.
 
 Hai ca của sóng 4, cả hai đều do worker phát hiện rồi `ask`, đúng như spec dạy:
 
@@ -266,6 +269,26 @@ KHÔNG đỏ khi gỡ riêng chốt `!pendingEdit` của host, cũng KHÔNG đ�
 chốt `lastSentState` của webview, vì các chốt xếp lớp. Nó là check bất biến, không
 phải check đơn vị. Tôi viết câu đó vào cả spec của worker lẫn commit message, để
 không ai đọc màu xanh của nó thành nhiều hơn sự thật.
+
+**KHÔNG TÁI HIỆN ĐƯỢC thì đo cái phân biệt được, rồi ship chính cái thước đó.**
+Sóng 6, `#112` khẳng định 40 giây quá ngắn dưới tải. Tôi đo 1 lượt, 3 lượt,
+6 lượt, rồi 3 lượt với cả 12 nhân bão hoà (load average 24): mermaid render
+xong sau 1.5 giây ở MỌI mức, chỉ có thời điểm mount trượt từ 1.5 lên 5.6 giây.
+Nâng ngân sách theo lời issue sẽ là đoán khoác áo bản vá. Thay vào đó tách hai
+ngân sách (mount và mermaid, đếm từ lúc mount) và làm cho dòng detail tự phân
+biệt "còn đang tải" với "render hỏng". Một giờ sau nó đỏ thật, ba lượt liền,
+`STILL LOADING after 40748ms`, và chính dòng detail mới nói ra rằng 40 giây
+không-làm-gì không phải là chậm. Rồi thêm hai trường `scheduled=` và
+`visibility=` để lần đỏ sau tự trả lời câu hỏi còn lại. Thước đo là thứ giao
+được, kể cả khi kết luận thì chưa.
+
+**Phép thử răng cũng phải kiểm phép thử.** Sóng 6, check mới cho `#111` so
+`textContent` của cả `.tiptap`, và nó đỏ với `len 6194->256`. Không phải tài
+liệu sai: `.tiptap` chứa cả chữ trong SVG mermaid và badge ngôn ngữ của code
+block, mà chính bug đang đo lại khiến tài liệu bị dựng lại, nên các thứ đó
+biến mất. Phép đo đang báo TRIỆU CHỨNG của bug như thể là hỏng phép đo. Thu
+hẹp về đúng đoạn văn đích thì nó đo đúng thứ cần. Bài học: khi một check mới
+đỏ, hỏi "nó đỏ vì thứ tôi định đo, hay vì thứ tôi vô tình quét vào".
 
 **Đo trước khi chia việc.** Sóng 3 gộp `#97 #99 #100 #101` về một worker vì đo
 được cả bốn dồn vào `MarkdownManager.escapeMarkdownSyntax`, và `#99` với `#101`
@@ -337,6 +360,18 @@ thì cả ba đỏ ở check mermaid. Câu của tôi đúng về tính đúng �
 liệu) nhưng bị đọc thành đúng về độ tin cậy. Đã sửa lại cả `AGENTS.md` lẫn
 `harness/README.md` để tách hai khái niệm đó.
 
+## LỖI CỦA ĐIỀU PHỐI VIÊN SÓNG 6, đừng lặp lại
+
+**Suýt nâng một timeout theo lời thân issue.** Tôi đã viết sẵn
+`MERMAID_TIMEOUT_MS = 180000` làm "tạm" rồi mới đo. Nếu bỏ qua bước đo thì con
+số đó đã vào repo kèm một commit message nghe rất hợp lý, và nguyên nhân thật
+(`requestAnimationFrame` không chạy cho cửa sổ bị che) sẽ không bao giờ lộ ra.
+Thứ cứu tôi là phép đo, không phải sự cẩn thận. Hãy đo TRƯỚC khi gõ con số,
+kể cả con số tạm.
+
+**Phép đo đầu tiên của check mới quét quá rộng.** Xem mục "Phép thử răng cũng
+phải kiểm phép thử" ở phần kỷ luật.
+
 ## Ràng buộc bắt buộc đưa vào spec mọi worker
 
 1. Cấm sửa MỌI `.md` ở GỐC repo, không riêng `CHANGELOG.md` và `AGENTS.md`:
@@ -400,50 +435,58 @@ Sau khi điều phối viên sửa `CHANGELOG.md` hoặc `AGENTS.md`, hai golden
 `harness/golden/repo/` tương ứng sẽ ĐỎ. Chạy `npm run roundtrip:update`, rồi
 kiểm là CHỈ hai file đó đổi. Tiền lệ `ad2b67b`.
 
-## Còn treo sau sóng 5
+## Còn treo sau sóng 6
 
 Mục này gắn với một thời điểm, không phải quy trình. Kiểm lại trước khi tin.
 
-- **`#111` mới mở**: webview đôi khi ghi một edit chuẩn hoá cho một tài liệu vừa
-  mở, làm `document still unmodified after the hold` đỏ ngẫu nhiên. Cùng một SHA
-  cho hai kết quả khác nhau. `AGENTS.md` khẳng định webview KHÔNG ghi edit cho
-  `sample.md`; câu đó chỉ đúng phần lớn thời gian. Triệu chứng đắt hơn nhiều so
-  với chuyện harness đỏ: người dùng mở một file, không chạm gì, và thấy nó đã bị
-  sửa.
-- **`#112` mới mở**: ba lượt floor check song song thì cả ba đỏ ở check mermaid.
-  Cửa sổ dò 40 giây quá ngắn cho ba Electron cùng render artifact mermaid. Hai
-  lượt thì không sao.
+- **`#112` vẫn mở, và tiêu đề của nó nay sai.** Nó nói "cửa sổ dò 40 giây quá
+  ngắn"; sóng 6 đo và bác điều đó. Đã tái hiện được đúng một lần (ba lượt song
+  song, cả ba `STILL LOADING after 40748ms`), trong khi 6 lượt song song và 3
+  lượt với CPU bão hoà đều xanh ở 1.5 giây. Giả thuyết hiện tại, CHƯA kiểm:
+  `mermaid-plugin.ts:400` lên lịch render trong một `requestAnimationFrame`,
+  và Chromium không chạy rAF cho cửa sổ nó coi là không hiển thị; chạy song
+  song thì các cửa sổ VS Code che nhau. Nếu đúng thì đây là bug SẢN PHẨM, không
+  phải bug harness, và không ngân sách nào chữa được. Harness nay tự báo
+  `scheduled=` và `visibility=` nên lần đỏ tới sẽ tự trả lời.
+- **Một tài nguyên dùng chung mà `#110` không phủ**: mỗi lượt
+  `verify:vscode-floor` chạy `npm run build` ghi vào `out/` của chính repo, và
+  VS Code nạp extension từ đường dẫn repo. Hai lượt song song ghi đè bundle của
+  nhau. Artifact cụt cho `errors=1` chứ không phải `errors=0 stuck=1` nên nó
+  không phải `#112`, nhưng câu "hai lượt chạy cùng lúc được" chỉ đúng vì một
+  checkout build ra cùng bytes. Đã ghi vào header `run.mjs`, chưa sửa.
 - **Sáu tiêu chí kiểm tay của `#88` chưa ai kiểm**, đều cần một cửa sổ VS Code
   sống: dán ảnh, đổi tên ảnh, xoá ảnh, export DOCX, export PDF, `@` mention và
-  `[[` wiki link. Đã ghi rõ trong bản đóng issue và ở `docs/reports/w5-provider.md`
-  mục 10. Hai trong tám thao tác gốc nay đã tự động (view source và đường đi edit).
-- **Bốn tiêu chí kiểm tay của sóng 4 vẫn chưa ai kiểm**: ép lỗi clipboard (`#105`),
-  gõ rồi Ctrl+W mười lần (`#104`), ảnh chụp trước/sau hai theme (`#86`), Keyboard
-  Shortcuts liệt kê hai lệnh (`#108`). Nên làm một lượt bằng tay trước khi phát hành.
-- `#102` vẫn còn bước kiểm TAY từ sóng 3: đổi `editor.tabSize` rồi xem lần sửa sau
-  có ghi ra thụt lề mới không. Quy trình ở `docs/reports/w4-indent.md` mục 7.
+  `[[` wiki link. Ghi ở `docs/reports/w5-provider.md` mục 10.
+- **Bốn tiêu chí kiểm tay của sóng 4 vẫn chưa ai kiểm**: ép lỗi clipboard
+  (`#105`), gõ rồi Ctrl+W mười lần (`#104`), ảnh chụp trước/sau hai theme
+  (`#86`), Keyboard Shortcuts liệt kê hai lệnh (`#108`). Nên làm một lượt bằng
+  tay trước khi phát hành.
+- `#102` vẫn còn bước kiểm TAY từ sóng 3: đổi `editor.tabSize` rồi xem lần sửa
+  sau có ghi ra thụt lề mới không. Quy trình ở `docs/reports/w4-indent.md` mục 7.
 - `#96` còn hai tiêu chí hành vi editor chưa kiểm được bằng harness.
-- `src/host/messageHandlers.ts` 301 dòng là file lớn nhất dưới `src/host/`. Đọc
-  được vì mỗi handler ngắn, nhưng sóng sau thêm message thì nên tách theo nhóm.
-  Cố ý không tách trong `#88`: issue không đòi, và tách thêm là thêm rủi ro mà
-  không đổi lấy gì đo được.
-- Bốn run orchestration cũ còn trong Orca: `run_c607755eea03` (sóng 2),
+- `src/host/messageHandlers.ts` 301 dòng là file lớn nhất dưới `src/host/`.
+  Sóng sau thêm message thì nên tách theo nhóm.
+- Năm run orchestration cũ còn trong Orca: `run_c607755eea03` (sóng 2),
   `run_81e972296c40` (sóng 3), `run_7c86994cae6d` (sóng 4), `run_03c8c7760738`
-  (sóng 5, ba dispatch, đã release hết, hộp thư rỗng). CỐ Ý KHÔNG chạy
-  `orca orchestration reset` vì lệnh đó không có cờ `--run`, nó xoá state TOÀN CỤC
-  và sẽ đụng các dự án khác của người dùng. Sóng 6 chỉ cần `run-create` một run mới.
+  (sóng 5). Sóng 6 không tạo run nào. CỐ Ý KHÔNG chạy
+  `orca orchestration reset` vì lệnh đó không có cờ `--run`, nó xoá state TOÀN
+  CỤC và sẽ đụng các dự án khác của người dùng.
 - Hai worktree của sóng 5 (`w5-unittests`, `w5-provider`) đã merge hết vào
   `develop`. Xoá được bằng `orca worktree rm`, cùng với mục `w5-unittests` trong
-  `trustedWorkspaces` của `~/.gemini/antigravity-cli/settings.json` (`w5-provider`
-  chạy bằng `--agent claude` nên không có mục nào ở đó).
+  `trustedWorkspaces` của `~/.gemini/antigravity-cli/settings.json`.
+- Sóng 6 tạo ba nhánh local, đã fast-forward hết vào `develop` và xoá được:
+  `hoangvantuan/w6-floor-timing`, `hoangvantuan/w6-net-111`,
+  `hoangvantuan/w6-open-clean`. `develop` CHƯA push.
 
-## Sóng 6 nên làm gì
+## Sóng 7 nên làm gì
 
-Release 2.16 (`#83`) đã đóng hết issue con. Việc còn lại của nó là bốn-cộng-sáu
-tiêu chí kiểm tay ở trên, không phải code.
+Release 2.16 (`#83`) đã đóng hết issue con. Việc còn lại của nó là mười tiêu
+chí kiểm tay ở trên, không phải code. `#111` hoá ra đúng là bug sản phẩm chứ
+không chỉ bug harness, đúng như dự đoán của sóng 5.
 
-`#111` và `#112` là hai ticket harness gọn, độc lập nhau, và `#111` đáng làm
-trước vì nó có thể là một bug thật của sản phẩm chứ không chỉ của harness.
+`#112` còn lại một câu hỏi duy nhất và nó rẻ: dựng một lượt floor với cửa sổ bị
+che rồi đọc `scheduled=`. `scheduled=0` thì lời giải nằm ở `mermaid-plugin.ts`,
+không ở harness, và nên đổi tiêu đề issue trước khi ai đó sửa theo tiêu đề cũ.
 
 Sau đó là `#84` (Release 2.17), mà thân issue nói rõ mỗi mục chỉ thành issue khi
 2.16 xong. Giờ nó xong rồi. Nền đã sẵn: `#90` cho slash command, `#87` cho
@@ -451,27 +494,44 @@ giao thức message, và nay `#88` cho bảng dispatch, nên mỗi tính năng m
 2.17 là thêm một entry vào một bảng được `tsc` khoá chứ không phải thêm một
 nhánh vào một `switch` 780 dòng.
 
-## Ảnh chụp trạng thái cuối sóng 5, 2026-09-16
+## Sóng 6 không phóng worker nào, và đó là quyết định đúng
+
+Đáng ghi vì playbook này viết ra để phóng worker, và lần này luật của chính nó
+bảo đừng.
+
+Kế hoạch ban đầu: điều phối viên tự làm `#112` (nó và `#111` cùng sửa
+`run.mjs`, và nghiệm thu `#112` cần ba cửa sổ VS Code cùng lúc, sẽ làm worker
+`#111` đỏ giả), rồi phóng một worker cho `#111`. Đo xong `#112` thì tình hình
+đổi: nó không tái hiện được, phần giao được chỉ còn là thước đo, và toàn bộ
+mạch suy luận về `#111` (cơ chế, hình dạng lời giải, lưới đã đỏ) đã nằm trong
+đầu điều phối viên. Chuyển giao qua spec là chép lại gần hết những gì vừa đo,
+để nhận về một vòng hỏi đáp. Đúng điều kiện "spawn cost outweighs benefit".
+
+Cái KHÔNG bỏ là kỷ luật: vẫn dựng lưới trước khi sửa, vẫn commit một check ĐỎ
+có chủ đích trước khi viết bản vá, vẫn đo răng từng nửa của lời giải riêng rẽ,
+vẫn đóng issue bằng bằng chứng của mình. Quy trình sóng không phải là số worker.
+
+Một lưu ý cho sóng sau: commit một check đỏ vào `develop` chỉ an toàn vì CI
+KHÔNG chạy `verify:vscode-floor` (nó cần một màn hình). Kiểm lại `ci.yml` trước
+khi làm thế với một loại kiểm khác.
+
+## Ảnh chụp trạng thái cuối sóng 6, 2026-09-16
 
 Giữ lại làm ví dụ về mức độ chi tiết một bàn giao nên có. Số liệu bên dưới ĐÃ CŨ
 ngay khi có commit tiếp theo; kiểm lại bằng git và `gh issue list`.
 
 ```
-develop            9c34326 (+1 commit tài liệu sau đó), CHƯA push
+develop            7d70aa1, CHƯA push
 lint, build, build:dev  xanh
 roundtrip          39 fixtures + 7 seams: 46 passed, 0 failed
 vòng hai           46 passed, 0 failed
-npm test           35 passed, 0 failed        <- MỚI ở sóng này
-verify:vscode-floor 19/19                     <- 15/15 trước sóng này
-provider           1737 -> 460 dòng
-issue mở           5: #83 #84 #85 (issue mẹ) + #111 #112 (mới mở)
+npm test           35 passed, 0 failed
+verify:vscode-floor 20/20                     <- 19/19 trước sóng này
+issue mở           4: #83 #84 #85 (issue mẹ) + #112
 ```
 
-Sóng 5 đóng `#88 #89 #110` và mở ra `#111 #112`. Hai worker, bốn dispatch:
-điều phối viên tự làm `#110` và phần mở rộng floor harness trước khi phóng ai;
-W2 (`agy`) phải làm thêm một vòng vì hai ca test rỗng ruột; W1 (`claude`, opus,
-effort cao) xong cả hai PR trong một vòng, mã đúng ngay lần đầu.
+Sóng 6 đóng `#111`, làm được hai phần ba của `#112` và để nó mở kèm một giả
+thuyết đã đo. Không worker nào, bốn commit mã và ba commit tài liệu.
 
-Ba trên ba ticket của sóng này có sai sót trong thân issue: `#110` sót `rmSync`
-và race cache, `#88` sai về `originalImagePaths` và sót hai biến trạng thái,
-`#89` đòi test một config mà module đó không hề đọc. Tỉ lệ luỹ kế: 8 trên 26.
+Hai trên hai ticket của sóng này sai CƠ CHẾ trong thân issue. Tỉ lệ luỹ kế:
+10 trên 28.
