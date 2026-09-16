@@ -1234,8 +1234,14 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           e.affectsConfiguration("tuiMarkdown.highlightCurrentLine") ||
           e.affectsConfiguration("tuiMarkdown.autoHideToolbar") ||
           e.affectsConfiguration("tuiMarkdown.listIndent", document.uri) ||
-          e.affectsConfiguration("editor.tabSize", { uri: document.uri }) ||
-          e.affectsConfiguration("editor.insertSpaces", { uri: document.uri })
+          e.affectsConfiguration("editor.tabSize", {
+            uri: document.uri,
+            languageId: document.languageId || "markdown",
+          }) ||
+          e.affectsConfiguration("editor.insertSpaces", {
+            uri: document.uri,
+            languageId: document.languageId || "markdown",
+          })
         ) {
           sendConfig();
         }
