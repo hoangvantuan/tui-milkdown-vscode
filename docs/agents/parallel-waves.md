@@ -110,6 +110,23 @@ Nay mỗi lượt có `mkdtemp` riêng và mọi lần ghi vào cache đều sta
 nên **worker được phép chạy lệnh đó**. Bằng chứng: hai lượt phóng cùng lúc, cả
 hai 15/15, hai base khác nhau.
 
+**Worker vừa `ask` vừa xong việc thì câu hỏi TỰ ĐÓNG.** Sóng 5: W2 gửi một câu
+hỏi hay, rồi tự chọn một phương án và gửi `worker_done` trước khi tôi kịp trả
+lời. `orchestration reply` khi đó trả `dispatch_inactive`, câu trả lời không tới
+nơi, và phương án nó tự chọn chính là phương án sai. Mất trọn một vòng.
+
+- Chữa: đọc hộp thư SỚM và THƯỜNG. `check --wait` với timeout ngắn ngay sau khi
+  phóng, đừng đợi tới khi rảnh. Câu hỏi có hạn sử dụng.
+- Và viết thẳng trong spec: "gửi `ask` xong thì làm tiếp phần khác, ĐỪNG kết
+  thúc trước khi có trả lời cho câu đã hỏi". Sóng 5 chưa có câu này.
+- Nếu đã lỡ: `orca terminal send` gõ thẳng, hoặc phóng một dispatch vòng hai.
+  Tôi làm cách thứ hai và nó chạy gọn.
+
+**ĐIỀU PHỐI VIÊN ĐỪNG TỰ TAY `rm -rf /tmp/tuimd-floor-*` GIỮA SÓNG.** Sóng 5 tôi
+làm đúng thế để dọn trước một phép đo, trong lúc W1 đang chạy floor check. Đó
+chính là bug `#110`, làm bằng tay. `#110` đã bỏ lệnh `rmSync` khỏi code; đừng
+mang nó trở lại bằng ngón tay mình.
+
 **`harness/corpus.ts` quét mọi `*.md` ở GỐC repo làm corpus.** Cấm worker tạo
 tài liệu tạm ở đó. `docs/` an toàn.
 
@@ -118,8 +135,16 @@ thật ở sóng 3. Nếu lọt vào commit thì input thô bị thay bằng out
 VẪN BÁO XANH, và mất im lặng. Chốt chặn bắt buộc trước mỗi merge:
 
 ```
-git diff develop..<nhánh> --stat -- harness/fixtures/synthetic/
+MB=$(git merge-base develop HEAD)          # TRONG worktree của nhánh
+git diff $MB..HEAD --stat -- harness/fixtures/synthetic/
 ```
+
+**Sóng 5 sửa lệnh này. Bản cũ là `git diff develop..<nhánh>` và nó cho kết quả
+SAI ngay khi `develop` đã tiến lên sau lúc nhánh tách ra**, tức là mọi sóng có
+nhiều hơn một lần merge. Nó so hai ĐỈNH, nên mọi thứ điều phối viên vừa đưa vào
+`develop` hiện ra thành dòng XOÁ của nhánh. Lần đầu tôi chạy nó ở sóng 5, nó báo
+worker đã xoá 124 dòng của `run.mjs` và 85 dòng của `extension-tests.ts`; worker
+không đụng file nào trong số đó. Luôn so với merge-base.
 
 Chỉ được có fixture MỚI. Fixture CŨ bị sửa thì chặn lại, bắt worker tự khôi
 phục, đừng sửa hộ.
@@ -142,6 +167,26 @@ Bắt worker tự chạy và dán output cả hai lần. Áp cùng cách cho sea
 ra rồi đếm xem BAO NHIÊU ca trong seam đổi. Seam `list-keys` của `#107` có 5 trên
 8 ca đổi; ba ca còn lại giống nhau vì chúng là hành vi upstream, tức là chốt
 chống hồi quy, và đó là lành mạnh. Nếu con số đó bằng 0 thì seam không đo gì.
+
+**Phép thử răng áp cho MỌI loại kiểm, không riêng fixture.** Sóng 5 mở rộng nó
+sang unit test và sang check của floor harness, và nó bắt được lỗi ở cả hai chỗ:
+
+```
+unit test:  phá một hàm  ->  đếm BAO NHIÊU ca đỏ
+floor check: bỏ rỗng một case trong switch  ->  check tương ứng PHẢI đỏ
+```
+
+W2 giao hai ca test mà khẳng định cốt lõi là `assert.equal(renamesExecuted, false)`
+với `renamesExecuted` do CHÍNH TEST đặt bên trong một `if` do CHÍNH TEST viết.
+Hai ca đó khẳng định câu lệnh `if` của JavaScript chạy đúng; phá bất kỳ hàm nào
+trong module chúng vẫn xanh. Cùng một bệnh với fixture rỗng ruột của sóng 4, chỉ
+đổi vỏ. **Con số ca đỏ là thứ phải hỏi, không phải "test có xanh không".**
+
+**Tự đo cũng phải kiểm lại phép đo.** Sóng 5 tôi đo "thân case dài nhất" bằng
+cách lấy biên là `case` kế tiếp, và nhận được 423 dòng cho `case "export"`. Con
+số đó sai: `export` là case CUỐI nên phép đo đếm tới hết file. Suýt nữa tôi trả
+nhầm việc đúng về cho worker. Khi con số của mình chọi con số của worker, hãy
+nghi phép đo của mình TRƯỚC.
 
 ## Kỷ luật đã chứng minh là đáng giá
 
@@ -193,6 +238,35 @@ Bài học chung: khi thân issue trỏ vào một cơ chế, hãy tự mở fil
 CÓ THẬT không, trước khi chép nó vào spec. Cả hai lần trên tôi đã chép nguyên câu
 sai từ issue vào spec, và worker là người phát hiện.
 
+**DỰNG LƯỚI TRƯỚC KHI GIAO VIỆC, đây là bài học lớn nhất của sóng 5.**
+
+`#88` đòi viết lại một phương thức 1.136 dòng giữ toàn bộ hợp đồng per-document
+trong biến closure. Không một phép kiểm tự động nào của repo chạm tới nó:
+roundtrip harness đo một chuỗi đi qua editor, không đo một provider đi qua VS
+Code. Giao việc đó cho worker với lưới rỗng là đánh bạc.
+
+Nên điều phối viên tự làm ba việc TRƯỚC khi phóng, theo đúng thứ tự:
+
+```
+1. sửa #110 (thư mục dùng chung)  -> gỡ được lệnh cấm worker chạy floor check
+2. mở rộng floor harness 15 -> 19 check, lái webview thật
+3. đo răng của 4 check mới TRÊN MÃ CHƯA REFACTOR, rồi mới tách worktree cho W1
+```
+
+Thứ tự này là bắt buộc. Đo răng trên mã chưa refactor mới cho ra con số mà
+worker phải giữ xanh; đo sau khi worker đã sửa thì không còn là mốc nữa. Và vì
+worktree của W1 tách SAU bước 2, nó thừa hưởng lưới mà không phải merge gì.
+
+Kết quả: bốn check mới có răng đo được (bỏ rỗng `case "edit"` thì đỏ, bỏ rỗng
+`case "viewSource"` thì đỏ), và bản refactor 1.737 dòng xuống 460 dòng qua được
+19/19 ngay lần chạy đầu trên nhánh đã merge.
+
+Ghi luôn chỗ lưới YẾU, đừng chỉ khoe chỗ mạnh. Check "edit không dội ngược"
+KHÔNG đỏ khi gỡ riêng chốt `!pendingEdit` của host, cũng KHÔNG đỏ khi gỡ riêng
+chốt `lastSentState` của webview, vì các chốt xếp lớp. Nó là check bất biến, không
+phải check đơn vị. Tôi viết câu đó vào cả spec của worker lẫn commit message, để
+không ai đọc màu xanh của nó thành nhiều hơn sự thật.
+
 **Đo trước khi chia việc.** Sóng 3 gộp `#97 #99 #100 #101` về một worker vì đo
 được cả bốn dồn vào `MarkdownManager.escapeMarkdownSyntax`, và `#99` với `#101`
 đòi hai điều ngược nhau từ CÙNG một quy tắc cho ký tự `[`. Đưa sẵn cơ chế vào
@@ -241,6 +315,28 @@ khi đã thấy hai worker chạy nó song song. Khi lệnh cấm ra thì worker
 khởi động nó. Việc phải làm TRƯỚC khi phóng: rà xem lệnh kiểm nào dùng tài nguyên
 dùng chung (thư mục cố định, cổng cố định, khoá toàn cục) và cấm sẵn trong spec.
 
+## LỖI CỦA ĐIỀU PHỐI VIÊN SÓNG 5, đừng lặp lại
+
+**Đọc hộp thư quá muộn, làm chết một câu `ask` hay.** W2 hỏi đúng chỗ issue sai,
+rồi tự chọn phương án và kết thúc trước khi tôi đọc tới. `reply` sau đó trả
+`dispatch_inactive`. Phương án nó tự chọn là phương án sai và tốn một vòng sửa.
+Sóng 4 đã ghi bài học "worker không đọc hộp thư kịp"; sóng 5 cho thấy chiều
+ngược lại cũng đúng: ĐIỀU PHỐI VIÊN cũng không đọc kịp. Phóng xong là mở
+`check --wait` ngay, đừng đi làm việc khác trước.
+
+**Tự tay `rm -rf /tmp/tuimd-floor-*` giữa sóng**, trong lúc W1 đang chạy floor
+check, để dọn trước một phép đo của tôi. Tôi vừa sửa `#110` xong, và lập tức tái
+hiện nó bằng ngón tay mình.
+
+**Tin phép đo của mình hơn phép đo của worker, trong khi phép đo của mình sai.**
+Xem mục "Tự đo cũng phải kiểm lại phép đo" ở phần kỷ luật.
+
+**Không lường được `#112`.** Tôi kết luận `#110` đã làm floor check "chạy song
+song an toàn" và viết câu đó vào `AGENTS.md` mà không thử quá hai lượt. Ba lượt
+thì cả ba đỏ ở check mermaid. Câu của tôi đúng về tính đúng đắn (không hỏng dữ
+liệu) nhưng bị đọc thành đúng về độ tin cậy. Đã sửa lại cả `AGENTS.md` lẫn
+`harness/README.md` để tách hai khái niệm đó.
+
 ## Ràng buộc bắt buộc đưa vào spec mọi worker
 
 1. Cấm sửa MỌI `.md` ở GỐC repo, không riêng `CHANGELOG.md` và `AGENTS.md`:
@@ -267,8 +363,14 @@ dùng chung (thư mục cố định, cổng cố định, khoá toàn cục) v�
    trên màn hình, mỗi lượt khoảng 90 giây. Bốn worker cùng chạy là bốn cửa sổ
    nhảy lên máy người dùng. Hãy nói trong spec worker được chạy nó lúc nào,
    đừng để mỗi lần build xong lại chạy một lượt.
-10. Với mọi fixture mới ghim một extension: bắt worker chứng minh bằng cách gỡ
-    extension ra cho fixture ĐỎ rồi trả lại cho XANH, dán output cả hai lần.
+10. Với mọi fixture, unit test hay check mới: bắt worker chứng minh bằng cách phá
+    thứ nó phủ rồi dán output CẢ HAI lần, và bắt báo BAO NHIÊU ca đỏ. "Xanh" không
+    phải bằng chứng; "phá thì đỏ" mới là.
+11. Nói thẳng: "gửi `ask` xong thì làm tiếp phần khác, ĐỪNG gửi `worker_done`
+    trước khi nhận được trả lời cho câu đã hỏi". Xem mục bẫy.
+12. Khi issue đòi sửa `.md` ở gốc (và nó hay đòi), nói luôn rằng ràng buộc 1
+    THẮNG tiêu chí đó, và bắt worker viết sẵn CÂU CHỮ vào báo cáo. Sóng 5 cả hai
+    worker đều làm đúng nhờ câu này.
 
 ## Quy trình merge cho sóng SONG SONG
 
@@ -298,71 +400,78 @@ Sau khi điều phối viên sửa `CHANGELOG.md` hoặc `AGENTS.md`, hai golden
 `harness/golden/repo/` tương ứng sẽ ĐỎ. Chạy `npm run roundtrip:update`, rồi
 kiểm là CHỈ hai file đó đổi. Tiền lệ `ad2b67b`.
 
-## Còn treo sau sóng 4
+## Còn treo sau sóng 5
 
 Mục này gắn với một thời điểm, không phải quy trình. Kiểm lại trước khi tin.
 
-- **Bốn tiêu chí nghiệm thu chưa ai kiểm**, đều cần một cửa sổ VS Code sống, và
-  đều đã ghi rõ trong bản đóng issue: ép lỗi clipboard rồi dán ảnh (`#105`), gõ
-  năm ký tự rồi Ctrl+W mười lần (`#104`), ảnh chụp trước/sau một theme sáng một
-  theme tối (`#86`), Keyboard Shortcuts liệt kê hai lệnh (`#108`). Nên làm bằng
-  tay trước khi phát hành.
-- `#102` vẫn còn bước kiểm TAY từ sóng 3 chưa thực thi: đổi `editor.tabSize` rồi
-  xem lần sửa sau có ghi ra thụt lề mới không. Quy trình ở `docs/reports/w4-indent.md`
-  mục 7. Chưa ai làm.
-- `#96` còn hai tiêu chí hành vi editor chưa kiểm được bằng harness: sửa chữ cạnh
-  cặp thẻ inline không làm vỡ cặp, và xoá một chip chỉ xoá đúng thẻ đó.
-- `harness/editor.ts` và webview thật KHÔNG khớp ở một ca:
-  `harness/vscode-floor/sample.md` không phải điểm bất động vòng một dưới
-  `roundtripMarkdown`, nhưng webview không đẩy edit nên floor check vẫn xanh.
-  Chưa truy tiếp, chưa có issue. Sang sóng 4 vẫn đúng như vậy.
-- `#107` ghi sub-list lồng ở độ thụt sáu dấu cách chứ không phải ba như tiêu chí
-  issue viết. Vẫn là markdown hợp lệ và vẫn là điểm bất động vòng hai, nên xếp
-  loại Normalized chứ không phải lỗi. Đã ghi trong bản đóng issue.
-- Ba run orchestration cũ còn trong Orca: `run_c607755eea03` (sóng 2),
-  `run_81e972296c40` (sóng 3), `run_7c86994cae6d` (sóng 4, cả 6 dispatch
-  succeeded, đã release, terminal đã đóng, hộp thư rỗng). CỐ Ý KHÔNG chạy
+- **`#111` mới mở**: webview đôi khi ghi một edit chuẩn hoá cho một tài liệu vừa
+  mở, làm `document still unmodified after the hold` đỏ ngẫu nhiên. Cùng một SHA
+  cho hai kết quả khác nhau. `AGENTS.md` khẳng định webview KHÔNG ghi edit cho
+  `sample.md`; câu đó chỉ đúng phần lớn thời gian. Triệu chứng đắt hơn nhiều so
+  với chuyện harness đỏ: người dùng mở một file, không chạm gì, và thấy nó đã bị
+  sửa.
+- **`#112` mới mở**: ba lượt floor check song song thì cả ba đỏ ở check mermaid.
+  Cửa sổ dò 40 giây quá ngắn cho ba Electron cùng render artifact mermaid. Hai
+  lượt thì không sao.
+- **Sáu tiêu chí kiểm tay của `#88` chưa ai kiểm**, đều cần một cửa sổ VS Code
+  sống: dán ảnh, đổi tên ảnh, xoá ảnh, export DOCX, export PDF, `@` mention và
+  `[[` wiki link. Đã ghi rõ trong bản đóng issue và ở `docs/reports/w5-provider.md`
+  mục 10. Hai trong tám thao tác gốc nay đã tự động (view source và đường đi edit).
+- **Bốn tiêu chí kiểm tay của sóng 4 vẫn chưa ai kiểm**: ép lỗi clipboard (`#105`),
+  gõ rồi Ctrl+W mười lần (`#104`), ảnh chụp trước/sau hai theme (`#86`), Keyboard
+  Shortcuts liệt kê hai lệnh (`#108`). Nên làm một lượt bằng tay trước khi phát hành.
+- `#102` vẫn còn bước kiểm TAY từ sóng 3: đổi `editor.tabSize` rồi xem lần sửa sau
+  có ghi ra thụt lề mới không. Quy trình ở `docs/reports/w4-indent.md` mục 7.
+- `#96` còn hai tiêu chí hành vi editor chưa kiểm được bằng harness.
+- `src/host/messageHandlers.ts` 301 dòng là file lớn nhất dưới `src/host/`. Đọc
+  được vì mỗi handler ngắn, nhưng sóng sau thêm message thì nên tách theo nhóm.
+  Cố ý không tách trong `#88`: issue không đòi, và tách thêm là thêm rủi ro mà
+  không đổi lấy gì đo được.
+- Bốn run orchestration cũ còn trong Orca: `run_c607755eea03` (sóng 2),
+  `run_81e972296c40` (sóng 3), `run_7c86994cae6d` (sóng 4), `run_03c8c7760738`
+  (sóng 5, ba dispatch, đã release hết, hộp thư rỗng). CỐ Ý KHÔNG chạy
   `orca orchestration reset` vì lệnh đó không có cờ `--run`, nó xoá state TOÀN CỤC
-  và sẽ đụng các dự án khác của người dùng (sekisan3, kiotviet-lite...). Sóng 5
-  chỉ cần `run-create` một run mới.
-- Bốn worktree của sóng 4 (`w1-messages`, `w2-cleanup`, `w3-lists`, `w4-editing`)
-  đã merge hết vào `develop`. Xoá được bằng `orca worktree rm`, cùng với bốn mục
-  tương ứng trong `trustedWorkspaces` của `~/.gemini/antigravity-cli/settings.json`.
+  và sẽ đụng các dự án khác của người dùng. Sóng 6 chỉ cần `run-create` một run mới.
+- Hai worktree của sóng 5 (`w5-unittests`, `w5-provider`) đã merge hết vào
+  `develop`. Xoá được bằng `orca worktree rm`, cùng với mục `w5-unittests` trong
+  `trustedWorkspaces` của `~/.gemini/antigravity-cli/settings.json` (`w5-provider`
+  chạy bằng `--agent claude` nên không có mục nào ở đó).
 
-## Sóng 5 nên làm gì
+## Sóng 6 nên làm gì
 
-`#88` và `#89` là đầu sóng 5 rất gọn. `#88` giờ đã hết bị chặn: `#87` đã vào
-`develop`, nên `Record<WebviewToHostMessage["type"], Handler>` mà nó cần đã có
-sẵn union để khoá. `#89` không đụng file nào của `#88`. Thêm `#110` nữa là ba.
+Release 2.16 (`#83`) đã đóng hết issue con. Việc còn lại của nó là bốn-cộng-sáu
+tiêu chí kiểm tay ở trên, không phải code.
 
-## Skill nên gọi
+`#111` và `#112` là hai ticket harness gọn, độc lập nhau, và `#111` đáng làm
+trước vì nó có thể là một bug thật của sản phẩm chứ không chỉ của harness.
 
-- `orchestration` BẮT BUỘC trước mọi lệnh Orca. Nó là stub, phải chạy tiếp
-  `orca skills get orchestration`. Thêm `--reference references/coordinator-loop.md`
-  khi tái dùng terminal hoặc chọn model, `references/placement-and-remote.md` khi
-  tạo worktree mới, `references/recovery-and-cleanup.md` khi dispatch hỏng.
-- `code-review` sau mỗi lần merge, cần một SHA mốc cố định.
-- `resolving-merge-conflicts` khi nhiều nhánh cùng chạm `main.ts`. Sóng 4 không
-  cần tới nó: cả ba xung đột đều là hợp-cả-hai.
-- `tdd` nếu đụng `#89`.
+Sau đó là `#84` (Release 2.17), mà thân issue nói rõ mỗi mục chỉ thành issue khi
+2.16 xong. Giờ nó xong rồi. Nền đã sẵn: `#90` cho slash command, `#87` cho
+giao thức message, và nay `#88` cho bảng dispatch, nên mỗi tính năng mới của
+2.17 là thêm một entry vào một bảng được `tsc` khoá chứ không phải thêm một
+nhánh vào một `switch` 780 dòng.
 
-Không dùng công cụ Agent hay workflow trừ khi người dùng, CLAUDE.md, hoặc một
-skill yêu cầu. Worker `agy` chạy qua Orca, không phải qua công cụ Agent.
-
-## Ảnh chụp trạng thái cuối sóng 4, 2026-09-16
+## Ảnh chụp trạng thái cuối sóng 5, 2026-09-16
 
 Giữ lại làm ví dụ về mức độ chi tiết một bàn giao nên có. Số liệu bên dưới ĐÃ CŨ
 ngay khi có commit tiếp theo; kiểm lại bằng git và `gh issue list`.
 
 ```
-develop            131987e, CHƯA push
+develop            9c34326 (+1 commit tài liệu sau đó), CHƯA push
 lint, build, build:dev  xanh
 roundtrip          39 fixtures + 7 seams: 46 passed, 0 failed
-vòng hai           46 passed, 0 failed     <- sóng 3 là 1 failed
-verify:vscode-floor 15/15
-issue mở           6, trong đó #83 #84 #85 là issue mẹ; còn #88 #89 #110
+vòng hai           46 passed, 0 failed
+npm test           35 passed, 0 failed        <- MỚI ở sóng này
+verify:vscode-floor 19/19                     <- 15/15 trước sóng này
+provider           1737 -> 460 dòng
+issue mở           5: #83 #84 #85 (issue mẹ) + #111 #112 (mới mở)
 ```
 
-Sóng 4 đóng `#86 #87 #91 #104 #105 #106 #107 #108 #109` và mở ra `#110`.
-Bốn worker, sáu dispatch: hai worker phải làm thêm một vòng sửa, W1 vì báo cáo
-bịa, W4 vì fixture rỗng ruột. Cả hai lần mã nguồn đều đã đúng ngay từ vòng một.
+Sóng 5 đóng `#88 #89 #110` và mở ra `#111 #112`. Hai worker, bốn dispatch:
+điều phối viên tự làm `#110` và phần mở rộng floor harness trước khi phóng ai;
+W2 (`agy`) phải làm thêm một vòng vì hai ca test rỗng ruột; W1 (`claude`, opus,
+effort cao) xong cả hai PR trong một vòng, mã đúng ngay lần đầu.
+
+Ba trên ba ticket của sóng này có sai sót trong thân issue: `#110` sót `rmSync`
+và race cache, `#88` sai về `originalImagePaths` và sót hai biến trạng thái,
+`#89` đòi test một config mà module đó không hề đọc. Tỉ lệ luỹ kế: 8 trên 26.
