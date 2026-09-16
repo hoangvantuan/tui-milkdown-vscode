@@ -151,7 +151,7 @@ export async function run(): Promise<void> {
 
       // Phase 1.5 (#111): the runner types one character and removes it again
       // inside a single 300ms debounce window. The editor ends where it began,
-      // so nothing should reach the file — but the webview posts
+      // so nothing should reach the file, but the webview posts
       // `editor.getMarkdown()` rather than the text it was handed, and
       // `sample.md` is deliberately not a fixed point under that serializer,
       // so an unguarded post rewrites the user's file with normalizations they

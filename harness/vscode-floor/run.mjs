@@ -39,7 +39,7 @@
  * the extension from the repo path, so concurrent runs overwrite each other's
  * bundles while their webviews are about to fetch them. A truncated artifact
  * surfaces as `errors=1`, not as the `errors=0 stuck=1` of #112, so it is not
- * that bug — but "two runs may go at once" is only true because the builds
+ * that bug, but "two runs may go at once" is only true because the builds
  * happen to produce identical bytes from one checkout.
  */
 import { spawn } from "node:child_process";
@@ -404,7 +404,7 @@ async function probeWebview(session) {
  * Both keystrokes must land inside one 300 ms debounce window, so that one
  * `edit` is posted and its content is the round-tripped document. If they
  * drift apart the first post has already gone and the check fails on
- * unpatched AND patched code — a false red, never a false green, and the
+ * unpatched code AND patched code: a false red, never a false green, and the
  * measured gap is in the detail so the next reader can see that is what
  * happened.
  *
@@ -478,8 +478,8 @@ async function driveTransientKeystroke(base, session, contextId) {
     // The TARGET PARAGRAPH's text, not the whole `.tiptap`: that also carries
     // the text inside the rendered mermaid SVG and the code-block language
     // badge, which the plugins rebuild whenever the document is replaced. On
-    // unpatched code this phase provokes exactly such a replacement — the very
-    // bug being measured — so comparing the whole subtree would report the
+    // unpatched code this phase provokes exactly such a replacement, the very
+    // bug being measured, so comparing the whole subtree would report the
     // symptom as a broken probe. Re-queried rather than held: a `setContent`
     // discards the old element.
     const after = await evaluate(
@@ -791,7 +791,7 @@ async function main() {
     name: "webview mounts the editor",
     ok: !!webview,
     detail: webview
-      ? `${webview.href} — mounted ${mountedAt - probeStart}ms into the probe`
+      ? `${webview.href}, mounted ${mountedAt - probeStart}ms into the probe`
       : `no frame reported a .tiptap element within ${MOUNT_TIMEOUT_MS}ms`,
   });
   if (webview) {
@@ -809,7 +809,7 @@ async function main() {
     });
     // `stuckPlaceholders>0 errors=0` means the diagram was STILL LOADING when
     // the budget ran out, which is a different failure from one that rendered
-    // nothing or rendered an error — #112 was misread as the latter for two
+    // nothing or rendered an error. #112 was misread as the latter for two
     // waves. The detail says which, and how long it actually took, because the
     // budget below is only defensible next to a measurement.
     const counts =
@@ -821,10 +821,10 @@ async function main() {
       name: "lazy mermaid artifact loads and renders",
       ok: webview.mermaidRendered >= 1 && webview.mermaidErrors === 0 && webview.mermaidStuck === 0,
       detail: mermaidReadyAt
-        ? `${counts} — ${sinceMount}ms after mount, budget ${MERMAID_TIMEOUT_MS}ms`
+        ? `${counts}; ${sinceMount}ms after mount, budget ${MERMAID_TIMEOUT_MS}ms`
         : webview.mermaidStuck > 0 && webview.mermaidErrors === 0
-          ? `${counts} — STILL LOADING after ${sinceMount}ms, budget ${MERMAID_TIMEOUT_MS}ms exhausted; this is contention, not a broken diagram`
-          : `${counts} — ${sinceMount}ms after mount, nothing left loading, so the artifact did not render`,
+          ? `${counts}; STILL LOADING after ${sinceMount}ms, budget ${MERMAID_TIMEOUT_MS}ms exhausted; this is contention, not a broken diagram`
+          : `${counts}; ${sinceMount}ms after mount, nothing left loading, so the artifact did not render`,
     });
     checks.push({
       name: "toolbar and metadata panel present",

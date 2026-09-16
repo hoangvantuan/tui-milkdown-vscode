@@ -326,7 +326,7 @@ let lastSentState: string | null = null;
  * one: the webview posts `editor.getMarkdown()`, never the text the host
  * handed it, and a document is not always a fixed point under that
  * serializer. So a transaction that changes the document without changing
- * what it serializes to — and equally one that merely changes and reverts —
+ * what it serializes to, and equally one that merely changes and reverts,
  * would otherwise rewrite the user's file with normalizations they never
  * typed. Merely opening a file could leave it modified.
  *
@@ -669,7 +669,7 @@ function buildContent(body: string): string {
  *
  * Every caller used to repeat the `lastSentState` assignment next to its own
  * `postMessage`, so a new call site was one forgotten line away from an echo
- * loop — and there was nowhere to put the baseline check that stops a
+ * loop, and there was nowhere to put the baseline check that stops a
  * round-tripped document from being written back as a user edit.
  *
  * Returns whether anything was sent.
@@ -707,7 +707,7 @@ function debouncedPostEdit(): void {
 
     // Nothing the host does not already have. Typically the document was
     // changed and changed back inside one debounce window, or a transaction
-    // moved something that does not survive serialization — neither is an
+    // moved something that does not survive serialization. Neither is an
     // edit the user made, and posting it would dirty their file (#111).
     if (content === contentBaseline) {
       blobRetryCount = 0;
@@ -2011,8 +2011,8 @@ window.addEventListener("message", async (event) => {
             // table-cell transform, which legitimately changes the document
             // as part of parsing. From here on, an `edit` is only posted when
             // the serialized document differs from this (#111). The guard
-            // below drops on a microtask, so anything deferred past it — a
-            // timer, a rAF, a node view finishing an async load — arrives
+            // below drops on a microtask, so anything deferred past it (a
+            // timer, a rAF, a node view finishing an async load) arrives
             // unguarded; the baseline is what makes that harmless instead of
             // a silent rewrite of the user's file.
             //
@@ -2020,7 +2020,7 @@ window.addEventListener("message", async (event) => {
             // paragraph at the end of the document so there is somewhere to
             // click after a table or an alert, and it does that from
             // `appendTransaction`, which ProseMirror does NOT run while the
-            // editor is being constructed — only from the first transaction
+            // editor is being constructed, only from the first transaction
             // onwards. `sample.md` ends in an alert, so the document grew that
             // paragraph the moment ANYTHING dispatched, and the paragraph
             // serializes to a trailing newline. That is #111: not a
