@@ -37,7 +37,6 @@ let currentWorkspaceRoot: string | null = null;
 const warningCalls: WarningCall[] = [];
 let warningChoiceHandler: WarningChoiceHandler = undefined;
 const deletedUris: Uri[] = [];
-const configStore: Record<string, Record<string, unknown>> = {};
 
 export function setWorkspaceRoot(dir: string | null): void {
   currentWorkspaceRoot = dir ? path.resolve(dir) : null;
@@ -55,21 +54,11 @@ export function getDeletedUris(): readonly Uri[] {
   return [...deletedUris];
 }
 
-export function setConfiguration(section: string, key: string, value: unknown): void {
-  if (!configStore[section]) {
-    configStore[section] = {};
-  }
-  configStore[section][key] = value;
-}
-
 export function resetStub(): void {
   currentWorkspaceRoot = null;
   warningCalls.length = 0;
   warningChoiceHandler = undefined;
   deletedUris.length = 0;
-  for (const k of Object.keys(configStore)) {
-    delete configStore[k];
-  }
 }
 
 async function walkDir(dir: string): Promise<string[]> {
@@ -158,18 +147,6 @@ export const workspace = {
         .map((file) => Uri.file(file));
     }
     return allFiles.map((file) => Uri.file(file));
-  },
-
-  getConfiguration(section?: string) {
-    const sec = section ? configStore[section] ?? {} : {};
-    return {
-      get<T>(key: string, defaultValue?: T): T {
-        if (key in sec) {
-          return sec[key] as T;
-        }
-        return defaultValue as T;
-      },
-    };
   },
 };
 

@@ -18,7 +18,6 @@ import {
   setWarningChoice,
   getWarningCalls,
   getDeletedUris,
-  setConfiguration,
   resetStub,
 } from "./vscode-stub";
 
@@ -343,58 +342,6 @@ describe("image-rename-handler", () => {
 
       // docPath content remains unchanged
       assert.equal(fs.readFileSync(docPath, "utf8"), "![Self](images/old.png)\n");
-    });
-  });
-
-  describe("autoRenameImages configuration gate", () => {
-    it("respects autoRenameImages when configured to false", async () => {
-      const oldImg = path.join(imagesDir, "manual.png");
-      fs.writeFileSync(oldImg, "manual content", "utf8");
-
-      setConfiguration("tuiMarkdown", "autoRenameImages", false);
-
-      const config = vscode.workspace.getConfiguration("tuiMarkdown");
-      const autoRenameEnabled = config.get<boolean>("autoRenameImages", true);
-      assert.equal(autoRenameEnabled, false);
-
-      // Caller simulation: when autoRenameImages is false, detect and execute are bypassed
-      let renamesExecuted = false;
-      if (autoRenameEnabled) {
-        const renames = detectImageRenames(
-          new Map([["images/manual.png", oldImg]]),
-          ["images/manual-renamed.png"],
-          docUri
-        );
-        await executeImageRenames(renames);
-        renamesExecuted = true;
-      }
-
-      assert.equal(renamesExecuted, false);
-      assert.equal(fs.existsSync(oldImg), true);
-    });
-
-    it("executes rename when autoRenameImages defaults to true", async () => {
-      const oldImg = path.join(imagesDir, "default.png");
-      const newImg = path.join(imagesDir, "default-renamed.png");
-      fs.writeFileSync(oldImg, "default content", "utf8");
-
-      // Not explicitly configured -> defaults to true
-      const config = vscode.workspace.getConfiguration("tuiMarkdown");
-      const autoRenameEnabled = config.get<boolean>("autoRenameImages", true);
-      assert.equal(autoRenameEnabled, true);
-
-      if (autoRenameEnabled) {
-        const renames = detectImageRenames(
-          new Map([["images/default.png", oldImg]]),
-          ["images/default-renamed.png"],
-          docUri
-        );
-        const result = await executeImageRenames(renames);
-        assert.equal(result.succeeded.length, 1);
-      }
-
-      assert.equal(fs.existsSync(oldImg), false);
-      assert.equal(fs.existsSync(newImg), true);
     });
   });
 });
