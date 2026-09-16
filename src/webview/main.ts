@@ -5,7 +5,10 @@
  * Load / save path: `parseContent()` splits frontmatter, the body is parsed
  * with `contentType: "markdown"`, then `transformTableCellsAfterParse()`;
  * on save `editor.getMarkdown()` + `reconstructContent()`. Edits are
- * debounced 300 ms into an `edit` message; the provider's `pendingEdit`
+ * debounced 300 ms into an `edit` message; pending edits are flushed
+ * immediately on `visibilitychange` (hidden) and `pagehide`. However, an edit
+ * message dispatched from `pagehide` can still be lost if VS Code disposes
+ * the webview host before IPC delivery finishes. The provider's `pendingEdit`
  * flag (markdownEditorProvider.ts) keeps the resulting document change from
  * echoing back as an `update`. harness/editor.ts mirrors the
  * markdown-relevant extension set below: change both together.
@@ -629,6 +632,35 @@ function debouncedPostEdit(): void {
     vscode.postMessage({ type: "edit", content });
     debounceTimer = null;
   }, DEBOUNCE_MS);
+}
+
+function flushPendingEdit(): void {
+  const hasPendingDebounce = debounceTimer !== null;
+  const hasPendingMetadata = metadataDebounceTimer !== null;
+  if (!hasPendingDebounce && !hasPendingMetadata) return;
+
+  if (debounceTimer !== null) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+  }
+  blobRetryCount = 0;
+
+  if (metadataDebounceTimer !== null) {
+    clearTimeout(metadataDebounceTimer);
+    metadataDebounceTimer = null;
+    const textarea = getMetadataTextarea();
+    if (textarea) {
+      currentFrontmatter = textarea.value.trim() === "" ? null : textarea.value;
+    }
+  }
+
+  if (!editor) return;
+
+  const markdown = editor.getMarkdown();
+  currentBody = transformForSave(markdown, currentImageMap);
+  const content = reconstructContent(currentFrontmatter, currentBody, currentFormat, currentRawBlock);
+  lastSentState = serializeStateForEcho(content, currentImageMap);
+  vscode.postMessage({ type: "edit", content });
 }
 
 // DOM elements
@@ -1268,8 +1300,11 @@ function updateEditorContent(content: string): void {
   }
 
   try {
-    // Save cursor position
+    // Save cursor position and scroll offset
     const { from, to } = editor.state.selection;
+    const scroller = document.getElementById("editor-container");
+    const savedScrollTop = scroller?.scrollTop ?? 0;
+    const savedScrollLeft = scroller?.scrollLeft ?? 0;
 
     // Use setContent with emitUpdate: false to prevent echo loops
     editor.commands.setContent(content, { emitUpdate: false, contentType: 'markdown' });
@@ -1283,6 +1318,12 @@ function updateEditorContent(content: string): void {
     } catch {
       // If position restoration fails, move cursor to start
       editor.commands.focus('start');
+    }
+
+    // Restore scroll offset
+    if (scroller) {
+      scroller.scrollTop = savedScrollTop;
+      scroller.scrollLeft = savedScrollLeft;
     }
   } catch (err) {
     console.error("[Tiptap] Failed to update content:", err);
@@ -2095,6 +2136,16 @@ function init() {
 
   window.addEventListener("beforeunload", () => {
     pendingImageSaves.clear();
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      flushPendingEdit();
+    }
+  });
+
+  window.addEventListener("pagehide", () => {
+    flushPendingEdit();
   });
 
   setupToolbarHandlers();
