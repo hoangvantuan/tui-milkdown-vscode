@@ -77,6 +77,10 @@ const mermaidLoaderConfig = {
   },
 };
 
+// Main webview bundle: compiles src/webview/main.ts into an IIFE.
+// Also bundles all imported CSS (editor.css and themes/index.css) via the
+// CSS loader into out/webview/main.css in import order (editor styles first,
+// theme overrides second).
 const webviewConfig = {
   entryPoints: ['src/webview/main.ts'],
   bundle: true,

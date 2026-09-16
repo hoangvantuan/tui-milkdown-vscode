@@ -27,6 +27,20 @@
  *
  * Exit code 0 when every check passed, 1 otherwise. Requires a display:
  * VS Code opens a real window (it is closed again automatically).
+ *
+ * Two runs may go at once: every directory this script writes is private to
+ * the run (`perRunBase`) and every write into the shared download cache is
+ * staged then renamed (`ensureVsCode`). That was not true before #110, and
+ * the failure looked like flakiness under load rather than a collision.
+ * A passing run deletes its directory; a failing one keeps it.
+ *
+ * One thing is still shared and is NOT private to the run: `npm run
+ * verify:vscode-floor` builds into the repo's own `out/`, and VS Code loads
+ * the extension from the repo path, so concurrent runs overwrite each other's
+ * bundles while their webviews are about to fetch them. A truncated artifact
+ * surfaces as `errors=1`, not as the `errors=0 stuck=1` of #112, so it is not
+ * that bug, but "two runs may go at once" is only true because the builds
+ * happen to produce identical bytes from one checkout.
  */
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
@@ -40,7 +54,37 @@ const REPO = path.resolve(HERE, "..", "..");
 const SAMPLE = path.join(HERE, "sample.md");
 const TESTS_ENTRY = path.join(REPO, "out", "harness", "vscode-floor-tests.js");
 /** How long to wait for the webview to mount before giving up. */
-const WEBVIEW_TIMEOUT_MS = 40000;
+const MOUNT_TIMEOUT_MS = 40000;
+/**
+ * How long the lazily-fetched mermaid artifact gets, counted FROM THE MOUNT
+ * rather than from the start of the probe (#112). The number is unchanged;
+ * what changed is that the diagram no longer pays for the mount out of its
+ * own budget. Measured on this machine (12-core darwin, VS Code 1.85.0),
+ * time from mount to `rendered>=1 && stuck===0`, probe granularity 1.5s:
+ *
+ *   1 run                        1507ms   (mount 1530ms)
+ *   3 concurrent                 1506ms   (mount 3170ms)
+ *   6 concurrent                 1510ms   (mount 5172ms)
+ *   3 concurrent, 12 busy cores  1523ms   (mount 3875ms, load average 24)
+ *
+ * Contention moves the MOUNT and leaves the diagram flat, so this budget is
+ * roughly 25x the worst measurement. #112 reported three concurrent runs all
+ * exhausting the old budget with `stuckPlaceholders=1 errors=0`; none of the
+ * rows above reproduces that, so the budget is not why it failed and raising
+ * it would have been a guess dressed as a fix. See the issue for the table.
+ */
+const MERMAID_TIMEOUT_MS = 40000;
+/**
+ * What the driving phase types into the document. Both processes need it, so
+ * it travels to the extension host in the environment rather than being
+ * spelled twice.
+ */
+const EDIT_SENTINEL = "FLOORPROBE";
+/**
+ * The character typed and immediately removed by the transient-keystroke
+ * phase (#111). One character, so a single Backspace undoes it exactly.
+ */
+const TRANSIENT_CHAR = "Z";
 
 const args = process.argv.slice(2);
 const keep = args.includes("--keep");
@@ -61,9 +105,9 @@ function floorVersion() {
 }
 
 /**
- * A short base directory. VS Code puts an IPC socket inside the user-data
- * dir and macOS caps socket paths at 103 characters, so a long temp path
- * silently breaks the launch.
+ * A short base directory PREFIX. VS Code puts an IPC socket inside the
+ * user-data dir and macOS caps socket paths at 103 characters, so a long
+ * temp path silently breaks the launch.
  */
 function shortTempBase() {
   const preferred = path.join(os.tmpdir(), "tuimd-floor");
@@ -71,6 +115,54 @@ function shortTempBase() {
   // short escape hatch there. Windows has no /tmp, so it keeps os.tmpdir().
   if (preferred.length <= 40 || process.platform === "win32") return preferred;
   return "/tmp/tuimd-floor";
+}
+
+/**
+ * A base directory private to THIS run (#110).
+ *
+ * Every per-run directory used to hang off the constant `shortTempBase()`,
+ * so two concurrent runs shared `ws/sample.md` (each one's `copyFileSync`
+ * rewrote the file the other was asserting was unmodified), shared the
+ * user-data dir (VS Code keeps its IPC socket and its single-instance lock
+ * there, so the second launch could forward to the first and every DevTools
+ * check then inspected the wrong window), and — worst — the second run's
+ * startup `rmSync(base)` deleted the first run's whole tree underneath it.
+ * `mkdtemp` costs six characters, well inside the socket-path cap.
+ */
+function perRunBase() {
+  reapStaleBases();
+  return fs.mkdtempSync(shortTempBase() + "-");
+}
+
+/**
+ * Delete abandoned per-run directories older than a day.
+ *
+ * A failing run keeps its directory on purpose, and a run killed with Ctrl-C
+ * keeps it by accident; before #110 the next run's `rmSync` of the one fixed
+ * base swept both away. Nothing does now, and a kept directory carries a
+ * whole VS Code user-data dir. A run lasts about 90 seconds, so a day-old
+ * directory cannot belong to a run still going, and anyone inspecting a
+ * failure does it long before that.
+ */
+function reapStaleBases() {
+  const prefix = path.basename(shortTempBase()) + "-";
+  const parent = path.dirname(shortTempBase());
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  let entries;
+  try {
+    entries = fs.readdirSync(parent, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !entry.name.startsWith(prefix)) continue;
+    const full = path.join(parent, entry.name);
+    try {
+      if (fs.statSync(full).mtimeMs < cutoff) fs.rmSync(full, { recursive: true, force: true });
+    } catch {
+      /* someone else's, or already gone */
+    }
+  }
 }
 
 /**
@@ -136,6 +228,19 @@ function run(command, commandArgs, options = {}) {
   });
 }
 
+/**
+ * The cached floor build, downloaded on first use.
+ *
+ * The cache is shared between runs on purpose — it is 120 MB and read-only
+ * once populated — so every write into it goes to a pid-private path and is
+ * then moved into place. Two concurrent COLD runs used to `curl` into one
+ * `vscode.zip` (interleaved writes, corrupt archive) and `unzip -o` into one
+ * `app/`, which also made `app/` exist while still half-written, so a third
+ * run could take the `existsSync` branch and find no executable. Rename is
+ * atomic within a filesystem, so `app/` now appears only complete. This is
+ * the second half of #110: the per-run base fixes warm-cache collisions,
+ * this fixes cold-cache ones.
+ */
 async function ensureVsCode(version) {
   const cacheRoot = path.join(os.homedir(), ".cache", "tui-markdown-vscode-floor", version);
   const unpacked = path.join(cacheRoot, "app");
@@ -148,11 +253,21 @@ async function ensureVsCode(version) {
   const archive = path.join(cacheRoot, "vscode.zip");
   if (!fs.existsSync(archive)) {
     console.log(`downloading VS Code ${version} (${platformSlug()})…`);
-    await run("curl", ["-sSL", "-o", archive, url]);
+    const partial = `${archive}.${process.pid}`;
+    await run("curl", ["-sSL", "-o", partial, url]);
+    fs.renameSync(partial, archive);
   }
-  fs.mkdirSync(unpacked, { recursive: true });
+  const staging = `${unpacked}.${process.pid}`;
+  fs.rmSync(staging, { recursive: true, force: true });
+  fs.mkdirSync(staging, { recursive: true });
   console.log("unpacking…");
-  await run("unzip", ["-q", "-o", archive, "-d", unpacked]);
+  await run("unzip", ["-q", "-o", archive, "-d", staging]);
+  try {
+    fs.renameSync(staging, unpacked);
+  } catch {
+    // Another run finished first. Its tree is as good as ours; drop ours.
+    fs.rmSync(staging, { recursive: true, force: true });
+  }
   const executable = executableIn(unpacked);
   if (!executable) throw new Error(`no VS Code executable found under ${unpacked}`);
   return executable;
@@ -160,7 +275,15 @@ async function ensureVsCode(version) {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** A free localhost port, so two runs (or a stray VS Code) cannot collide. */
+/**
+ * A free localhost port, so two runs (or a stray VS Code) do not collide.
+ *
+ * Bind-then-close is a time-of-check race in principle: two runs started in
+ * the same instant can be handed the same port. Left as is — the kernel
+ * rotates ephemeral ports, so the window is tiny, and unlike the shared
+ * user-data dir of #110 a collision here fails loudly (the DevTools attach
+ * finds no target) instead of silently inspecting the wrong window.
+ */
 function freePort() {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
@@ -235,9 +358,17 @@ async function probeWebview(session) {
     taskCheckboxes: document.querySelectorAll('.tiptap input[type="checkbox"]').length,
     alerts: document.querySelectorAll('.tiptap [data-type="alert"], .tiptap .alert').length,
     codeBlocks: document.querySelectorAll('.tiptap pre').length,
-    mermaidRendered: document.querySelectorAll('.mermaid-preview[data-rendered="true"] svg').length,
+    mermaidRendered: document.querySelectorAll('.mermaid-preview[data-rendered="true"]').length,
     mermaidErrors: document.querySelectorAll('.mermaid-err-msg').length,
     mermaidStuck: document.querySelectorAll('.mermaid-loading').length,
+    // Did the plugin ever get as far as SCHEDULING a render? It sets
+    // data-mermaid-src inside a requestAnimationFrame callback, and Chromium
+    // does not run rAF for a window it considers not visible. Scheduled but
+    // not rendered means slow; not even scheduled means the callback never
+    // ran, which no timeout can fix (#112).
+    mermaidScheduled: document.querySelectorAll('.mermaid-preview[data-mermaid-src]').length,
+    hidden: document.hidden,
+    visibility: document.visibilityState,
     metadataPanel: !!document.querySelector('#metadata-panel'),
     toolbar: !!document.querySelector('.editor-toolbar, #toolbar'),
     bodyClass: document.body.className.slice(0, 80)
@@ -250,12 +381,245 @@ async function probeWebview(session) {
         returnByValue: true,
       });
       const value = JSON.parse(result.result.value);
-      if (value.editorMounted) return value;
+      if (value.editorMounted) return { ...value, contextId: context.id };
     } catch {
       /* context went away, or belongs to another frame */
     }
   }
   return null;
+}
+
+/**
+ * Type one character and remove it again inside a single debounce window,
+ * then leave the document alone (#111).
+ *
+ * What this pins: a round trip through the editor that ends where it started
+ * must not reach the file. The webview posts `editor.getMarkdown()`, not the
+ * text it was given, and `sample.md` is deliberately not a fixed point under
+ * that serializer, so ANY transaction arriving after the load guard drops
+ * rewrites the user's file with normalizations they never asked for. #111 is
+ * that, fired by something during load; this is the same defect driven on
+ * purpose, which makes it deterministic instead of a coin flip.
+ *
+ * Both keystrokes must land inside one 300 ms debounce window, so that one
+ * `edit` is posted and its content is the round-tripped document. If they
+ * drift apart the first post has already gone and the check fails on
+ * unpatched code AND patched code: a false red, never a false green, and the
+ * measured gap is in the detail so the next reader can see that is what
+ * happened.
+ *
+ * It proves the guard exists. It does NOT prove the load-time transaction
+ * that #111 actually observed is covered; nothing here fires that.
+ */
+async function driveTransientKeystroke(base, session, contextId) {
+  const marker = path.join(base, "phase-transient");
+  const donePath = path.join(base, "phase-transient-done");
+  const finish = (detail) => {
+    try {
+      fs.writeFileSync(donePath, detail, "utf8");
+    } catch {
+      /* the base is gone; the run is over anyway */
+    }
+    return detail;
+  };
+
+  if (!session || contextId == null) return finish("FAIL no webview context to drive");
+
+  const deadline = Date.now() + 45000;
+  while (!fs.existsSync(marker) && Date.now() < deadline) await sleep(500);
+  if (!fs.existsSync(marker)) return "FAIL extension host never signalled phase-transient";
+
+  const evaluate = async (expression) => {
+    const result = await session.send("Runtime.evaluate", {
+      expression,
+      contextId,
+      returnByValue: true,
+      awaitPromise: true,
+    });
+    if (result.exceptionDetails) throw new Error(result.exceptionDetails.text ?? "evaluate threw");
+    return result.result.value;
+  };
+
+  try {
+    // Caret at the end of the first paragraph, the same placement the
+    // FLOORPROBE phase uses.
+    const before = await evaluate(`(() => {
+      const root = document.querySelector('.tiptap');
+      if (!root) return null;
+      const target = root.querySelector('p');
+      if (!target) return null;
+      root.focus();
+      const range = document.createRange();
+      range.selectNodeContents(target);
+      range.collapse(false);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return target.textContent;
+    })()`);
+    if (before === null) return finish("FAIL could not place the caret");
+
+    const started = Date.now();
+    await session.send("Input.insertText", { text: TRANSIENT_CHAR });
+    // A real Backspace, not a DOM mutation: ProseMirror's own key handling and
+    // its DOM observer are part of what is being exercised.
+    for (const type of ["keyDown", "keyUp"]) {
+      await session.send("Input.dispatchKeyEvent", {
+        type,
+        key: "Backspace",
+        code: "Backspace",
+        windowsVirtualKeyCode: 8,
+        nativeVirtualKeyCode: 8,
+      });
+    }
+    const gap = Date.now() - started;
+
+    await sleep(1200); // 300ms debounce, the host's WorkspaceEdit, and slack
+    // The TARGET PARAGRAPH's text, not the whole `.tiptap`: that also carries
+    // the text inside the rendered mermaid SVG and the code-block language
+    // badge, which the plugins rebuild whenever the document is replaced. On
+    // unpatched code this phase provokes exactly such a replacement, the very
+    // bug being measured, so comparing the whole subtree would report the
+    // symptom as a broken probe. Re-queried rather than held: a `setContent`
+    // discards the old element.
+    const after = await evaluate(
+      `document.querySelector('.tiptap')?.querySelector('p')?.textContent ?? null`,
+    );
+    if (after !== before) {
+      let at = 0;
+      while (at < before.length && at < after.length && before[at] === after[at]) at++;
+      return finish(
+        `FAIL the editor did not return to its starting text (gap ${gap}ms); ` +
+          `len ${before.length}->${String(after).length}, first difference at ${at}: ` +
+          `${JSON.stringify(before.slice(Math.max(0, at - 20), at + 20))} -> ` +
+          `${JSON.stringify(String(after).slice(Math.max(0, at - 20), at + 20))}`,
+      );
+    }
+    return finish(`typed and removed ${JSON.stringify(TRANSIENT_CHAR)} ${gap}ms apart, debounce 300ms`);
+  } catch (err) {
+    return finish(`FAIL threw: ${err.message}`);
+  }
+}
+
+/**
+ * Drive the webview through its own UI, so the extension host's message
+ * dispatch is exercised end to end.
+ *
+ * The webview's `acquireVsCodeApi()` handle is a module-level const in
+ * `main.ts` and is deliberately not published on `window`, so there is no way
+ * to post a host message from here — and adding a hook to the shipped bundle
+ * to make one would be test scaffolding in production. Driving the UI is the
+ * stronger pin anyway: a typed character travels the real Tiptap `onUpdate`,
+ * the real 300 ms debounce and the real host `edit` case, and a click on
+ * `#btn-source` travels the real `viewSource` case.
+ *
+ * The two processes rendezvous on marker files inside the per-run base, the
+ * one directory both of them already know (the host has it as the parent of
+ * `TUI_FLOOR_RESULT`). The host writes `phase-interact` once its read-only
+ * checks are done; this drives; this writes `phase-driven`; the host then
+ * asserts. Putting this between the probe loop and the exit race matters:
+ * the race SIGKILLs the host 60 s later, and the DOM checks above read a
+ * snapshot taken during the probe loop, so modifying the document now cannot
+ * corrupt them.
+ */
+async function driveInteractions(base, session, contextId) {
+  const interactMarker = path.join(base, "phase-interact");
+  const drivenMarker = path.join(base, "phase-driven");
+  const steps = [];
+
+  // Release the host on every path out of here, including the two early ones.
+  // Without it the host waits out its own 60 s timeout while the exit race is
+  // also counting 60 s, and a run that merely failed to mount the webview
+  // reports "no result file" instead of the reason.
+  const release = () => {
+    try {
+      fs.writeFileSync(drivenMarker, "done", "utf8");
+    } catch {
+      /* the base is gone; the run is over anyway */
+    }
+  };
+
+  if (!session || contextId == null) {
+    release();
+    return { ok: false, detail: "no webview context to drive; earlier checks say why" };
+  }
+
+  const evaluate = async (expression) => {
+    const result = await session.send("Runtime.evaluate", {
+      expression,
+      contextId,
+      returnByValue: true,
+      awaitPromise: true,
+    });
+    if (result.exceptionDetails) throw new Error(result.exceptionDetails.text ?? "evaluate threw");
+    return result.result.value;
+  };
+
+  const deadline = Date.now() + 45000;
+  while (!fs.existsSync(interactMarker) && Date.now() < deadline) await sleep(500);
+  if (!fs.existsSync(interactMarker)) {
+    // Nothing to release here: the host never reached the rendezvous, so it is
+    // not waiting on `phase-driven`.
+    return { ok: false, detail: "extension host never signalled phase-interact" };
+  }
+
+  try {
+    // 1. Type into the first paragraph. `Input.insertText` is what a real
+    //    keystroke's text insertion looks like to the page, so ProseMirror
+    //    handles it through its own beforeinput path.
+    const focused = await evaluate(`(() => {
+      const root = document.querySelector('.tiptap');
+      if (!root) return 'no .tiptap';
+      const target = root.querySelector('p');
+      if (!target) return 'no paragraph';
+      root.focus();
+      const range = document.createRange();
+      range.selectNodeContents(target);
+      range.collapse(false);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return 'ok';
+    })()`);
+    if (focused !== "ok") return { ok: false, detail: `could not place the caret: ${focused}` };
+
+    await session.send("Input.insertText", { text: EDIT_SENTINEL });
+    steps.push(`typed ${EDIT_SENTINEL}`);
+
+    // The webview debounces the `edit` message by 300 ms and the host then
+    // applies a WorkspaceEdit; 2 s is that with room to spare, and it is also
+    // long enough for an edit LOOP to show itself in the host's version count.
+    await sleep(2000);
+
+    const typed = await evaluate(
+      `document.querySelector('.tiptap')?.textContent?.includes(${JSON.stringify(EDIT_SENTINEL)}) ?? false`,
+    );
+    if (!typed) return { ok: false, detail: "the sentinel never appeared in the editor DOM" };
+    steps.push("sentinel present in the editor DOM");
+
+    // 2. Click the view-source button, the cheapest host dispatch there is.
+    const clicked = await evaluate(`(() => {
+      const button = document.getElementById('btn-source');
+      if (!button) return 'no #btn-source';
+      button.click();
+      return 'ok';
+    })()`);
+    if (clicked !== "ok") return { ok: false, detail: `could not click view source: ${clicked}` };
+    steps.push("clicked #btn-source");
+    await sleep(1500);
+  } catch (err) {
+    return { ok: false, detail: `${steps.join("; ")}${steps.length ? "; " : ""}threw: ${err.message}` };
+  } finally {
+    // Always release the host, even on failure: without this it waits out its
+    // own timeout and the run takes a minute longer to report the same thing.
+    try {
+      fs.writeFileSync(drivenMarker, steps.join("\n"), "utf8");
+    } catch {
+      release();
+    }
+  }
+
+  return { ok: true, detail: steps.join("; ") };
 }
 
 /** Attach to every page/iframe target the browser endpoint reports. */
@@ -294,8 +658,9 @@ async function main() {
 
   const executable = await ensureVsCode(version);
   const debugPort = await freePort();
-  const base = shortTempBase();
-  fs.rmSync(base, { recursive: true, force: true });
+  // No rmSync here: mkdtemp hands back a directory that did not exist a
+  // moment ago, and wiping a shared parent is what #110 was.
+  const base = perRunBase();
   const workspace = path.join(base, "ws");
   const userData = path.join(base, "ud");
   const extensions = path.join(base, "ext");
@@ -325,6 +690,7 @@ async function main() {
       env: childEnv({
         TUI_FLOOR_RESULT: resultFile,
         TUI_FLOOR_SAMPLE: sample,
+        TUI_FLOOR_SENTINEL: EDIT_SENTINEL,
       }),
     },
   );
@@ -340,7 +706,15 @@ async function main() {
   // would report a diagram that is merely still loading.
   const sessions = new Map();
   let webview = null;
-  const deadline = Date.now() + WEBVIEW_TIMEOUT_MS;
+  let webviewSession = null;
+  const probeStart = Date.now();
+  let mountedAt = null;
+  let mermaidReadyAt = null;
+  // Two conditions, two budgets (#112). The mount is fast and MOUNT_TIMEOUT_MS
+  // is generous for it; the mermaid artifact is a separate lazily-fetched
+  // bundle carrying mermaid plus ELK, and its budget starts when the editor
+  // mounts rather than sharing the mount's.
+  let deadline = probeStart + MOUNT_TIMEOUT_MS;
   while (Date.now() < deadline) {
     await sleep(1500);
     try {
@@ -349,14 +723,38 @@ async function main() {
         const probe = await probeWebview(session);
         if (probe) {
           webview = probe;
+          webviewSession = session;
           break;
         }
       }
     } catch {
       /* endpoint not up yet */
     }
-    if (webview && webview.mermaidRendered >= 1 && webview.mermaidStuck === 0) break;
+    if (webview && mountedAt === null) {
+      mountedAt = Date.now();
+      deadline = mountedAt + MERMAID_TIMEOUT_MS;
+    }
+    if (webview && webview.mermaidRendered >= 1 && webview.mermaidStuck === 0) {
+      mermaidReadyAt = Date.now();
+      break;
+    }
   }
+
+  // Captured here, not where the checks are built: by then `driveInteractions`
+  // and the 60s exit race have run, and a "still loading after Xms" detail
+  // would report their time as the diagram's.
+  const probeEnd = Date.now();
+
+  // Phase two: drive the live webview, then let the extension host assert
+  // what the driving produced. Everything above only READS; from here on the
+  // document is deliberately modified, which is why this runs after the
+  // in-host `document still unmodified after the hold` check and never before.
+  // Strictly before the FLOORPROBE phase: that one posts a real edit, after
+  // which the document is dirty for a legitimate reason and this could not
+  // tell the two apart.
+  await driveTransientKeystroke(base, webviewSession, webview?.contextId);
+
+  const driven = await driveInteractions(base, webviewSession, webview?.contextId);
 
   const consoleEntries = [...sessions.values()].flatMap((s) => s.consoleEntries);
   for (const session of sessions.values()) session.close();
@@ -392,7 +790,9 @@ async function main() {
   checks.push({
     name: "webview mounts the editor",
     ok: !!webview,
-    detail: webview ? webview.href : "no frame reported a .tiptap element",
+    detail: webview
+      ? `${webview.href}, mounted ${mountedAt - probeStart}ms into the probe`
+      : `no frame reported a .tiptap element within ${MOUNT_TIMEOUT_MS}ms`,
   });
   if (webview) {
     checks.push({
@@ -407,10 +807,30 @@ async function main() {
         webview.codeBlocks >= 1,
       detail: `heading=${JSON.stringify(webview.heading)} tableRows=${webview.tableRows} bold=${webview.boldText} codeBlocks=${webview.codeBlocks} taskItems=${webview.taskItems} checkboxes=${webview.taskCheckboxes} alerts=${webview.alerts}`,
     });
+    // `stuckPlaceholders>0 errors=0` means the diagram was STILL LOADING when
+    // the budget ran out, which is a different failure from one that rendered
+    // nothing or rendered an error. `scheduled=` then separates the two ways
+    // of being still loading, and #112 turned out to be the second: a render
+    // that was slow, versus a render that was NEVER SCHEDULED because the
+    // window was hidden and got no animation frame. Only the first is about
+    // the budget. Say which, and how long it took, since the budget below is
+    // only defensible next to a measurement.
+    const counts =
+    `rendered=${webview.mermaidRendered} errors=${webview.mermaidErrors} ` +
+    `stuckPlaceholders=${webview.mermaidStuck} scheduled=${webview.mermaidScheduled} ` +
+    `visibility=${webview.visibility}`;
+    const sinceMount = (mermaidReadyAt ?? probeEnd) - mountedAt;
     checks.push({
       name: "lazy mermaid artifact loads and renders",
       ok: webview.mermaidRendered >= 1 && webview.mermaidErrors === 0 && webview.mermaidStuck === 0,
-      detail: `rendered=${webview.mermaidRendered} errors=${webview.mermaidErrors} stuckPlaceholders=${webview.mermaidStuck}`,
+      detail: mermaidReadyAt
+        ? `${counts}; ${sinceMount}ms after mount, budget ${MERMAID_TIMEOUT_MS}ms`
+        : webview.mermaidStuck > 0 && webview.mermaidErrors === 0
+          ? `${counts}; STILL LOADING after ${sinceMount}ms, budget ${MERMAID_TIMEOUT_MS}ms exhausted; ` +
+            (webview.mermaidScheduled === 0
+              ? `nothing was ever scheduled, so this is not the budget (see #112: a hidden window gets no animation frame)`
+              : `scheduled but unfinished, so this one really is about the budget`)
+          : `${counts}; ${sinceMount}ms after mount, nothing left loading, so the artifact did not render`,
     });
     checks.push({
       name: "toolbar and metadata panel present",
@@ -418,6 +838,11 @@ async function main() {
       detail: `toolbar=${webview.toolbar} metadataPanel=${webview.metadataPanel} bodyClass=${webview.bodyClass}`,
     });
   }
+  checks.push({
+    name: "webview interactions could be driven",
+    ok: driven.ok,
+    detail: driven.detail,
+  });
   checks.push({
     name: "no CSP violation in the console",
     ok: violations.length === 0,
@@ -439,8 +864,10 @@ async function main() {
     console.log(hostOutput.join("").slice(-4000));
   }
 
-  if (!keep) fs.rmSync(base, { recursive: true, force: true });
-  else console.log(`kept: ${base}`);
+  // A passing run leaves nothing behind; a failing one keeps its directory,
+  // because `ws/sample.md`, `ud/logs/` and `result.json` are the evidence.
+  if (keep || failed.length > 0) console.log(`kept: ${base}`);
+  else fs.rmSync(base, { recursive: true, force: true });
 
   return failed.length > 0 ? 1 : 0;
 }

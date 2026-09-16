@@ -1,14 +1,38 @@
+/**
+ * Webview entry point: builds the Tiptap editor, wires the toolbar and the
+ * message protocol with the extension host (markdownEditorProvider.ts).
+ *
+ * Load / save path: `parseContent()` splits frontmatter, the body is parsed
+ * with `contentType: "markdown"`, then `transformTableCellsAfterParse()`;
+ * on save `editor.getMarkdown()` + `reconstructContent()`. Edits are
+ * debounced 300 ms into an `edit` message; pending edits are flushed
+ * immediately on `visibilitychange` (hidden) and `pagehide`. However, an edit
+ * message dispatched from `pagehide` can still be lost if VS Code disposes
+ * the webview host before IPC delivery finishes. The provider's `pendingEdit`
+ * flag (markdownEditorProvider.ts) keeps the resulting document change from
+ * echoing back as an `update`. harness/editor.ts mirrors the
+ * markdown-relevant extension set below: change both together.
+ *
+ * Module scope calls `acquireVsCodeApi()`, so this file cannot be imported
+ * from Node. Persist webview state with `{ ...getState(), key }`.
+ */
 import { Editor, Extension } from "@tiptap/core";
+import type {
+  WebviewToHostMessage,
+  HostToWebviewMessage,
+} from "../shared/messages";
 import StarterKit from "@tiptap/starter-kit";
 import { MarkdownLink, MarkdownImage } from "./markdown-destination";
 import { Highlight } from "@tiptap/extension-highlight";
+import { Underline } from "@tiptap/extension-underline";
 import { Table, TableRow, TableCell, TableHeader } from "@tiptap/extension-table";
 import { CodeBlockLowlight } from "@tiptap/extension-code-block-lowlight";
 import { TaskList, TaskItem } from "@tiptap/extension-list";
 import { Paragraph } from "@tiptap/extension-paragraph";
 import { Document } from "@tiptap/extension-document";
 import { Placeholder } from "@tiptap/extension-placeholder";
-import { Markdown } from "@tiptap/markdown";
+import { Markdown, MarkdownManager, extractAbsorbedBlankLines } from "@tiptap/markdown";
+import { Marked } from "marked";
 import { createLowlight } from "lowlight";
 import javascript from "highlight.js/lib/languages/javascript";
 import typescript from "highlight.js/lib/languages/typescript";
@@ -29,6 +53,7 @@ import ruby from "highlight.js/lib/languages/ruby";
 import diff from "highlight.js/lib/languages/diff";
 import shell from "highlight.js/lib/languages/shell";
 import plaintext from "highlight.js/lib/languages/plaintext";
+import "./editor.css";
 import "./themes/index.css";
 import {
   parseContent,
@@ -54,6 +79,14 @@ import { initLightbox } from "./image-lightbox-plugin";
 import { svgToPngBlob } from "./svg-to-png";
 import { FileMention, setFileMentionFiles } from "./file-mention-plugin";
 import { WikiLink, WikiLinkSuggestion, setWikiLinkFiles } from "./wiki-link-plugin";
+import { RawHtmlBlock, RawHtmlInline } from "./raw-html";
+import { installMarkdownTextEscape } from "./markdown-text-escape";
+import { CustomOrderedList } from "./ordered-list-extension";
+import { ListKeymapExtension } from "./list-keymap-extension";
+import { escapeHtml } from "./file-search-utils";
+
+// Install unified text escape overrides on MarkdownManager (#97, #99, #100, #101).
+installMarkdownTextEscape();
 
 // Fix: @tiptap/markdown v3.19.0 drops `escape` tokens from marked parser,
 // causing escaped characters like \_ to be silently lost during roundtrip.
@@ -65,21 +98,91 @@ const EscapeToken = Extension.create({
   },
 });
 
+// Issue #95: Patch MarkdownManager prototype to accurately preserve consecutive blank lines.
+// Upstream @tiptap/markdown intercepts root `space` tokens inside `parseTokens` via
+// `createImplicitEmptyParagraphsFromSpace`, completely bypassing `BlankLineHandler.parseMarkdown`.
+// Upstream also used `raw.match(/\n\n/g)` which misses overlapping newlines (e.g. \n\n\n has 1 match),
+// causing consecutive blank lines to erode by one per save.
+const origParseTokens = (MarkdownManager.prototype as any).parseTokens;
+(MarkdownManager.prototype as any).parseTokens = function (tokens: any[], parseImplicitEmptyParagraphs = false) {
+  const prevTokens = (this as any)._currentTokens;
+  const normalizedTokens = parseImplicitEmptyParagraphs ? extractAbsorbedBlankLines(tokens) : tokens;
+  (this as any)._currentTokens = normalizedTokens;
+  try {
+    return origParseTokens.call(this, tokens, parseImplicitEmptyParagraphs);
+  } finally {
+    (this as any)._currentTokens = prevTokens;
+  }
+};
+
+(MarkdownManager.prototype as any).createImplicitEmptyParagraphsFromSpace = function (
+  token: any,
+  previousNonSpaceTokenIndex: number,
+  nextNonSpaceTokenIndex: number,
+) {
+  const newlines = (token.raw?.replace(/\r\n/g, "\n").match(/\n/g) || []).length;
+  if (newlines === 0) return [];
+  const prevToken = previousNonSpaceTokenIndex >= 0 ? (this as any)._currentTokens?.[previousNonSpaceTokenIndex] : null;
+  const prevIsTable = prevToken?.type === "table";
+  let emptyCount = 0;
+  if (nextNonSpaceTokenIndex === -1) {
+    // EOF
+    emptyCount = prevIsTable ? Math.max(0, newlines - 1) : newlines;
+  } else if (previousNonSpaceTokenIndex === -1) {
+    // BOF
+    emptyCount = Math.max(0, newlines - 2);
+  } else {
+    // Between blocks
+    emptyCount = prevIsTable ? Math.max(0, newlines - 3) : Math.max(0, newlines - 2);
+  }
+  return Array.from({ length: emptyCount }, () => ({ type: "paragraph", content: [] }));
+};
+
 // Parse marked `space` tokens (blank lines between blocks) as empty paragraphs.
 // marked preserves exact newline count in space.raw:
-//   "\n\n" (2) = normal paragraph break → 0 empty paras
-//   "\n\n\n" (3) = 1 blank line → 1 empty para
-//   "\n\n\n\n" (4) = 2 blank lines → 2 empty paras
+//   "\n\n" (2) = normal paragraph break -> 0 empty paras
+//   "\n\n\n" (3) = 1 blank line -> 1 empty para
+//   "\n\n\n\n" (4) = 2 blank lines -> 2 empty paras
+//
+// Loose list normalization (#91):
+// A loose list (`- a\n\n- b`) is serialized back as a tight list (`- a\n- b`).
+// This behavior originates upstream in @tiptap/extension-list (bulletList /
+// orderedList serializers join child items with '\n', not '\n\n') rather than
+// in our own code, so it cannot be customized here.
+// Per CONTEXT.md, this is an accepted Normalized change: surface syntax is
+// allowed to normalize on first save as long as it reaches a fixed point and
+// remains stable from the second save onward, which it does.
 const BlankLineHandler = Extension.create({
   name: "blankLineHandler",
   markdownTokenName: "space",
   parseMarkdown(token: any, helpers: any) {
-    const newlines = (token.raw?.match(/\n/g) || []).length;
+    const newlines = (token.raw?.replace(/\r\n/g, "\n").match(/\n/g) || []).length;
     const emptyCount = newlines - 2;
     if (emptyCount <= 0) return [];
     return Array.from({ length: emptyCount }, () =>
       helpers.createNode("paragraph", undefined, []),
     );
+  },
+});
+
+export const CustomUnderline = Underline.extend({
+  parseHTML() {
+    return [
+      {
+        tag: "ins",
+      },
+      {
+        tag: "u",
+      },
+      {
+        style: "text-decoration",
+        consuming: false,
+        getAttrs: (style: any) => (style.includes("underline") ? {} : false),
+      },
+    ];
+  },
+  renderMarkdown(node: any, helpers: any) {
+    return `<ins>${helpers.renderChildren(node)}</ins>`;
   },
 });
 
@@ -145,7 +248,7 @@ interface WebviewState {
 }
 
 declare function acquireVsCodeApi(): {
-  postMessage(message: unknown): void;
+  postMessage(message: WebviewToHostMessage): void;
   getState(): WebviewState | null;
   setState(state: WebviewState): void;
 };
@@ -214,6 +317,29 @@ let currentFormat: FrontmatterFormat = "none";
 // it while it still embeds the current frontmatter text.
 let currentRawBlock: string | null = null;
 let lastSentState: string | null = null;
+/**
+ * The content string this webview last agreed with the host on: either the
+ * last `edit` it posted, or the re-serialization of the last `update` it
+ * parsed. An `edit` whose content equals it is not sent (#111).
+ *
+ * Why the comparison lives at the MARKDOWN layer and not at the ProseMirror
+ * one: the webview posts `editor.getMarkdown()`, never the text the host
+ * handed it, and a document is not always a fixed point under that
+ * serializer. So a transaction that changes the document without changing
+ * what it serializes to, and equally one that merely changes and reverts,
+ * would otherwise rewrite the user's file with normalizations they never
+ * typed. Merely opening a file could leave it modified.
+ *
+ * Why this is not `document.getText()`: the host already compares against
+ * that (`EditorSession.applyEdit`) and it does not help, because the
+ * normalized string genuinely differs from the file. The baseline has to be
+ * what THIS side would produce, measured at the moment the two sides agreed.
+ *
+ * It is updated on every real post, which is what keeps undo honest: type a
+ * character and undo it after the edit has gone, and the undone content no
+ * longer matches the baseline, so it is posted and the host follows.
+ */
+let contentBaseline: string | null = null;
 let highlightCurrentLine = true;
 let currentImageMap: Record<string, string> = {};
 
@@ -514,9 +640,7 @@ function replaceInlineImage(
     setImageMap(currentImageMap);
   }
 
-  const fullContent = reconstructContent(currentFrontmatter, currentBody, currentFormat, currentRawBlock);
-  lastSentState = serializeStateForEcho(fullContent, currentImageMap);
-  vscode.postMessage({ type: "edit", content: fullContent });
+  postEdit(buildContent(currentBody));
 
   if (editor && webviewUri) {
     updateImageNodeSrc(imageUrl, webviewUri);
@@ -529,6 +653,41 @@ function serializeStateForEcho(content: string, _imageMap: Record<string, string
   return content + '\0' + imageMapVersion;
 }
 
+/** The body as this webview would write it, without touching `currentBody`. */
+function serializeEditorBody(): string | null {
+  if (!editor) return null;
+  return transformForSave(editor.getMarkdown(), currentImageMap);
+}
+
+/** The full document (frontmatter + body) as it would be written out. */
+function buildContent(body: string): string {
+  return reconstructContent(currentFrontmatter, body, currentFormat, currentRawBlock);
+}
+
+/**
+ * The ONE place an `edit` leaves the webview (#111).
+ *
+ * Every caller used to repeat the `lastSentState` assignment next to its own
+ * `postMessage`, so a new call site was one forgotten line away from an echo
+ * loop, and there was nowhere to put the baseline check that stops a
+ * round-tripped document from being written back as a user edit.
+ *
+ * Returns whether anything was sent.
+ */
+function postEdit(content: string): boolean {
+  if (content === contentBaseline) return false;
+  contentBaseline = content;
+  lastSentState = serializeStateForEcho(content, currentImageMap);
+  vscode.postMessage({ type: "edit", content });
+  return true;
+}
+
+/** Re-anchor the baseline to what the editor currently holds. */
+function resetContentBaseline(): void {
+  const body = serializeEditorBody();
+  contentBaseline = body === null ? null : buildContent(body);
+}
+
 const MAX_BLOB_RETRIES = 5;
 let blobRetryCount = 0;
 
@@ -538,10 +697,23 @@ function debouncedPostEdit(): void {
   if (debounceTimer !== null) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(async () => {
     if (!editor) { debounceTimer = null; return; }
-    // Serialize only once per debounce window (300ms after last keystroke)
-    const markdown = editor.getMarkdown();
-    currentBody = transformForSave(markdown, currentImageMap);
-    const content = reconstructContent(currentFrontmatter, currentBody, currentFormat, currentRawBlock);
+    // Serialize only once per debounce window (300ms after last keystroke).
+    // Held locally until the post actually happens: `currentBody` is what the
+    // host is believed to hold, and `sendFullContent` ships it verbatim on a
+    // metadata edit. Assigning it for a post that the gate below suppresses
+    // would smuggle the serializer's normalizations into the next real edit.
+    const body = serializeEditorBody()!;
+    const content = buildContent(body);
+
+    // Nothing the host does not already have. Typically the document was
+    // changed and changed back inside one debounce window, or a transaction
+    // moved something that does not survive serialization. Neither is an
+    // edit the user made, and posting it would dirty their file (#111).
+    if (content === contentBaseline) {
+      blobRetryCount = 0;
+      debounceTimer = null;
+      return;
+    }
 
     const hasPendingBlobs = await processInlineImages(content);
     if (hasPendingBlobs) {
@@ -556,18 +728,42 @@ function debouncedPostEdit(): void {
       } else {
         // Max retries reached - send edit anyway to avoid stuck state
         blobRetryCount = 0;
-        lastSentState = serializeStateForEcho(content, currentImageMap);
-        vscode.postMessage({ type: "edit", content });
+        if (postEdit(content)) currentBody = body;
         debounceTimer = null;
       }
       return;
     }
 
     blobRetryCount = 0;
-    lastSentState = serializeStateForEcho(content, currentImageMap);
-    vscode.postMessage({ type: "edit", content });
+    if (postEdit(content)) currentBody = body;
     debounceTimer = null;
   }, DEBOUNCE_MS);
+}
+
+function flushPendingEdit(): void {
+  const hasPendingDebounce = debounceTimer !== null;
+  const hasPendingMetadata = metadataDebounceTimer !== null;
+  if (!hasPendingDebounce && !hasPendingMetadata) return;
+
+  if (debounceTimer !== null) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+  }
+  blobRetryCount = 0;
+
+  if (metadataDebounceTimer !== null) {
+    clearTimeout(metadataDebounceTimer);
+    metadataDebounceTimer = null;
+    const textarea = getMetadataTextarea();
+    if (textarea) {
+      currentFrontmatter = textarea.value.trim() === "" ? null : textarea.value;
+    }
+  }
+
+  if (!editor) return;
+
+  const body = serializeEditorBody()!;
+  if (postEdit(buildContent(body))) currentBody = body;
 }
 
 // DOM elements
@@ -639,9 +835,7 @@ async function sendFullContent(): Promise<void> {
   if (hasPendingBlobs) {
     return;
   }
-  const fullContent = reconstructContent(currentFrontmatter, currentBody, currentFormat, currentRawBlock);
-  lastSentState = serializeStateForEcho(fullContent, currentImageMap);
-  vscode.postMessage({ type: "edit", content: fullContent });
+  postEdit(buildContent(currentBody));
 }
 
 function debouncedMetadataEdit(): void {
@@ -724,12 +918,6 @@ function setupMetadataHandlers(): void {
       sendFullContent();
     });
   }
-}
-
-function escapeHtml(text: string): string {
-  const div = document.createElement("div");
-  div.textContent = text;
-  return div.innerHTML;
 }
 
 function showError(message: string): void {
@@ -824,7 +1012,14 @@ function clampZoom(value: number): number {
   return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, rounded));
 }
 
-/** Apply zoom scale to editor content only (the .tiptap element). */
+/**
+ * Apply zoom scale to editor content only (the .tiptap element).
+ *
+ * Toolbar, TOC, metadata panel and popups are untouched. CSS `zoom` is
+ * transparent to JS coordinate APIs (getBoundingClientRect, clientX/Y,
+ * posAtCoords), so plugins stay correct as long as their overlays attach to
+ * `#editor-container` (the non-zoomed parent) rather than `.tiptap`.
+ */
 function applyZoom(value: number): void {
   const tiptapEl = document.querySelector(".tiptap") as HTMLElement | null;
   if (tiptapEl) {
@@ -873,6 +1068,80 @@ function applyHeadingSizes(sizes: Record<string, number>): void {
   }
 }
 
+let currentListIndentation: { style: "space" | "tab"; size: number } = { style: "space", size: 2 };
+let currentTabSize = 2;
+
+/**
+ * Expands leading tab indentation and tabs after list markers into spaces according
+ * to 4-space tab stops, avoiding marked's list tokenizer bug where `-\ta\n\tcontinuation`
+ * preserves extra leading spaces and causes continuation lines to detach on subsequent saves.
+ * Preserves literal tabs inside fenced code blocks.
+ */
+function expandPrefixTabsInText(src: string): string {
+  const lines = src.split("\n");
+  let inCodeBlock = false;
+  let codeBlockFence = "";
+
+  const result: string[] = [];
+
+  for (const line of lines) {
+    const fenceMatch = line.match(/^(\s*)(```+|~~~+)/);
+    if (fenceMatch) {
+      const fence = fenceMatch[2];
+      if (!inCodeBlock) {
+        inCodeBlock = true;
+        codeBlockFence = fence[0];
+      } else if (fence.startsWith(codeBlockFence)) {
+        inCodeBlock = false;
+        codeBlockFence = "";
+      }
+      result.push(line);
+      continue;
+    }
+
+    if (inCodeBlock) {
+      result.push(line);
+      continue;
+    }
+
+    const match = line.match(/^(\s*)(?:([-*+]|\d+[.)])(\s*))?/);
+    if (!match || !match[0].includes("\t")) {
+      result.push(line);
+      continue;
+    }
+
+    let col = 0;
+    let expanded = "";
+    for (let i = 0; i < match[0].length; i++) {
+      const ch = match[0][i];
+      if (ch === "\t") {
+        const numSpaces = 4 - (col % 4);
+        expanded += " ".repeat(numSpaces);
+        col += numSpaces;
+      } else {
+        expanded += ch;
+        col++;
+      }
+    }
+    result.push(expanded + line.slice(match[0].length));
+  }
+
+  return result.join("\n");
+}
+
+function createCustomMarked(): any {
+  const m = new Marked();
+  class CustomLexer extends (m.Lexer as any) {
+    lex(src: string) {
+      return super.lex(expandPrefixTabsInText(src));
+    }
+  }
+  m.Lexer = CustomLexer as any;
+  return m;
+}
+
+const customMarked = createCustomMarked();
+
 // Editor initialization
 function initEditor(initialContent: string = ""): Editor | null {
 
@@ -901,7 +1170,10 @@ function initEditor(initialContent: string = ""): Editor | null {
           document: false, // Replaced by custom Document below
           blockquote: false, // Replaced by custom Blockquote with alert detection
           link: false, // Replaced by MarkdownLink below (destination escaping)
+          underline: false, // Replaced by CustomUnderline below (<ins> serialization)
+          orderedList: false, // Replaced by CustomOrderedList below (#109)
         }),
+        CustomUnderline,
         // Link/Image that escape destinations containing spaces, so a file
         // mention or a pasted image path survives save + reopen.
         MarkdownLink.configure({
@@ -970,20 +1242,38 @@ function initEditor(initialContent: string = ""): Editor | null {
         TableRow,
         TableCell,
         TableHeader,
-        CodeBlockLowlight.configure({
+        CodeBlockLowlight.extend({
+          // Issue #92: dynamic fence length so nested code blocks (fenced with 3 or more backticks)
+          // roundtrip without corruption. Upstream hardcodes 3 backticks.
+          renderMarkdown(node: any, h: any) {
+            const language = node.attrs?.language || '';
+            const text = node.content ? h.renderChildren(node.content) : '';
+            const backtickMatches = text.match(/`+/g) || [];
+            let maxBackticks = 0;
+            for (const m of backtickMatches) {
+              if (m.length > maxBackticks) maxBackticks = m.length;
+            }
+            const fenceLength = Math.max(3, maxBackticks + 1);
+            const fence = '`'.repeat(fenceLength);
+            return `${fence}${language}\n${text}\n${fence}`;
+          },
+        }).configure({
           lowlight,
           enableTabIndentation: true,
-          tabSize: 2,
+          tabSize: currentTabSize,
         }),
         TaskList,
         TaskItem.configure({
           nested: true,
         }),
+        CustomOrderedList,
+        ListKeymapExtension,
         Placeholder.configure({
           placeholder: "Type something...",
         }),
         Markdown.configure({
-          indentation: { style: 'space', size: 2 },
+          marked: customMarked,
+          indentation: currentListIndentation,
           markedOptions: {
             gfm: true,
             breaks: false,
@@ -999,6 +1289,8 @@ function initEditor(initialContent: string = ""): Editor | null {
         FileMention,
         WikiLink,
         WikiLinkSuggestion,
+        RawHtmlBlock,
+        RawHtmlInline,
         ...conditionalExtensions,
       ],
       content: initialContent,
@@ -1108,8 +1400,11 @@ function updateEditorContent(content: string): void {
   }
 
   try {
-    // Save cursor position
+    // Save cursor position and scroll offset
     const { from, to } = editor.state.selection;
+    const scroller = document.getElementById("editor-container");
+    const savedScrollTop = scroller?.scrollTop ?? 0;
+    const savedScrollLeft = scroller?.scrollLeft ?? 0;
 
     // Use setContent with emitUpdate: false to prevent echo loops
     editor.commands.setContent(content, { emitUpdate: false, contentType: 'markdown' });
@@ -1123,6 +1418,12 @@ function updateEditorContent(content: string): void {
     } catch {
       // If position restoration fails, move cursor to start
       editor.commands.focus('start');
+    }
+
+    // Restore scroll offset
+    if (scroller) {
+      scroller.scrollTop = savedScrollTop;
+      scroller.scrollLeft = savedScrollLeft;
     }
   } catch (err) {
     console.error("[Tiptap] Failed to update content:", err);
@@ -1155,6 +1456,7 @@ function applyTheme(theme: "dark" | "light"): void {
 const TOOLBAR_COMMANDS: Record<string, (ed: Editor) => void> = {
   bold: (ed) => ed.chain().focus().toggleBold().run(),
   italic: (ed) => ed.chain().focus().toggleItalic().run(),
+  underline: (ed) => ed.chain().focus().toggleUnderline().run(),
   strike: (ed) => ed.chain().focus().toggleStrike().run(),
   code: (ed) => ed.chain().focus().toggleCode().run(),
   highlight: (ed) => ed.chain().focus().toggleHighlight().run(),
@@ -1194,15 +1496,16 @@ function updateToolbarActiveState(ed: Editor): void {
     const isActive =
       cmd === 'bold' ? ed.isActive('bold') :
         cmd === 'italic' ? ed.isActive('italic') :
-          cmd === 'strike' ? ed.isActive('strike') :
-            cmd === 'code' ? ed.isActive('code') :
-              cmd === 'highlight' ? ed.isActive('highlight') :
-                cmd === 'bulletList' ? ed.isActive('bulletList') :
-                  cmd === 'orderedList' ? ed.isActive('orderedList') :
-                    cmd === 'taskList' ? ed.isActive('taskList') :
-                      cmd === 'blockquote' ? ed.isActive('blockquote') :
-                        cmd === 'codeBlock' ? ed.isActive('codeBlock') :
-                          false;
+          cmd === 'underline' ? ed.isActive('underline') :
+            cmd === 'strike' ? ed.isActive('strike') :
+              cmd === 'code' ? ed.isActive('code') :
+                cmd === 'highlight' ? ed.isActive('highlight') :
+                  cmd === 'bulletList' ? ed.isActive('bulletList') :
+                    cmd === 'orderedList' ? ed.isActive('orderedList') :
+                      cmd === 'taskList' ? ed.isActive('taskList') :
+                        cmd === 'blockquote' ? ed.isActive('blockquote') :
+                          cmd === 'codeBlock' ? ed.isActive('codeBlock') :
+                            false;
     btn.classList.toggle('is-active', isActive);
   }
 
@@ -1638,24 +1941,21 @@ function scrollToHeading(slug: string): void {
 }
 
 window.addEventListener("message", async (event) => {
-  const message = event.data;
+  const message = event.data as HostToWebviewMessage;
   if (!message || typeof message !== "object") return;
 
-  if (message.type === "exportDone") {
-    const btn = document.getElementById("btn-export-go") as
-      | (HTMLButtonElement & { _safetyTimer?: number })
-      | null;
-    if (btn) {
-      if (btn._safetyTimer !== undefined) {
+  switch (message.type) {
+    case "exportDone": {
+      const btn = document.getElementById("btn-export-go") as
+        | (HTMLButtonElement & { _safetyTimer?: number })
+        | null;
+      if (btn) {
         window.clearTimeout(btn._safetyTimer);
         btn._safetyTimer = undefined;
+        btn.disabled = false;
       }
-      btn.disabled = false;
+      break;
     }
-    return;
-  }
-
-  switch (message.type) {
     case "update":
       if (typeof message.content === "string") {
         const newImageMap = message.imageMap || {};
@@ -1707,6 +2007,29 @@ window.addEventListener("message", async (event) => {
           if (editor) {
             // Transform table cells: convert text patterns (-, N., [x]) to proper list nodes
             transformTableCellsAfterParse(editor);
+            // Anchor the baseline to what the editor now holds, AFTER the
+            // table-cell transform, which legitimately changes the document
+            // as part of parsing. From here on, an `edit` is only posted when
+            // the serialized document differs from this (#111). The guard
+            // below drops on a microtask, so anything deferred past it (a
+            // timer, a rAF, a node view finishing an async load) arrives
+            // unguarded; the baseline is what makes that harmless instead of
+            // a silent rewrite of the user's file.
+            //
+            // One empty transaction first. StarterKit's `trailingNode` keeps a
+            // paragraph at the end of the document so there is somewhere to
+            // click after a table or an alert, and it does that from
+            // `appendTransaction`, which ProseMirror does NOT run while the
+            // editor is being constructed, only from the first transaction
+            // onwards. `sample.md` ends in an alert, so the document grew that
+            // paragraph the moment ANYTHING dispatched, and the paragraph
+            // serializes to a trailing newline. That is #111: not a
+            // mysterious load-time edit, but a document that is a different
+            // document after its first transaction, whenever that happens to
+            // arrive. Settling it here means the baseline describes the
+            // document the user will actually be editing.
+            editor.view.dispatch(editor.state.tr.setMeta("addToHistory", false));
+            resetContentBaseline();
             // Restore collapsed headings from saved state after first init
             if (justInitialized) {
               const saved = vscode.getState();
@@ -1767,6 +2090,30 @@ window.addEventListener("message", async (event) => {
       if (typeof message.autoHideToolbar === "boolean") {
         setupToolbarAutoHide(message.autoHideToolbar);
       }
+      if (message.listIndentation && typeof message.listIndentation === "object") {
+        const style = message.listIndentation.style === "tab" ? "tab" : "space";
+        const size = typeof message.listIndentation.size === "number" ? message.listIndentation.size : (style === "tab" ? 1 : 2);
+        currentListIndentation = { style, size };
+        if ((editor?.storage?.markdown?.manager as any)) {
+          (editor!.storage.markdown.manager as any).indentStyle = style;
+          (editor!.storage.markdown.manager as any).indentSize = size;
+        }
+        const mdExt = editor?.extensionManager?.extensions?.find((e: any) => e.name === "markdown");
+        if (mdExt) {
+          mdExt.options.indentation = currentListIndentation;
+        }
+      }
+      if (typeof message.tabSize === "number") {
+        currentTabSize = message.tabSize;
+        if (editor) {
+          const codeBlockExt = editor.extensionManager.extensions.find(
+            (e) => e.name === "codeBlock",
+          );
+          if (codeBlockExt) {
+            codeBlockExt.options.tabSize = message.tabSize;
+          }
+        }
+      }
       break;
     case "savedTheme":
       if (
@@ -1797,7 +2144,10 @@ window.addEventListener("message", async (event) => {
       }
       break;
     case "clipboardImage":
-      // Extension-side clipboard read returned an image (base64 PNG)
+      if (message.error) {
+        console.warn("[Clipboard]", message.error);
+        break;
+      }
       if (typeof message.data === "string" && editor?.view) {
         const file = dataUrlToFile(message.data, "clipboard-image.png");
         if (file) processImagePaste(editor.view, file);
@@ -1913,6 +2263,16 @@ function init() {
     pendingImageSaves.clear();
   });
 
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      flushPendingEdit();
+    }
+  });
+
+  window.addEventListener("pagehide", () => {
+    flushPendingEdit();
+  });
+
   setupToolbarHandlers();
   setupSearchBar();
   setupMetadataHandlers();
@@ -1923,7 +2283,7 @@ function init() {
     setupImageEditOverlay(
       editorEl,
       () => editor?.view ?? null,
-      (msg) => vscode.postMessage(msg)
+      (msg: WebviewToHostMessage) => vscode.postMessage(msg)
     );
   }
 

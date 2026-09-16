@@ -8,6 +8,10 @@
  * loader side (mermaid-bridge.ts) injects this script with the page nonce
  * when the first diagram is about to render.
  *
+ * Size: the artifact is ~8.5 MB because the full `mermaid` entry is imported
+ * (its dist grew 66 -> 84 MB between 11.12 and 11.17 with new diagram types).
+ * Registering only the diagram types we need would shrink it; not done yet.
+ *
  * The default export exists so the module is a legitimate ES module for
  * type checking; the IIFE bundle communicates through the global only.
  */

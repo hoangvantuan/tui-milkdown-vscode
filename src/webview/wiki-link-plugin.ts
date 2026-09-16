@@ -1,3 +1,14 @@
+/**
+ * Wiki links `[[file]]` / `[[file|alias]]`: an inline node with its own
+ * MarkedJS tokenizer (`markdownTokenizer`) plus parse/render hooks so the
+ * syntax round-trips, and a `[[` autocomplete built on @tiptap/suggestion.
+ *
+ * Search runs against a module-level cache filled from the extension
+ * (`wikiLinkSearch` -> `wikiLinkSearchResults`) on popup open and cleared on
+ * close; typing filters locally via file-search-utils.ts. The popup is
+ * appended to `#editor-container`, not `.tiptap`, because of CSS zoom.
+ * Ctrl/Cmd+click resolves the target through the `openWikiLink` message.
+ */
 import { Node, mergeAttributes, Extension } from "@tiptap/core";
 import Suggestion, {
   type SuggestionProps,
@@ -12,6 +23,7 @@ import {
   getFolderPath,
   highlightMatches,
 } from "./file-search-utils";
+import { SuggestionPopup } from "./suggestion-popup";
 
 let cachedFiles: FileItem[] = [];
 let currentDocFolder: string | undefined;
@@ -28,6 +40,48 @@ export function setWikiLinkFiles(
 const wikiLinkPluginKey = new PluginKey("wikiLinkSuggestion");
 
 export const WIKI_LINK_ICON_SVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>`;
+
+function renderWikiLinkItem(result: FileSearchResult): DocumentFragment {
+  const fragment = document.createDocumentFragment();
+
+  const icon = document.createElement("span");
+  icon.className = "wiki-link-item-icon";
+  icon.innerHTML = getFileIcon(result.file.name);
+
+  const displayName = result.file.name.replace(/\.md$/i, "");
+  const displayIndexes = result.nameIndexes
+    ? result.nameIndexes.filter((i) => i < displayName.length)
+    : null;
+
+  const nameSpan = document.createElement("span");
+  nameSpan.className = "wiki-link-item-name";
+  nameSpan.innerHTML = highlightMatches(
+    displayName,
+    displayIndexes && displayIndexes.length > 0
+      ? displayIndexes
+      : null,
+  );
+
+  const folder = getFolderPath(result.file.path);
+  const folderIndexes = result.pathIndexes
+    ? result.pathIndexes.filter((i) => i < folder.length)
+    : null;
+
+  const pathSpan = document.createElement("span");
+  pathSpan.className = "wiki-link-item-path";
+  pathSpan.innerHTML = highlightMatches(
+    folder,
+    folderIndexes && folderIndexes.length > 0
+      ? folderIndexes
+      : null,
+  );
+
+  fragment.appendChild(icon);
+  fragment.appendChild(nameSpan);
+  if (folder) fragment.appendChild(pathSpan);
+
+  return fragment;
+}
 
 export const WikiLinkSuggestion = Extension.create({
   name: "wikiLinkSuggestion",
@@ -98,143 +152,31 @@ export const WikiLinkSuggestion = Extension.create({
         },
 
         render() {
-          let popup: HTMLDivElement | null = null;
-          let items: FileSearchResult[] = [];
-          let selectedIndex = 0;
-          let commandFn: ((props: FileSearchResult) => void) | null = null;
+          const popup = new SuggestionPopup<FileSearchResult>({
+            popupClass: "wiki-link-popup",
+            itemClass: "wiki-link-item",
+            emptyClass: "wiki-link-empty",
+            emptyText: "No .md files found",
+            renderItem: renderWikiLinkItem,
+          });
           let resultListener: (() => void) | null = null;
-          let currentQuery = "";
-
-          function createPopup(): HTMLDivElement {
-            const el = document.createElement("div");
-            el.className = "wiki-link-popup";
-            const container = document.getElementById("editor-container");
-            (container || document.body).appendChild(el);
-            return el;
-          }
-
-          function renderItems() {
-            if (!popup) return;
-            popup.innerHTML = "";
-
-            if (items.length === 0) {
-              const empty = document.createElement("div");
-              empty.className = "wiki-link-empty";
-              empty.textContent = "No .md files found";
-              popup.appendChild(empty);
-              return;
-            }
-
-            items.forEach((result, index) => {
-              const row = document.createElement("div");
-              row.className = "wiki-link-item";
-              if (index === selectedIndex) row.classList.add("is-selected");
-
-              const icon = document.createElement("span");
-              icon.className = "wiki-link-item-icon";
-              icon.innerHTML = getFileIcon(result.file.name);
-
-              const displayName = result.file.name.replace(/\.md$/i, "");
-              const displayIndexes = result.nameIndexes
-                ? result.nameIndexes.filter((i) => i < displayName.length)
-                : null;
-
-              const nameSpan = document.createElement("span");
-              nameSpan.className = "wiki-link-item-name";
-              nameSpan.innerHTML = highlightMatches(
-                displayName,
-                displayIndexes && displayIndexes.length > 0
-                  ? displayIndexes
-                  : null,
-              );
-
-              const folder = getFolderPath(result.file.path);
-              const folderIndexes = result.pathIndexes
-                ? result.pathIndexes.filter((i) => i < folder.length)
-                : null;
-
-              const pathSpan = document.createElement("span");
-              pathSpan.className = "wiki-link-item-path";
-              pathSpan.innerHTML = highlightMatches(
-                folder,
-                folderIndexes && folderIndexes.length > 0
-                  ? folderIndexes
-                  : null,
-              );
-
-              row.appendChild(icon);
-              row.appendChild(nameSpan);
-              if (folder) row.appendChild(pathSpan);
-
-              row.addEventListener("mousedown", (e) => {
-                e.preventDefault();
-                commandFn?.(result);
-              });
-
-              row.addEventListener("mouseenter", () => {
-                selectedIndex = index;
-                updateSelected();
-              });
-
-              popup!.appendChild(row);
-            });
-            scrollSelectedIntoView();
-          }
-
-          function updateSelected() {
-            if (!popup) return;
-            const rows = popup.querySelectorAll(".wiki-link-item");
-            rows.forEach((row, i) => {
-              row.classList.toggle("is-selected", i === selectedIndex);
-            });
-            scrollSelectedIntoView();
-          }
-
-          function scrollSelectedIntoView() {
-            if (!popup) return;
-            const selected = popup.querySelector(
-              ".wiki-link-item.is-selected",
-            );
-            selected?.scrollIntoView({ block: "nearest" });
-          }
-
-          function positionPopup(
-            clientRect: (() => DOMRect | null) | null | undefined,
-          ) {
-            if (!popup || !clientRect) return;
-            const rect = clientRect();
-            if (!rect) return;
-            const container = document.getElementById("editor-container");
-            if (!container) return;
-            const containerRect = container.getBoundingClientRect();
-            popup.style.position = "absolute";
-            popup.style.left = `${rect.left - containerRect.left}px`;
-            popup.style.top = `${rect.bottom - containerRect.top + container.scrollTop}px`;
-          }
 
           return {
             onStart(
               props: SuggestionProps<FileSearchResult, FileSearchResult>,
             ) {
-              commandFn = props.command;
-              items = props.items;
-              selectedIndex = 0;
-              currentQuery = props.query;
-
-              popup = createPopup();
-              positionPopup(props.clientRect);
-              renderItems();
+              popup.onStart(props);
 
               document.dispatchEvent(new CustomEvent("wiki-link-search"));
 
               const handler = () => {
-                items = searchFiles({
-                  query: currentQuery,
-                  files: cachedFiles,
-                  currentDocFolder,
-                });
-                selectedIndex = 0;
-                renderItems();
+                popup.setItems(
+                  searchFiles({
+                    query: popup.query,
+                    files: cachedFiles,
+                    currentDocFolder,
+                  }),
+                );
               };
               document.addEventListener("wiki-link-results", handler);
               resultListener = () => {
@@ -245,60 +187,20 @@ export const WikiLinkSuggestion = Extension.create({
             onUpdate(
               props: SuggestionProps<FileSearchResult, FileSearchResult>,
             ) {
-              commandFn = props.command;
-              currentQuery = props.query;
-              items = props.items;
-              if (selectedIndex >= items.length) {
-                selectedIndex = Math.max(0, items.length - 1);
-              }
-              positionPopup(props.clientRect);
-              renderItems();
+              popup.onUpdate(props);
             },
 
             onKeyDown(props: SuggestionKeyDownProps) {
-              const { event } = props;
-
-              if (event.key === "ArrowDown") {
-                event.preventDefault();
-                if (items.length > 0) {
-                  selectedIndex = (selectedIndex + 1) % items.length;
-                  updateSelected();
-                }
-                return true;
-              }
-              if (event.key === "ArrowUp") {
-                event.preventDefault();
-                if (items.length > 0) {
-                  selectedIndex =
-                    (selectedIndex - 1 + items.length) % items.length;
-                  updateSelected();
-                }
-                return true;
-              }
-              if (event.key === "Enter") {
-                event.preventDefault();
-                if (items.length > 0 && items[selectedIndex]) {
-                  commandFn?.(items[selectedIndex]);
-                }
-                return true;
-              }
-              if (event.key === "Escape") {
-                return false;
-              }
-              return false;
+              return popup.onKeyDown(props);
             },
 
             onExit() {
               resultListener?.();
               resultListener = null;
-              if (popup) {
-                popup.remove();
-                popup = null;
-              }
+
+              popup.onExit();
+
               cachedFiles = [];
-              commandFn = null;
-              items = [];
-              selectedIndex = 0;
             },
           };
         },

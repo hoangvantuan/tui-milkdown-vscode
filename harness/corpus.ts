@@ -3,7 +3,7 @@
  *
  * Two sources, per the spec in issue #65:
  *   1. Synthetic fixtures, one feature per file, in harness/fixtures/synthetic/.
- *   2. Real repository documents: top-level *.md files and docs/internals/*.md.
+ *   2. Real repository documents: the top-level *.md files.
  *
  * Real documents are enumerated at run time, so a newly added doc shows up as
  * a missing golden (fixable with `npm run roundtrip:update`) instead of being
@@ -53,10 +53,7 @@ export function loadCorpus(repoRoot: string): CorpusEntry[] {
     );
   }
 
-  const repoDocs: Array<[label: string, dir: string]> = [
-    ["repo", repoRoot],
-    ["repo/docs/internals", path.join(repoRoot, "docs", "internals")],
-  ];
+  const repoDocs: Array<[label: string, dir: string]> = [["repo", repoRoot]];
   for (const [label, dir] of repoDocs) {
     for (const file of listMarkdownFiles(dir)) {
       entries.push(loadEntry(harnessRoot, `${label}/${file}`, path.join(dir, file)));

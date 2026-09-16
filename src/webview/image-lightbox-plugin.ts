@@ -1,3 +1,12 @@
+/**
+ * Fullscreen lightbox shared by images and mermaid diagrams: dark backdrop,
+ * zoom 0.5x to 4x (buttons, wheel, +/-/0 keys), drag / two-finger pan when
+ * zoomed, Escape or click-outside to close. `currentTarget` switches between
+ * the `<img>` and the SVG wrapper so one transform pipeline serves both.
+ *
+ * `openMermaidLightbox` assigns SVG markup via innerHTML; that input is
+ * trusted only because of the trade-off documented in mermaid-plugin.ts.
+ */
 import { copySvgAsPng } from './svg-to-png';
 
 let scale = 1;

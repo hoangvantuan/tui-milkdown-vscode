@@ -1,7 +1,7 @@
 # Dependency-Verification Harness
 
 A golden-baseline harness that verifies markdown fidelity and the non-editor
-seams (frontmatter parsing, file search ranking, table column widths,
+seams (frontmatter parsing, file search ranking, table column widths, list keymap,
 placeholder rendering, @-mention insertion) across dependency changes. It exists so a maintainer can run one command before and after any
 dependency bump and attribute a fidelity regression to one specific version
 change instead of a vague suspicion. Introduced for the upgrade sweep in
@@ -50,8 +50,9 @@ Two sources, combined:
   supported forms (standard, implicit, empty, comment-only), wiki links,
   file mentions, images with awkward paths, link and image destinations
   that need escaping, and page breaks.
-- Real repository documents — every top-level `*.md` and every
-  `docs/internals/*.md`, enumerated at run time. Long-form documents catch
+- Real repository documents — every top-level `*.md`, enumerated at run
+  time (`docs/internals/` was part of the corpus until the internals docs
+  were retired in favour of comments at the code site). Long-form documents catch
   cross-feature interactions that single-feature fixtures cannot. A new repo
   document appears as a `MISSING` golden until you capture it.
 
@@ -86,6 +87,8 @@ Besides the corpus, `npm run roundtrip` runs one golden per seam:
 | `table-colwidth-seam.ts` | `seams/table-colwidth.txt` | `<colgroup>`/`<col width>` and cell `colwidth` parsing |
 | `placeholder-seam.ts` | `seams/placeholder.txt` | Placeholder DOM writes per keystroke (the flicker measurement) |
 | `filemention-seam.ts` | `seams/file-mention.txt` | `insertFileMention()`: the @-mention insert stays inline, and escaping happens on save |
+| `crlf-seam.ts` | `seams/crlf.txt` | `normalizeLineEndings()`: the document's own line endings survive a save |
+| `list-keys-seam.ts` | `seams/list-keys.txt` | `ListKeymapExtension`: Tab/Shift-Tab on list items, sub-list type, typed-marker absorption, table-cell fallthrough. Five of its eight cases change if the extension is removed; the other three are regression guards over upstream behaviour |
 
 The file-mention seam is the one seam whose lines are verdicts rather than
 measurements: every `yes` in its golden is an assertion, so a `NO` appearing
@@ -231,10 +234,8 @@ is byte-identical, so `harness/golden/seams/file-search.txt` still
 represents the 3.1.0 baseline and also the 4.0.2 present. `npm run lint`
 and `npm run build` green.
 
-Pre-existing staleness carried forward (not touched here, docs edits are
-out of scope for #70): `docs/internals/autocomplete-plugins.md` still
-says "Threshold -1000" and lists `fuzzysort@^3.1.0` in its dependency
-line.
+The threshold rationale now lives as a comment at the call site in
+`src/webview/file-search-utils.ts`.
 
 ## Classification record: remaining in-range bumps (issue #71)
 
@@ -443,6 +444,16 @@ no-DOM seams against their own goldens (`harness/golden/seams/`):
   that an eye sees no flash — a purely CSS or compositing flicker would not
   appear in these counts.
 
+- **CRLF seam** (`crlf-seam.ts`) exercises `normalizeLineEndings` from
+  `src/markdownEditorProvider.ts`: for a CRLF, LF and mixed-ending document it
+  records the ending the function emits for each `vscode.EndOfLine` target and
+  whether the content is otherwise byte-identical. This is host-side code, so
+  the harness build stubs the `vscode` module (the `vscode-mock` esbuild plugin
+  in `esbuild.harness.config.js`, which exposes only `EndOfLine` and a few empty
+  shapes). The stub is what makes a pure host-side function seam-testable at
+  all; anything needing real editor behaviour belongs in the floor check, not
+  here.
+
 All seam reports are plain deterministic text: whatever the current
 dependency tree produces is what lands in the golden.
 
@@ -497,12 +508,47 @@ What it does:
    table rows, task items, code blocks, alert), the lazily injected mermaid
    artifact loaded and rendered with no stuck placeholder, toolbar and
    metadata panel present, and no CSP violation in the console.
+4. Drives that webview and lets the extension host assert what the driving
+   produced: a typed sentinel reaches the document, it does not bounce back as
+   a second update, and a click on `#btn-source` opens the raw markdown in a
+   text editor. This exists because `resolveCustomTextEditor` carries the whole
+   per-document contract and the markdown roundtrip harness measures a string
+   through an editor, not a provider through VS Code (#88).
+
+   It drives the UI rather than posting host messages: `main.ts` calls
+   `acquireVsCodeApi()` at module scope and does not publish the handle, and
+   adding a hook to the shipped bundle to create one would be test scaffolding
+   in production. Driving the UI also covers the webview side of each path.
+
+   Steps 1 to 3 are read-only and two of their checks assert the document is
+   NOT dirty; step 4 deliberately makes it dirty. The two processes therefore
+   rendezvous on marker files in the per-run base — the host writes
+   `phase-interact` after its read-only checks, the runner drives, the runner
+   writes `phase-driven`, the host asserts — and step 4 sits between the probe
+   loop and the exit race that SIGKILLs the host.
+
+   Measured teeth: stubbing out `case "edit"` in the provider turns the
+   typed-character check red, and stubbing out `case "viewSource"` turns the
+   view-source check red. The no-bounce check is weaker and should be read as
+   such: it is an invariant over four layered guards (`!pendingEdit` in
+   `onDidChangeTextDocument`, `pendingEdit || isDisposed` in `updateWebview`,
+   the `queueMicrotask` reset in `applyEdit`, and `lastSentState` in the
+   webview), and removing any ONE of them does not turn it red.
 
 ```bash
 npm run verify:vscode-floor                  # the floor from engines.vscode
 npm run verify:vscode-floor -- --version 1.95.0
 npm run verify:vscode-floor -- --keep        # keep the temp dirs for inspection
 ```
+
+Two runs may go at once. (Concurrent runs used to miss the lazy mermaid render inside the probe window. That was read as load and it was not: a covered window gets no animation frame, and the initial render was scheduled inside one. See #112.) Every directory a run writes hangs off its own
+`fs.mkdtempSync` base, and every write into the shared 120 MB download cache
+is staged under a pid-private name and renamed into place, so a half-written
+`app/` never becomes visible. Before #110 all of it came off one fixed
+`/tmp/tuimd-floor`, and the collision read as flakiness under machine load.
+A passing run deletes its base; a failing one keeps it for inspection, and a
+base left behind by a failed or interrupted run is reaped on the next run
+once it is a day old.
 
 The floor build is launched with the `ELECTRON_*` and `VSCODE_*` variables
 stripped from its environment. Without that, running this command from inside

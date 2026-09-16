@@ -47,14 +47,12 @@ export async function exportToDocx(
       async () => {
         const [
           { toDocx },
-          { htmlPlugin },
           { imagePlugin },
           { tablePlugin },
           { listPlugin },
           { imageSize },
         ] = await Promise.all([
           import("mdast2docx"),
-          import("@m2d/html"),
           import("@m2d/image"),
           import("@m2d/table"),
           import("@m2d/list"),
@@ -64,10 +62,13 @@ export async function exportToDocx(
         const imageResolver = createNodeImageResolver(baseDir, imageSize, pageSize);
 
         const docxProps = buildDocxProps(docName, fontFamily);
+        // Note: @m2d/html requires a browser DOM (document.createElement) which
+        // does not exist in the Node extension host, causing ReferenceError on any
+        // document with raw HTML. Omitting it allows mdast2docx to gracefully skip
+        // raw HTML nodes without failing the export (issue #96).
         const sectionProps = buildSectionProps(pageSize, [
           blockquotePlugin(),
           tableSpacingPlugin(),
-          htmlPlugin(),
           imagePlugin({
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             imageResolver: imageResolver as any,

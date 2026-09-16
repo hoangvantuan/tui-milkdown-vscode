@@ -1,4 +1,4 @@
-This file is a **map**, not an encyclopedia. It tells you where things are and how they connect. Implementation details live in `docs/internals/`.
+This file is a **map**, not an encyclopedia. It tells you where things are and how they connect. The source is the reference: every module starts with a header comment stating its role, and the reason behind a non-obvious choice is a comment at the code site, not a separate document.
 
 ## Project Overview
 
@@ -11,6 +11,9 @@ npm run build      # Production build (minified, no sourcemaps)
 npm run build:dev  # Development build (with sourcemaps, unminified)
 npm run watch      # Watch mode for development
 npm run lint       # TypeScript type checking (tsc --noEmit)
+npm test           # Unit tests via node:test (extension-host pure functions, see test/)
+                   # The glob is load-bearing: Node 22, the version CI runs, reads a bare
+                   # `out/test/` as a module path and fails; only newer Node treats it as a directory
 npm run roundtrip  # Markdown roundtrip harness: corpus vs golden baselines (see harness/README.md)
 npm run roundtrip:update  # Re-capture golden baselines (deliberate use only)
 npm run verify:vscode-floor  # Run the extension on the VS Code version in engines.vscode (see harness/vscode-floor/)
@@ -37,8 +40,27 @@ npm run package    # Package extension as .vsix
 ```
 src/
 ├── extension.ts              # Entry point, registers MarkdownEditorProvider + viewSource/viewRichText commands
-├── markdownEditorProvider.ts # CustomTextEditorProvider + HTML/CSS template
+├── markdownEditorProvider.ts # CustomTextEditorProvider: HTML template + wiring; the per-document work is in src/host/
+├── host/                     # Extension-host side of resolveCustomTextEditor (#88)
+│   ├── session.ts            # EditorSession: the 9 per-document state fields + updateWebview/sendTheme/sendConfig/applyEdit/dispose
+│   ├── messageHandlers.ts    # Handler table keyed by WebviewToHostMessage["type"] + dispatchMessage
+│   ├── typedWebview.ts       # TypedWebview — here, not shared/messages.ts, which must stay free of `vscode`
+│   ├── config.ts             # tuiMarkdown.* getters, buildConfigMessage, handleConfigurationChange
+│   ├── imagePaths.ts         # extractImagePaths / resolveImagePath / buildImageMap / buildOriginalImageMap
+│   ├── lineEndings.ts        # normalizeLineEndings (re-exported by the provider for harness/crlf-seam.ts)
+│   ├── documentSave.ts       # onDidSaveTextDocument: image delete detection + map rebuild
+│   ├── workspaceFiles.ts     # buildExcludePattern / getDocFolder for the @ and [[ pickers
+│   ├── openLocalFile.ts      # openLocalFileInEditor, shared by openLink and openImageInTab
+│   ├── savedPreferences.ts   # ready: replay the saved theme/font/zoom
+│   ├── systemFonts.ts        # System font enumeration (module-level cache)
+│   ├── saveImage.ts          # saveImage: filename + folder validation, write, reply
+│   ├── readClipboardImage.ts # Native clipboard read (osascript / PowerShell / xclip)
+│   ├── requestImageRename.ts # Rename on disk + rewrite this document + workspace references
+│   ├── openWikiLink.ts       # [[name]] resolution and open
+│   └── exportDocument.ts     # export: busy lock, synchronous read, lazy require of the renderers
 ├── constants.ts              # Shared constants (MAX_FILE_SIZE)
+├── shared/
+│   └── messages.ts           # Type-only message protocol: WebviewToHostMessage / HostToWebviewMessage
 ├── utils/
 │   ├── getNonce.ts           # CSP nonce generator
 │   ├── clean-image-path.ts   # Shared image path cleaning utility (removes titles, angle brackets)
@@ -48,14 +70,22 @@ src/
 │   ├── markdown-ast.ts       # Shared MDAST pipeline (parse + mermaid image substitution)
 │   ├── export-docx.ts        # MDAST → DOCX via mdast2docx (lazy-loaded bundle)
 │   ├── export-pdf.ts         # MDAST → HTML → Chromium page.pdf (lazy-loaded bundle)
+│   ├── vscode-resource.ts    # Detect webview resource URLs and recover the local file path
 │   └── chromium-discovery.ts # Locate Chrome/Edge/Chromium/Brave executable for PDF export
 └── webview/
     ├── main.ts               # Browser-side Tiptap editor
-    ├── index.html            # HTML template for webview (loaded by markdownEditorProvider)
+    ├── editor.css            # Editor stylesheet, loaded before the themes (moved out of the provider, #86)
+    ├── css-modules.d.ts      # Ambient declaration so esbuild CSS imports type-check
     ├── markdown-destination.ts # Tiptap Link/Image with destination-safe markdown serialization
+    ├── markdown-text-escape.ts # One override of MarkdownManager text escaping, carries the footnote, ordered-task, entity and block-marker rules (#97, #99, #100, #101)
+    ├── raw-html.ts            # rawHtmlBlock / rawHtmlInline, keep unrecognized HTML verbatim (#96)
+    ├── ordered-list-extension.ts # CustomOrderedList: tokenizer override counting the marker separator (#109)
+    ├── list-keymap-extension.ts # Tab/Shift-Tab list behaviour and typed-marker absorption (#107)
     ├── frontmatter.ts        # YAML parsing & validation utilities
     ├── alert-extension.ts    # GitHub-style alert blocks ([!NOTE], [!TIP], etc.)
     ├── mermaid-plugin.ts     # Mermaid diagram rendering (SVG preview, view/edit mode, caching)
+    ├── mermaid-bridge.ts     # Lazy-loads the mermaid artifact with the page nonce (retry/latch semantics)
+    ├── mermaid-loader.ts     # Separate esbuild entry → out/webview/mermaid-loader.js (mermaid + ELK)
     ├── line-highlight-plugin.ts # ProseMirror plugin for cursor line highlight
     ├── heading-level-plugin.ts # ProseMirror plugin for H1-H6 level badges
     ├── heading-collapse-plugin.ts # ProseMirror plugin for heading collapse/expand toggles
@@ -68,6 +98,7 @@ src/
     ├── table-context-menu.ts # Right-click context menu for table operations
     ├── search-plugin.ts      # Cmd+F search via @tiptap/extension-find-and-replace (highlight, next/prev, match count)
     ├── file-search-utils.ts  # Shared: fuzzy search (fuzzysort), proximity scoring, file type icons, highlight helpers
+    ├── suggestion-popup.ts   # Shared suggestion popup (DOM ownership, positioning, selection, key handling)
     ├── file-mention-plugin.ts # @-mention file autocomplete via @tiptap/suggestion (popup, fuzzy filter, link insert)
     ├── wiki-link-plugin.ts   # Wiki link [[...]] autocomplete via @tiptap/suggestion (popup, filter, node insert)
     ├── font-selector.ts      # Searchable font combobox (system font enumeration, live preview, CSS sanitization)
@@ -96,6 +127,8 @@ harness/                            # Dependency-verification harness (see harne
 ├── filemention-seam.ts             # @-mention insert seam (inline insert + escaping on save)
 ├── table-colwidth-seam.ts          # Table column widths: <colgroup>/<col width> and cell colwidth parsing
 ├── placeholder-seam.ts             # Placeholder DOM writes per keystroke (the flicker measurement)
+├── crlf-seam.ts                    # Line-ending normalization on save (normalizeLineEndings, CRLF/LF/mixed)
+├── list-keys-seam.ts               # Tab/Shift-Tab list keymap and typed markers (#107)
 ├── vscode-floor/                   # VS Code floor check: run.mjs (driver) + extension-tests.ts (in-host checks)
 ├── fixtures/synthetic/*.md         # One feature per fixture
 └── golden/                         # Committed baselines (corpus + seams), captured on the pre-upgrade dependency tree
@@ -111,12 +144,15 @@ Extension provides these settings via `tuiMarkdown.*` namespace:
 - `autoRenameImages` (boolean, default: true) - Automatically rename image files when you change the image path in Markdown (only when folder stays the same)
 - `autoDeleteImages` (boolean, default: true) - Automatically delete image files when removed from Markdown (moves to Trash, warns if used elsewhere)
 - `autoHideToolbar` (boolean, default: false) - Auto-hide toolbar when typing (show on hover)
+- `listIndent` (`"editor"` | `2` | `4` | `"tab"`, default: `"editor"`) - List and code-block indentation. `"editor"` follows `editor.insertSpaces` / `editor.tabSize` resolved for `markdown`
+- `chromiumPath` (string, default: empty) - Explicit Chrome/Edge/Chromium/Brave executable for PDF export; empty means auto-discovery (`chromium-discovery.ts`)
+- `exportPageSize` (string, default: `A4`) - Page size for PDF export
 
 ## Tiptap Integration
 
 Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for markdown roundtrip.
 
-**Extensions:** StarterKit (includes Link with `autolink: true, linkOnPaste: true`), Image, Highlight, Table (resizable + custom `renderMarkdown` hook), CodeBlockLowlight (syntax highlighting via lowlight/highlight.js), TaskList + TaskItem, Placeholder, Markdown (GFM + configurable indentation), AlertNode (GitHub-style alerts), MermaidDiagram (SVG preview), TableContextMenu (right-click menu), CodeBlockEnhancement (language badge + copy button), SearchPlugin (Cmd+F via @tiptap/extension-find-and-replace), FileMention (@-mention file autocomplete via @tiptap/suggestion), WikiLink (wiki links), WikiLinkSuggestion ([[...]] autocomplete via @tiptap/suggestion).
+**Extensions:** StarterKit (includes Link with `autolink: true, linkOnPaste: true`), Image, Highlight, Table (resizable + custom `renderMarkdown` hook), CodeBlockLowlight (syntax highlighting via lowlight/highlight.js), TaskList + TaskItem, Placeholder, Markdown (GFM + configurable indentation), AlertNode (GitHub-style alerts), MermaidDiagram (SVG preview), TableContextMenu (right-click menu), CodeBlockEnhancement (language badge + copy button), SearchPlugin (Cmd+F via @tiptap/extension-find-and-replace), FileMention (@-mention file autocomplete via @tiptap/suggestion), WikiLink (wiki links), WikiLinkSuggestion ([[...]] autocomplete via @tiptap/suggestion), RawHtmlBlock + RawHtmlInline (verbatim raw HTML), CustomUnderline (replaces StarterKit's Underline; parses `ins`/`u`/`text-decoration`, serializes `<ins>`, #106), CustomOrderedList (replaces StarterKit's OrderedList; tokenizer override for continuation indent, #109), ListKeymapExtension (Tab/Shift-Tab list behaviour, registered after StarterKit and Table, #107).
 
 **Markdown API:**
 
@@ -137,25 +173,18 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 - Task list selectors MUST use direct child combinator (`ul[data-type="taskList"] > li`) — descendant combinator leaks `display: flex` to nested items
 - CSS `zoom` on `.tiptap` is transparent to JS coordinate APIs — plugins using `posAtCoords`, context menus, overlays all safe because they attach to `#editor-container` (parent, not zoomed)
 - Popup elements (file mention, wiki link, context menus) append to `#editor-container`, not `.tiptap`, to avoid CSS zoom issues
-
-## Feature Docs
-
-Implementation details for each feature area:
-
-| Doc                       | Covers                                                                                                                                       |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `editor-core.md`          | Toolbar, glassmorphic styling, appearance popover, auto-hide, zoom, line highlight, reading progress, word count, page break, search (Cmd+F) |
-| `image-system.md`         | Image display, upload, auto rename/delete, URL editing, clipboard fallback, lightbox                                                         |
-| `table-system.md`         | Table styling, context menu, GFM serializer, cell content parser                                                                             |
-| `mermaid-system.md`       | Mermaid rendering, copy as PNG, `securityLevel: "loose"` trade-off                                                                           |
-| `heading-navigation.md`   | Heading level badges, collapse/expand, TOC sidebar, link click navigation                                                                    |
-| `autocomplete-plugins.md` | File mention (@), wiki link ([[...]]), cache strategy, click navigation                                                                      |
-| `export-system.md`        | DOCX/PDF export, MDAST pipeline, Chromium discovery, security notes                                                                          |
-| `metadata-panel.md`       | Frontmatter YAML panel, bidirectional sync                                                                                                   |
-| `theming.md`              | Theme system, font strategy, typography, micro-interactions, font selector                                                                   |
-| `alerts-codeblock.md`     | GitHub-style alerts, code block language badge + copy                                                                                        |
-| `dependency-upgrade-sweep.md` | Sweep record (2.15.0): versions moved, declined upgrades, manual verification checklist, findings, harness usage for future upgrades      |
-
+- Tiptap 3.30's decorations hook was considered for the badge/collapse/code-block plugins and not adopted: widget decorations render inside the zoomed `.tiptap`, so the hand-managed ProseMirror plugins stay until the zoom interaction is tested by hand
+- Text escaping on save goes through ONE place: `installMarkdownTextEscape()` overrides `MarkdownManager`'s escaping rather than patching each call site. Four issues (#97, #99, #100, #101) were one defect in `escapeMarkdownSyntax`, and #99 and #101 wanted opposite things from the same rule for `[`. Add a rule there, not a new override
+- `harness/editor.ts` mirrors the markdown-relevant extensions of `initEditor()`; a change to one without the other makes the harness measure something that does not ship. It is NOT a full mirror, and the two can disagree: `harness/vscode-floor/sample.md` is not a first-pass fixed point under `roundtripMarkdown`. The webview writes no edit for it, and since #111 that is a guarantee rather than a tendency: it posts an `edit` only when the serialized content differs from `contentBaseline`, the string it last agreed with the host on. Before #111 it merely usually held, and the same SHA produced both 18/19 and 19/19
+- The webview posts `editor.getMarkdown()`, never the text the host handed it, so EVERY `edit` carries the serializer's normalizations. That is why `postEdit()` in `src/webview/main.ts` is the only place an `edit` leaves the webview and why it gates on `contentBaseline`. A guard at the ProseMirror layer would not do: upstream already suppresses `update` when `prevState.doc.eq(state.doc)`, so what arrives is a real document change that serializes to the same text. Two traps if you touch this: StarterKit's `trailingNode` appends its paragraph from `appendTransaction`, which does not run during construction, so the document changes on its FIRST transaction and the baseline is measured after an empty transaction that settles it; and the baseline must be re-anchored on every real post, or typing then undoing leaves the host holding the typed version
+- `verify:vscode-floor` is safe to run concurrently, since #110 — safe from corruption, which is not the same as reliable. Concurrent runs used to fail `lazy mermaid artifact loads and renders`, and that was read as load twice over: first as the probe window being too short, then as genuine contention. It was neither (#112). Concurrent runs stack VS Code windows, a covered window gets no animation frame, and the initial mermaid render was scheduled inside `requestAnimationFrame`, so nothing was ever scheduled and no budget could have helped. The render now falls back to a 50 ms timer, and the failure detail reports `scheduled=` so the two are no longer confusable. Load is not the cause of that check either; it only decides which window ends up on top. It used to derive `ws`, `ud` and `ext` from one fixed base (`/tmp/tuimd-floor`), so two runs overwrote each other's `sample.md`, shared VS Code's user-data dir and IPC socket, and the second run's startup `rmSync` deleted the first run's tree. That, not machine load, is why `document still unmodified after the hold` failed spuriously during parallel agent waves. Each run now gets its own `mkdtemp` base and stages its writes into the shared download cache before renaming them into place
+- Messages between the extension host and the webview go through the typed unions in `src/shared/messages.ts`. Add a kind there, not an inline `as { type?: string }` cast; a typo on one side is then a `tsc` error
+- A new message kind in `src/shared/messages.ts` must have a handler in `src/host/messageHandlers.ts`. The table is a mapped type over the union, so a missing handler is a `tsc` error rather than a message that silently does nothing at runtime. `dispatchMessage` checks `hasOwnProperty` before calling: the old `switch` fell through on an unknown `type`, but an object-literal lookup would find `constructor` or `toString` on `Object.prototype` and call it
+- `originalImagePaths` is always passed as the whole outer map plus a `docKey`, never as the inner map. `handleDocumentSave` REPLACES the inner map after every save, so anything holding a reference to the old one silently stops detecting renames. No automated check catches this
+- `normalizeLineEndings` lives in `src/host/lineEndings.ts` but the provider re-exports it, because `harness/crlf-seam.ts` imports it from `src/markdownEditorProvider.ts` and a worker may not edit the harness
+- The editor stylesheet is `src/webview/editor.css`, imported by `main.ts` before `themes/index.css`. That import order is the cascade order, and the provider must stay free of `<style>` blocks
+- DOCX export runs in the Node extension host, so any mdast2docx plugin that touches `document` crashes it. `@m2d/html` did, which is why raw HTML is skipped rather than rendered there; PDF export renders it through `remark-rehype` with `allowDangerousHtml`
+- Security trade-offs are documented where they are made: mermaid `securityLevel: "loose"` and nonce exposure in `mermaid-plugin.ts` / `mermaid-bridge.ts`, PDF export invariants in `export-pdf.ts`
 
 ## Development Guidelines
 
@@ -164,7 +193,15 @@ Implementation details for each feature area:
 - Before and after ANY dependency change: run `npm run roundtrip` (see `harness/README.md`) and `npm run build` — a green `npm run lint` is NOT sufficient evidence (a default-import break once passed tsc while breaking the bundle)
 - When a change can affect what the extension host or the webview does at runtime, also run `npm run verify:vscode-floor`: it downloads the VS Code version in `engines.vscode` and checks activation, the custom editor and the live webview there
 - Classify every golden diff as intended fix / accepted change / regression, in the commit that caused it
-- Declined-upgrade decisions and their reasoning: `docs/internals/dependency-upgrade-sweep.md`
+- Per-bump diff classifications and declined-upgrade reasoning: `harness/README.md`, plus the dependency notes in the affected module headers (e.g. puppeteer-core in `export-pdf.ts`)
+
+**Which check to add:**
+
+- **Unit test (`npm test`)** for a pure extension-host function: `frontmatter-parser.ts`, `image-rename-handler.ts`, `chromium-discovery.ts`. `node:test`, no framework dependency; `test/vscode-stub.ts` stands in for the `vscode` module and drives real files under a temp directory. Reach for this when the behaviour is a return value or a file on disk
+- **Roundtrip fixture (`npm run roundtrip`)** when the behaviour is visible as markdown in, markdown out. One feature per fixture, and the fixture must hold the RAW input, never the serialized output
+- **Harness seam** when the behaviour is a webview function's observable result that is not a markdown string: search ranking, escaping rules, column widths. A seam is a golden of measurements
+- **Floor check (`npm run verify:vscode-floor`)** when the behaviour only exists inside a live extension host or webview: message dispatch, the custom editor, CSP, lazy artifacts. It opens a real VS Code window, so it is a separate command
+- A test that cannot go red is worse than no test. Before committing one, break the code it covers and confirm it fails
 
 **Tiptap-First Approach:**
 
@@ -176,7 +213,6 @@ Implementation details for each feature area:
 
 - Tiptap docs: [https://tiptap.dev/docs](https://tiptap.dev/docs)
 - @tiptap/markdown: [https://tiptap.dev/docs/editor/markdown](https://tiptap.dev/docs/editor/markdown)
-- Local reference: `docs/tiptap-markdown-reference.md` (API spec, extension patterns, tokenizer guides)
 
 **Performance & Bundle Optimization:**
 
@@ -194,11 +230,11 @@ After every development cycle (new feature, bug fix, refactor), update these fil
 | --------------------- | ----------------- | ------------------------------------------------------------------------------- |
 | `CHANGELOG.md`        | Every change      | New features, bug fixes, breaking changes, improvements                         |
 | `README.md`           | New features only | User-facing feature descriptions (keep concise)                                 |
-| `docs/internals/*.md` | Feature changes   | Implementation details, message flows, CSS classes, gotchas                     |
-| `CLAUDE.md`           | Map changes only  | New files in File Structure, new entries in Feature Docs table, new conventions |
+| Module header comment | Feature changes   | Role of the file plus the non-obvious constraints; put the *why* next to the code |
+| `AGENTS.md`           | Map changes only  | New files in File Structure, new conventions                                    |
 
 
 **What goes where:**
 
-- **CLAUDE.md**: "Where things are" — file structure, extension list, settings, conventions, pointers
-- **docs/internals/**: "How this works" — message flows, DOM structure, CSS classes, persistence strategies, gotchas
+- **AGENTS.md**: "Where things are" — file structure, extension list, settings, conventions, pointers
+- **Source comments**: "How and why this works" — a header per module, and a comment at the site of each non-obvious decision. There is no separate internals documentation; if a fact cannot be verified from the code, it does not belong in a comment either

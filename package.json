@@ -2,7 +2,7 @@
   "name": "tui-milkdown-vscode",
   "displayName": "TUI Markdown Editor",
   "description": "A beautiful WYSIWYG Markdown editor powered by Tiptap. Edit markdown files with rich text experience and theme selection.",
-  "version": "2.15.2",
+  "version": "2.16.0",
   "publisher": "tuanhv",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -109,6 +109,20 @@
           "default": false,
           "description": "Auto-hide toolbar when typing (show on hover)"
         },
+        "tuiMarkdown.listIndent": {
+          "type": [
+            "string",
+            "number"
+          ],
+          "enum": [
+            "editor",
+            2,
+            4,
+            "tab"
+          ],
+          "default": "editor",
+          "description": "List indentation style: 'editor' to follow VS Code settings, or force 2, 4 spaces or 'tab'"
+        },
         "tuiMarkdown.chromiumPath": {
           "type": "string",
           "default": "",
@@ -171,7 +185,21 @@
           "group": "navigation"
         }
       ]
-    }
+    },
+    "keybindings": [
+      {
+        "command": "tuiMarkdown.viewSource",
+        "key": "ctrl+shift+m",
+        "mac": "cmd+shift+m",
+        "when": "activeCustomEditorId == 'tuiMarkdown.editor'"
+      },
+      {
+        "command": "tuiMarkdown.viewRichText",
+        "key": "ctrl+shift+m",
+        "mac": "cmd+shift+m",
+        "when": "editorLangId == 'markdown' && !activeCustomEditorId"
+      }
+    ]
   },
   "scripts": {
     "build": "node esbuild.config.js",
@@ -181,6 +209,7 @@
     "roundtrip": "node esbuild.harness.config.js && node out/harness/roundtrip.js",
     "roundtrip:update": "node esbuild.harness.config.js && node out/harness/roundtrip.js --update",
     "build:floor-tests": "node esbuild.harness.config.js --floor-tests",
+    "test": "node esbuild.harness.config.js --test && node --test \"out/test/**/*.test.js\"",
     "verify:vscode-floor": "npm run build && npm run build:floor-tests && node harness/vscode-floor/run.mjs",
     "package": "vsce package"
   },
@@ -207,6 +236,7 @@
     "@tiptap/extension-paragraph": "3.30.1",
     "@tiptap/extension-placeholder": "3.30.1",
     "@tiptap/extension-table": "3.30.1",
+    "@tiptap/extension-underline": "3.30.1",
     "@tiptap/markdown": "3.30.1",
     "@tiptap/pm": "3.30.1",
     "@tiptap/starter-kit": "3.30.1",

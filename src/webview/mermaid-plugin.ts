@@ -17,12 +17,19 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { getCachedMermaidBundle, loadMermaidBundle, type MermaidBundle } from "./mermaid-bridge";
 import { openMermaidLightbox } from "./image-lightbox-plugin";
 import { copySvgAsPng } from "./svg-to-png";
+import { escapeHtml } from "./file-search-utils";
 
 const EXPAND_ICON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`;
 const COPY_ICON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
 const CHECK_ICON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
 
 const MERMAID_KEY = new PluginKey("mermaidDiagram");
+/**
+ * Floor for the initial render schedule, in ms. See
+ * `scheduleAfterDecorations`: a hidden window gets no animation frame, so a
+ * timer has to be able to do the job on its own (#112).
+ */
+const HIDDEN_WINDOW_FALLBACK_MS = 50;
 const RENDER_DEBOUNCE_MS = 500;
 
 let mermaidInitialized = false;
@@ -47,6 +54,14 @@ function initializeMermaid(bundle: MermaidBundle, isDark: boolean): void {
         startOnLoad: false,
         layout: elkAvailable ? "elk" : "dagre",
         theme: isDark ? "dark" : "default",
+        // "loose" is required for ELK to render foreignObject HTML labels
+        // ("strict" strips the HTML and the layout goes flat). Trade-off: a
+        // label may carry inline HTML such as `<img onerror=...>` that reaches
+        // the SVG, which is then written via innerHTML into the preview host
+        // and the lightbox. Untrusted mermaid source is therefore potentially
+        // executable inside the webview; we rely on VS Code's webview sandbox
+        // and on the PDF exporter running Chromium with JavaScript disabled.
+        // Do not relax the sandbox or CSP to accommodate mermaid.
         securityLevel: "loose",
         flowchart: MERMAID_FLOWCHART_CFG,
     });
@@ -88,12 +103,6 @@ export function updateMermaidTheme(isDark: boolean): void {
         const code = el.getAttribute("data-mermaid-src");
         if (code) void renderToEl(el, code);
     });
-}
-
-function escapeHtml(text: string): string {
-    const el = document.createElement("span");
-    el.textContent = text;
-    return el.innerHTML;
 }
 
 function getSvgHost(preview: HTMLElement): HTMLElement {
@@ -386,6 +395,32 @@ export const MermaidDiagram = Extension.create({
                     // decorations (they can be outside editorView.dom in the DOM tree)
                     document.addEventListener("dblclick", handleDblClick);
 
+                    /**
+                     * Run `callback` once the decorations have had a chance to
+                     * land, WITHOUT depending on a frame ever being painted.
+                     *
+                     * `requestAnimationFrame` used to be the only scheduler
+                     * here, and Chromium does not run rAF callbacks for a
+                     * window it considers not visible. A webview hidden while
+                     * the document loads therefore never scheduled a render at
+                     * all: the placeholder sat at "Rendering..." with no error
+                     * to show for it, and stayed there until something made the
+                     * window visible again (#112). The timer is the floor. It
+                     * fires whether or not a frame does, and whichever arrives
+                     * first wins, so a visible window still renders on the next
+                     * frame exactly as before.
+                     */
+                    function scheduleAfterDecorations(callback: () => void): void {
+                        let ran = false;
+                        const once = () => {
+                            if (ran) return;
+                            ran = true;
+                            callback();
+                        };
+                        requestAnimationFrame(once);
+                        setTimeout(once, HIDDEN_WINDOW_FALLBACK_MS);
+                    }
+
                     function scanAndSchedule(view: any): void {
                         // Mermaid itself loads lazily on first render
                         // (see ensureMermaidReady); nothing to init eagerly.
@@ -394,7 +429,7 @@ export const MermaidDiagram = Extension.create({
                         if (mermaidBlockCount === 0) return;
 
                         // After decorations are applied, find preview containers and render
-                        requestAnimationFrame(() => {
+                        scheduleAfterDecorations(() => {
                             const doc = view.state.doc;
                             doc.descendants((node: any, pos: number) => {
                                 if (node.type.name !== "codeBlock" || node.attrs.language !== "mermaid") return;

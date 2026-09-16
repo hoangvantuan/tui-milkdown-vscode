@@ -1,0 +1,71 @@
+crlf seam: normalizeLineEndings (src/markdownEditorProvider.ts)
+observes line ending normalization; every 'yes' below is a verdict, not a measurement
+
+[crlf-with-eol-crlf] eol=CRLF input="a\r\n\r\nb\r\n"
+note: given a\r\n\r\nb\r\n and EOL=CRLF the text written back is a\r\n\r\nb\r\n
+  expected: "a\r\n\r\nb\r\n"
+  actual:   "a\r\n\r\nb\r\n"
+  matches:  yes
+
+[crlf-with-eol-lf] eol=LF input="a\r\n\r\nb\r\n"
+note: given a\r\n\r\nb\r\n and EOL=LF the text written back is LF
+  expected: "a\n\nb\n"
+  actual:   "a\n\nb\n"
+  matches:  yes
+
+[lf-with-eol-crlf] eol=CRLF input="a\n\nb\n"
+note: given a\n\nb\n and EOL=CRLF the text written back is converted to CRLF
+  expected: "a\r\n\r\nb\r\n"
+  actual:   "a\r\n\r\nb\r\n"
+  matches:  yes
+
+[lf-with-eol-lf] eol=LF input="a\n\nb\n"
+note: given a\n\nb\n and EOL=LF the text written back stays LF
+  expected: "a\n\nb\n"
+  actual:   "a\n\nb\n"
+  matches:  yes
+
+[mixed-endings-with-eol-crlf] eol=CRLF input="a\r\n\nb\r\n"
+note: mixed endings normalize to document.eol (CRLF)
+  expected: "a\r\n\r\nb\r\n"
+  actual:   "a\r\n\r\nb\r\n"
+  matches:  yes
+
+[mixed-endings-with-eol-lf] eol=LF input="a\r\n\nb\r\n"
+note: mixed endings normalize to document.eol (LF)
+  expected: "a\n\nb\n"
+  actual:   "a\n\nb\n"
+  matches:  yes
+
+[mixed-lone-cr-with-eol-crlf] eol=CRLF input="a\r\nb\rc\n"
+note: mixed input with lone carriage return normalizes to CRLF
+  expected: "a\r\nb\r\nc\r\n"
+  actual:   "a\r\nb\r\nc\r\n"
+  matches:  yes
+
+[mixed-lone-cr-with-eol-lf] eol=LF input="a\r\nb\rc\n"
+note: mixed input with lone carriage return normalizes to LF
+  expected: "a\nb\nc\n"
+  actual:   "a\nb\nc\n"
+  matches:  yes
+
+[string-eol-crlf] eol=string-CRLF input="a\n\nb\n"
+note: accepts \r\n string as EOL parameter
+  expected: "a\r\n\r\nb\r\n"
+  actual:   "a\r\n\r\nb\r\n"
+  matches:  yes
+
+[string-eol-lf] eol=string-LF input="a\r\n\r\nb\r\n"
+note: accepts \n string as EOL parameter
+  expected: "a\n\nb\n"
+  actual:   "a\n\nb\n"
+  matches:  yes
+
+[frontmatter-rawblock-replay]
+note: rawBlock replay in reconstructContent followed by normalizeLineEndings produces no mixed endings
+  reconstructed has mixed endings: yes
+  normalized CRLF has mixed endings: no
+  normalized CRLF matches expected: yes
+  normalized LF has mixed endings: no
+  normalized LF matches expected: yes
+
