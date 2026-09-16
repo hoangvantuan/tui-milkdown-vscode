@@ -209,6 +209,7 @@
     "roundtrip": "node esbuild.harness.config.js && node out/harness/roundtrip.js",
     "roundtrip:update": "node esbuild.harness.config.js && node out/harness/roundtrip.js --update",
     "build:floor-tests": "node esbuild.harness.config.js --floor-tests",
+    "test": "node esbuild.harness.config.js --test && node --test out/test/",
     "verify:vscode-floor": "npm run build && npm run build:floor-tests && node harness/vscode-floor/run.mjs",
     "package": "vsce package"
   },

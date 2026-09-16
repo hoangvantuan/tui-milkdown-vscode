@@ -9,6 +9,10 @@ esbuild.harness.config.js
 harness/**
 out/harness/**
 
+# Unit tests (dev-only, never shipped)
+test/**
+out/test/**
+
 # Dependencies
 node_modules/**
 package-lock.json

@@ -50,3 +50,9 @@ jobs:
       # same commit as the change that caused it.
       - name: Markdown roundtrip harness
         run: npm run roundtrip
+
+      # Unit tests using Node's built-in node:test runner. Covers pure utilities
+      # and extension-host logic (e.g. image-rename-handler, frontmatter-parser)
+      # with zero extra test-framework dependencies.
+      - name: Unit tests
+        run: npm test
