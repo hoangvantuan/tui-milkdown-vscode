@@ -1,7 +1,7 @@
 # Dependency-Verification Harness
 
 A golden-baseline harness that verifies markdown fidelity and the non-editor
-seams (frontmatter parsing, file search ranking, table column widths,
+seams (frontmatter parsing, file search ranking, table column widths, list keymap,
 placeholder rendering, @-mention insertion) across dependency changes. It exists so a maintainer can run one command before and after any
 dependency bump and attribute a fidelity regression to one specific version
 change instead of a vague suspicion. Introduced for the upgrade sweep in
@@ -88,6 +88,7 @@ Besides the corpus, `npm run roundtrip` runs one golden per seam:
 | `placeholder-seam.ts` | `seams/placeholder.txt` | Placeholder DOM writes per keystroke (the flicker measurement) |
 | `filemention-seam.ts` | `seams/file-mention.txt` | `insertFileMention()`: the @-mention insert stays inline, and escaping happens on save |
 | `crlf-seam.ts` | `seams/crlf.txt` | `normalizeLineEndings()`: the document's own line endings survive a save |
+| `list-keys-seam.ts` | `seams/list-keys.txt` | `ListKeymapExtension`: Tab/Shift-Tab on list items, sub-list type, typed-marker absorption, table-cell fallthrough. Five of its eight cases change if the extension is removed; the other three are regression guards over upstream behaviour |
 
 The file-mention seam is the one seam whose lines are verdicts rather than
 measurements: every `yes` in its golden is an assertion, so a `NO` appearing

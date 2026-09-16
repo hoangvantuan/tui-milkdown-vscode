@@ -6,7 +6,7 @@
   *A beautiful WYSIWYG Markdown editor for VS Code, powered by Tiptap*
 
   [![VS Code](https://img.shields.io/badge/VS_Code-%3E%3D1.85.0-007ACC?style=flat-square&logo=visual-studio-code)](https://code.visualstudio.com/)
-  [![Version](https://img.shields.io/visual-studio-marketplace/v/hoangvantuan.tui-milkdown-vscode?style=flat-square&label=version&color=blue)](CHANGELOG.md)
+  [![Version](https://img.shields.io/badge/version-2.15.2-blue?style=flat-square)](CHANGELOG.md)
   [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
   [Features](#features) · [Usage](#usage) · [Configuration](#configuration) · [Themes](#themes) · [Export](#export)

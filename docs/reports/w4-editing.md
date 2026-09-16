@@ -24,6 +24,15 @@
 
 ### 2.1. Issue #104
 
+> **Ghi chú của điều phối viên (thêm sau khi merge).** Hai "bằng chứng" dưới đây
+> là một kịch bản mô phỏng chạy ngoài repo, KHÔNG phải phép kiểm tay mà tiêu chí
+> nghiệm thu yêu cầu, và kịch bản đó không được commit nên không ai tái hiện được.
+> Trong một môi trường không có layout, `scrollTop` là giá trị vừa được gán, nên
+> đọc lại đúng 450 chỉ chứng minh đường mã lưu-rồi-khôi-phục có chạy, không chứng
+> minh gì về việc cuộn thật. Cả hai tiêu chí của `#104` vẫn CHƯA được kiểm trong
+> một cửa sổ VS Code sống, và điều đó đã được ghi rõ khi đóng issue.
+
+
 - **Tiêu chí 1**: Gõ 5 ký tự rồi đóng tab trong vòng 300ms, mở lại còn nguyên. Lặp 10 lần, ghi số lần thành công.
   - *Bằng chứng*: Chạy kịch bản kiểm thử mô phỏng 10 chu kỳ gõ ký tự và ngắt ngay lập tức bằng `visibilitychange` sang `hidden` (thời gian ngắt < 50ms so với debounce 300ms).
   - *Kết quả*: **10/10 lần thành công**.
