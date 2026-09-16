@@ -27,6 +27,12 @@
  *
  * Exit code 0 when every check passed, 1 otherwise. Requires a display:
  * VS Code opens a real window (it is closed again automatically).
+ *
+ * Two runs may go at once: every directory this script writes is private to
+ * the run (`perRunBase`) and every write into the shared download cache is
+ * staged then renamed (`ensureVsCode`). That was not true before #110, and
+ * the failure looked like flakiness under load rather than a collision.
+ * A passing run deletes its directory; a failing one keeps it.
  */
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
@@ -61,9 +67,9 @@ function floorVersion() {
 }
 
 /**
- * A short base directory. VS Code puts an IPC socket inside the user-data
- * dir and macOS caps socket paths at 103 characters, so a long temp path
- * silently breaks the launch.
+ * A short base directory PREFIX. VS Code puts an IPC socket inside the
+ * user-data dir and macOS caps socket paths at 103 characters, so a long
+ * temp path silently breaks the launch.
  */
 function shortTempBase() {
   const preferred = path.join(os.tmpdir(), "tuimd-floor");
@@ -71,6 +77,54 @@ function shortTempBase() {
   // short escape hatch there. Windows has no /tmp, so it keeps os.tmpdir().
   if (preferred.length <= 40 || process.platform === "win32") return preferred;
   return "/tmp/tuimd-floor";
+}
+
+/**
+ * A base directory private to THIS run (#110).
+ *
+ * Every per-run directory used to hang off the constant `shortTempBase()`,
+ * so two concurrent runs shared `ws/sample.md` (each one's `copyFileSync`
+ * rewrote the file the other was asserting was unmodified), shared the
+ * user-data dir (VS Code keeps its IPC socket and its single-instance lock
+ * there, so the second launch could forward to the first and every DevTools
+ * check then inspected the wrong window), and — worst — the second run's
+ * startup `rmSync(base)` deleted the first run's whole tree underneath it.
+ * `mkdtemp` costs six characters, well inside the socket-path cap.
+ */
+function perRunBase() {
+  reapStaleBases();
+  return fs.mkdtempSync(shortTempBase() + "-");
+}
+
+/**
+ * Delete abandoned per-run directories older than a day.
+ *
+ * A failing run keeps its directory on purpose, and a run killed with Ctrl-C
+ * keeps it by accident; before #110 the next run's `rmSync` of the one fixed
+ * base swept both away. Nothing does now, and a kept directory carries a
+ * whole VS Code user-data dir. A run lasts about 90 seconds, so a day-old
+ * directory cannot belong to a run still going, and anyone inspecting a
+ * failure does it long before that.
+ */
+function reapStaleBases() {
+  const prefix = path.basename(shortTempBase()) + "-";
+  const parent = path.dirname(shortTempBase());
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  let entries;
+  try {
+    entries = fs.readdirSync(parent, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !entry.name.startsWith(prefix)) continue;
+    const full = path.join(parent, entry.name);
+    try {
+      if (fs.statSync(full).mtimeMs < cutoff) fs.rmSync(full, { recursive: true, force: true });
+    } catch {
+      /* someone else's, or already gone */
+    }
+  }
 }
 
 /**
@@ -136,6 +190,19 @@ function run(command, commandArgs, options = {}) {
   });
 }
 
+/**
+ * The cached floor build, downloaded on first use.
+ *
+ * The cache is shared between runs on purpose — it is 120 MB and read-only
+ * once populated — so every write into it goes to a pid-private path and is
+ * then moved into place. Two concurrent COLD runs used to `curl` into one
+ * `vscode.zip` (interleaved writes, corrupt archive) and `unzip -o` into one
+ * `app/`, which also made `app/` exist while still half-written, so a third
+ * run could take the `existsSync` branch and find no executable. Rename is
+ * atomic within a filesystem, so `app/` now appears only complete. This is
+ * the second half of #110: the per-run base fixes warm-cache collisions,
+ * this fixes cold-cache ones.
+ */
 async function ensureVsCode(version) {
   const cacheRoot = path.join(os.homedir(), ".cache", "tui-markdown-vscode-floor", version);
   const unpacked = path.join(cacheRoot, "app");
@@ -148,11 +215,21 @@ async function ensureVsCode(version) {
   const archive = path.join(cacheRoot, "vscode.zip");
   if (!fs.existsSync(archive)) {
     console.log(`downloading VS Code ${version} (${platformSlug()})…`);
-    await run("curl", ["-sSL", "-o", archive, url]);
+    const partial = `${archive}.${process.pid}`;
+    await run("curl", ["-sSL", "-o", partial, url]);
+    fs.renameSync(partial, archive);
   }
-  fs.mkdirSync(unpacked, { recursive: true });
+  const staging = `${unpacked}.${process.pid}`;
+  fs.rmSync(staging, { recursive: true, force: true });
+  fs.mkdirSync(staging, { recursive: true });
   console.log("unpacking…");
-  await run("unzip", ["-q", "-o", archive, "-d", unpacked]);
+  await run("unzip", ["-q", "-o", archive, "-d", staging]);
+  try {
+    fs.renameSync(staging, unpacked);
+  } catch {
+    // Another run finished first. Its tree is as good as ours; drop ours.
+    fs.rmSync(staging, { recursive: true, force: true });
+  }
   const executable = executableIn(unpacked);
   if (!executable) throw new Error(`no VS Code executable found under ${unpacked}`);
   return executable;
@@ -160,7 +237,15 @@ async function ensureVsCode(version) {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** A free localhost port, so two runs (or a stray VS Code) cannot collide. */
+/**
+ * A free localhost port, so two runs (or a stray VS Code) do not collide.
+ *
+ * Bind-then-close is a time-of-check race in principle: two runs started in
+ * the same instant can be handed the same port. Left as is — the kernel
+ * rotates ephemeral ports, so the window is tiny, and unlike the shared
+ * user-data dir of #110 a collision here fails loudly (the DevTools attach
+ * finds no target) instead of silently inspecting the wrong window.
+ */
 function freePort() {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
@@ -294,8 +379,9 @@ async function main() {
 
   const executable = await ensureVsCode(version);
   const debugPort = await freePort();
-  const base = shortTempBase();
-  fs.rmSync(base, { recursive: true, force: true });
+  // No rmSync here: mkdtemp hands back a directory that did not exist a
+  // moment ago, and wiping a shared parent is what #110 was.
+  const base = perRunBase();
   const workspace = path.join(base, "ws");
   const userData = path.join(base, "ud");
   const extensions = path.join(base, "ext");
@@ -439,8 +525,10 @@ async function main() {
     console.log(hostOutput.join("").slice(-4000));
   }
 
-  if (!keep) fs.rmSync(base, { recursive: true, force: true });
-  else console.log(`kept: ${base}`);
+  // A passing run leaves nothing behind; a failing one keeps its directory,
+  // because `ws/sample.md`, `ud/logs/` and `result.json` are the evidence.
+  if (keep || failed.length > 0) console.log(`kept: ${base}`);
+  else fs.rmSync(base, { recursive: true, force: true });
 
   return failed.length > 0 ? 1 : 0;
 }

@@ -515,6 +515,15 @@ npm run verify:vscode-floor -- --version 1.95.0
 npm run verify:vscode-floor -- --keep        # keep the temp dirs for inspection
 ```
 
+Two runs may go at once. Every directory a run writes hangs off its own
+`fs.mkdtempSync` base, and every write into the shared 120 MB download cache
+is staged under a pid-private name and renamed into place, so a half-written
+`app/` never becomes visible. Before #110 all of it came off one fixed
+`/tmp/tuimd-floor`, and the collision read as flakiness under machine load.
+A passing run deletes its base; a failing one keeps it for inspection, and a
+base left behind by a failed or interrupted run is reaped on the next run
+once it is a day old.
+
 The floor build is launched with the `ELECTRON_*` and `VSCODE_*` variables
 stripped from its environment. Without that, running this command from inside
 VS Code (its integrated terminal, or an extension host) hands the downloaded

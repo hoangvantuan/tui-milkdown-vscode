@@ -88,18 +88,27 @@ wait, và còn chen các dòng `{"_keepalive":true,...}`. `json.load` sẽ nổ.
 **Terminal do điều phối viên tự tạo** thì `worker-release` không tự đóng. Phải
 tự `orca terminal close`.
 
-**`verify:vscode-floor` KHÔNG chạy được hai lượt cùng lúc.** Sóng 3 quy cho tải
-CPU. Sai. Sóng 4 truy ra cơ chế thật: `harness/vscode-floor/run.mjs` dòng 296-301
+**`verify:vscode-floor` từng KHÔNG chạy được hai lượt cùng lúc. ĐÃ SỬA ở sóng 5,
+`#110`.** Giữ lại mục này vì cách truy nguyên nhân mới là thứ đáng dùng lại.
+
+Sóng 3 quy cho tải CPU. Sai. Sóng 4 truy ra cơ chế thật: `harness/vscode-floor/run.mjs`
 lấy `ws`, `ud` và `ext` từ MỘT thư mục cố định dùng chung, `/tmp/tuimd-floor`,
 không pid, không `mkdtemp`, không khoá. Hai lượt song song ghi đè `ws/sample.md`
 của nhau và dùng chung user-data-dir, tức chung cả IPC socket lẫn cơ chế
 một-thực-thể của VS Code. Đúng cửa sổ 25 giây mà check `document still unmodified
-after the hold` đang đo. Đã thành `#110`.
+after the hold` đang đo. Sóng 5 đọc lại code còn thấy một điều thân issue chưa
+ghi: lượt thứ hai `rmSync` nguyên thư mục nền ngay lúc khởi động, tức là XOÁ
+SỐNG cây thư mục của lượt đang chạy.
 
-Cho tới khi `#110` được sửa: **CẤM worker chạy lệnh đó**, điều phối viên giữ lấy
-và chạy lần lượt từng nhánh lúc merge. Nói câu này ngay trong spec, vì nếu không
-thì worker nào cũng sẽ chạy nó làm baseline ngay phút đầu, và sóng 4 đã có ba
-worker làm đúng như vậy trong cùng một phút.
+Bài học dùng lại được: một check "nhạy với tải máy" hầu như luôn là một tài
+nguyên dùng chung bị giấu. Trước khi quy cho tải, hãy đi tìm thư mục cố định,
+cổng cố định, cache dùng chung, khoá toàn cục. Sóng 5 tìm thêm được một cái thứ
+hai trong cùng file mà issue không nêu: cache tải VS Code ở
+`~/.cache/tui-markdown-vscode-floor/` cũng bị hai lượt lạnh cache giẫm lên nhau.
+
+Nay mỗi lượt có `mkdtemp` riêng và mọi lần ghi vào cache đều staging rồi rename,
+nên **worker được phép chạy lệnh đó**. Bằng chứng: hai lượt phóng cùng lúc, cả
+hai 15/15, hai base khác nhau.
 
 **`harness/corpus.ts` quét mọi `*.md` ở GỐC repo làm corpus.** Cấm worker tạo
 tài liệu tạm ở đó. `docs/` an toàn.
@@ -253,7 +262,11 @@ dùng chung (thư mục cố định, cổng cố định, khoá toàn cục) v�
    worker không tưởng mình làm hỏng. Con số này là bằng chứng rẻ nhất về việc
    một worker có phá vỡ gì không, nên hãy đo nó lúc máy rảnh NGAY TRƯỚC khi phóng
    và dán vào spec.
-9. Cấm chạy `npm run verify:vscode-floor` cho tới khi `#110` được sửa. Xem mục bẫy.
+9. `npm run verify:vscode-floor` nay chạy song song được (`#110` đã sửa ở sóng 5),
+   không cần cấm nữa. Nhưng nó cần MỘT CỬA SỔ VS CODE THẬT mở ra rồi đóng lại
+   trên màn hình, mỗi lượt khoảng 90 giây. Bốn worker cùng chạy là bốn cửa sổ
+   nhảy lên máy người dùng. Hãy nói trong spec worker được chạy nó lúc nào,
+   đừng để mỗi lần build xong lại chạy một lượt.
 10. Với mọi fixture mới ghim một extension: bắt worker chứng minh bằng cách gỡ
     extension ra cho fixture ĐỎ rồi trả lại cho XANH, dán output cả hai lần.
 
@@ -299,8 +312,6 @@ Mục này gắn với một thời điểm, không phải quy trình. Kiểm l�
   mục 7. Chưa ai làm.
 - `#96` còn hai tiêu chí hành vi editor chưa kiểm được bằng harness: sửa chữ cạnh
   cặp thẻ inline không làm vỡ cặp, và xoá một chip chỉ xoá đúng thẻ đó.
-- `#110` mới mở: `verify:vscode-floor` dùng thư mục cố định dùng chung. Cho tới
-  khi sửa, điều phối viên độc quyền chạy lệnh đó trong mọi sóng song song.
 - `harness/editor.ts` và webview thật KHÔNG khớp ở một ca:
   `harness/vscode-floor/sample.md` không phải điểm bất động vòng một dưới
   `roundtripMarkdown`, nhưng webview không đẩy edit nên floor check vẫn xanh.
