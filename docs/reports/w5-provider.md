@@ -537,10 +537,10 @@ src/host/messageHandlers.ts:224:        ctx.session.pendingEdit = value;
 src/host/requestImageRename.ts:11: * - Writing the document sets `pendingEdit` and clears it in a `queueMicrotask`
 ```
 
-- Lớp 1: `!session.pendingEdit` trong `onDidChangeTextDocument` (provider:124)
-- Lớp 2: `this.pendingEdit || this.isDisposed` ở đầu `updateWebview` (session.ts:65)
-- Lớp 3: `applyEdit` đặt `true`, `queueMicrotask` đặt lại `false` rồi **cố ý** gọi
-  `updateWebview()` để đẩy imageMap mới (session.ts:183-190)
+- Lớp 1: `!session.pendingEdit` trong `onDidChangeTextDocument` — `provider:124`
+- Lớp 2: `this.pendingEdit || this.isDisposed` ở đầu `updateWebview` — `session.ts:64`
+- Lớp 3: `applyEdit` đặt `true` ở `session.ts:164`, `queueMicrotask` đặt lại `false` ở
+  `session.ts:175`, rồi **cố ý** gọi `updateWebview()` ở `session.ts:180` để đẩy imageMap mới
 - Lớp 4: `lastSentState` trong `src/webview/main.ts` — không chạm
 
 Và khác biệt tinh tế được giữ nguyên: `requestImageRename` cũng đặt `pendingEdit` nhưng
@@ -574,10 +574,15 @@ sed -n '80,96p' src/host/requestImageRename.ts
 ## 6. Ranh giới đồng bộ/bất đồng bộ — giữ từng case, không đồng nhất hoá
 
 ```sh
+awk '/^const handlers: HandlerTable = \{/,/^\};/' src/host/messageHandlers.ts | grep -c "^  [a-zA-Z]*: \(async \)\?("
 grep -n "^  [a-zA-Z]*: \(async \)\?(" src/host/messageHandlers.ts
 ```
 
 ```
+$ awk '/^const handlers: HandlerTable = \{/,/^\};/' src/host/messageHandlers.ts | grep -c "^  [a-zA-Z]*: \(async \)\?("
+18
+
+$ grep -n "^  [a-zA-Z]*: \(async \)\?(" src/host/messageHandlers.ts
 51:  notifyClipboardError: (
 68:  ready: (_msg, ctx) => {
 84:  edit: async (msg, ctx) => {
@@ -598,6 +603,10 @@ grep -n "^  [a-zA-Z]*: \(async \)\?(" src/host/messageHandlers.ts
 271:  openWikiLink: async (msg) => {
 275:  export: (msg, ctx) => {
 ```
+
+Đúng 18 handler trong bảng. Dòng `51:  notifyClipboardError: (` mà lệnh `grep` thứ hai
+nhặt thêm KHÔNG phải handler: nó là một thành viên của `interface HandlerContext` ở
+phía trên, nên con số đúng là của lệnh `awk` đã khoanh vùng.
 
 - Có `async`, được `await`, message kế tiếp phải chờ: `edit`, `viewSource`,
   `themeChange`, `fontChange`, `zoomChange`, `saveImage`, `fileSearch`, `wikiLinkSearch`,
@@ -681,10 +690,13 @@ Seam `crlf` vẫn xanh trong roundtrip (mục 8), tức đường import đó c�
 
 ### Cuối PR1 (`aa08ccb`)
 
+Khối dưới đây được **chép lại từ log phiên** tại `aa08ccb` và đã rút gọn banner của npm;
+nó không sinh lại được ở HEAD mà không checkout ngược.
+
 ```
 $ npm run lint
 > tsc --noEmit
-(khong output, exit 0)
+(khong co dong nao khac, exit 0)
 
 $ npm run build
 Building (production)...
@@ -695,6 +707,7 @@ Building (development)...
 Build complete (development)
 
 $ npm run roundtrip
+harness built: out/harness/roundtrip.js
 markdown roundtrip harness — mode: check
 corpus: 39 fixtures (34 synthetic, 5 repo docs)
 39 markdown fixtures + 7 seams: 46 passed, 0 failed, 0 missing, 0 errored
@@ -710,29 +723,59 @@ $ git status --short harness/
 
 ### Cuối PR2 (`3a91f26`)
 
+Khối dưới đây sinh sống tại HEAD lúc viết báo cáo, dán nguyên `2>&1`, không biên tập:
+
 ```
 $ npm run lint
-(khong output, exit 0)
+
+> tui-milkdown-vscode@2.15.2 lint
+> tsc --noEmit
+
 
 $ npm run build
+
+> tui-milkdown-vscode@2.15.2 build
+> node esbuild.config.js
+
+Building (production)...
 Build complete (production)
 
 $ npm run build:dev
+
+> tui-milkdown-vscode@2.15.2 build:dev
+> node esbuild.config.js --dev
+
+Building (development)...
 Build complete (development)
 
 $ npm run roundtrip
+
+harness built: out/harness/roundtrip.js
+markdown roundtrip harness — mode: check
+corpus: 39 fixtures (34 synthetic, 5 repo docs)
+
+──────────────────────────────────────────
+──────────────────────────────────────────
+39 markdown fixtures + 7 seams: 46 passed, 0 failed, 0 missing, 0 errored
+```
+
+Vòng hai (đầu vào thô thay bằng đầu ra golden), và bước khôi phục bắt buộc:
+
+```
+$ cp harness/golden/synthetic/*.md harness/fixtures/synthetic/ && npm run roundtrip
+
+──────────────────────────────────────────
+──────────────────────────────────────────
 39 markdown fixtures + 7 seams: 46 passed, 0 failed, 0 missing, 0 errored
 
-$ cp harness/golden/synthetic/*.md harness/fixtures/synthetic/ && npm run roundtrip
-39 markdown fixtures + 7 seams: 46 passed, 0 failed, 0 missing, 0 errored
 $ git checkout -- harness/fixtures/synthetic/
 $ git status --short harness/
 (rong)
 ```
 
 Roundtrip không đổi một dòng golden nào, đúng như dự đoán: việc này không chạm chuỗi
-markdown đi qua editor. Bước khôi phục `git checkout -- harness/fixtures/synthetic/` đã
-chạy sau cả hai vòng hai, và `git status` xác nhận cây sạch.
+markdown đi qua editor. `git status --short harness/` rỗng sau khôi phục, nên không có
+fixture nào lọt vào commit.
 
 ### `require` động còn nguyên sau khi đổi file
 
@@ -822,7 +865,7 @@ PASS  the edit does not bounce between host and webview — version 2 then 2 aft
 Lần đỏ giữ lại workspace tạm. So với fixture gốc:
 
 ```
-$ diff harness/vscode-floor/sample.md /tmp/tuimd-floor-WiF4Wt/ws/sample.md
+$ diff harness/vscode-floor/sample.md /tmp/tuimd-floor-WiF4Wt/ws/sample.md   # thu muc tam nay nay da bi don, khong chay lai duoc
 9c9
 < Some **bold** text and a [link](https://example.com).
 ---
@@ -840,7 +883,8 @@ dòng 15 và một dấu `>` thêm ở dòng 28 — là chuẩn hoá của seria
 
 1. Check đó chạy **sau 25 giây hold nhưng TRƯỚC** khi extension host ghi marker
    `phase-interact`, và runner chỉ gõ sau khi thấy marker đó
-   (`harness/vscode-floor/extension-tests.ts:148` ghi marker, `run.mjs:396` chờ marker).
+   (`harness/vscode-floor/extension-tests.ts:152` ghi marker; `run.mjs:394` là vòng chờ
+   marker đó, `run.mjs:396` là nhánh bỏ cuộc khi hết giờ).
    Nên tài liệu đã bẩn trước khi pha lái chạy một dòng nào.
 2. `version 2→3` ở lần đỏ so với `version 1→2` ở lần xanh: lần đỏ có **một** edit đã được
    áp dụng trong 25 giây hold. Nội dung của edit đó là chuẩn hoá serializer, do
