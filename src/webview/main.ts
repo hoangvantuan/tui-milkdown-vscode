@@ -45,6 +45,7 @@ import ruby from "highlight.js/lib/languages/ruby";
 import diff from "highlight.js/lib/languages/diff";
 import shell from "highlight.js/lib/languages/shell";
 import plaintext from "highlight.js/lib/languages/plaintext";
+import "./editor.css";
 import "./themes/index.css";
 import {
   parseContent,
