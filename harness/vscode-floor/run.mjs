@@ -809,9 +809,12 @@ async function main() {
     });
     // `stuckPlaceholders>0 errors=0` means the diagram was STILL LOADING when
     // the budget ran out, which is a different failure from one that rendered
-    // nothing or rendered an error. #112 was misread as the latter for two
-    // waves. The detail says which, and how long it actually took, because the
-    // budget below is only defensible next to a measurement.
+    // nothing or rendered an error. `scheduled=` then separates the two ways
+    // of being still loading, and #112 turned out to be the second: a render
+    // that was slow, versus a render that was NEVER SCHEDULED because the
+    // window was hidden and got no animation frame. Only the first is about
+    // the budget. Say which, and how long it took, since the budget below is
+    // only defensible next to a measurement.
     const counts =
     `rendered=${webview.mermaidRendered} errors=${webview.mermaidErrors} ` +
     `stuckPlaceholders=${webview.mermaidStuck} scheduled=${webview.mermaidScheduled} ` +
@@ -823,7 +826,10 @@ async function main() {
       detail: mermaidReadyAt
         ? `${counts}; ${sinceMount}ms after mount, budget ${MERMAID_TIMEOUT_MS}ms`
         : webview.mermaidStuck > 0 && webview.mermaidErrors === 0
-          ? `${counts}; STILL LOADING after ${sinceMount}ms, budget ${MERMAID_TIMEOUT_MS}ms exhausted; this is contention, not a broken diagram`
+          ? `${counts}; STILL LOADING after ${sinceMount}ms, budget ${MERMAID_TIMEOUT_MS}ms exhausted; ` +
+            (webview.mermaidScheduled === 0
+              ? `nothing was ever scheduled, so this is not the budget (see #112: a hidden window gets no animation frame)`
+              : `scheduled but unfinished, so this one really is about the budget`)
           : `${counts}; ${sinceMount}ms after mount, nothing left loading, so the artifact did not render`,
     });
     checks.push({
