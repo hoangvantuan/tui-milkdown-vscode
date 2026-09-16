@@ -39,6 +39,8 @@ src/
 ├── extension.ts              # Entry point, registers MarkdownEditorProvider + viewSource/viewRichText commands
 ├── markdownEditorProvider.ts # CustomTextEditorProvider + HTML/CSS template
 ├── constants.ts              # Shared constants (MAX_FILE_SIZE)
+├── shared/
+│   └── messages.ts           # Type-only message protocol: WebviewToHostMessage / HostToWebviewMessage
 ├── utils/
 │   ├── getNonce.ts           # CSP nonce generator
 │   ├── clean-image-path.ts   # Shared image path cleaning utility (removes titles, angle brackets)
@@ -52,10 +54,13 @@ src/
 │   └── chromium-discovery.ts # Locate Chrome/Edge/Chromium/Brave executable for PDF export
 └── webview/
     ├── main.ts               # Browser-side Tiptap editor
-    ├── index.html            # HTML template for webview (loaded by markdownEditorProvider)
+    ├── editor.css            # Editor stylesheet, loaded before the themes (moved out of the provider, #86)
+    ├── css-modules.d.ts      # Ambient declaration so esbuild CSS imports type-check
     ├── markdown-destination.ts # Tiptap Link/Image with destination-safe markdown serialization
     ├── markdown-text-escape.ts # One override of MarkdownManager text escaping, carries the footnote, ordered-task, entity and block-marker rules (#97, #99, #100, #101)
     ├── raw-html.ts            # rawHtmlBlock / rawHtmlInline, keep unrecognized HTML verbatim (#96)
+    ├── ordered-list-extension.ts # CustomOrderedList: tokenizer override counting the marker separator (#109)
+    ├── list-keymap-extension.ts # Tab/Shift-Tab list behaviour and typed-marker absorption (#107)
     ├── frontmatter.ts        # YAML parsing & validation utilities
     ├── alert-extension.ts    # GitHub-style alert blocks ([!NOTE], [!TIP], etc.)
     ├── mermaid-plugin.ts     # Mermaid diagram rendering (SVG preview, view/edit mode, caching)
@@ -103,6 +108,7 @@ harness/                            # Dependency-verification harness (see harne
 ├── table-colwidth-seam.ts          # Table column widths: <colgroup>/<col width> and cell colwidth parsing
 ├── placeholder-seam.ts             # Placeholder DOM writes per keystroke (the flicker measurement)
 ├── crlf-seam.ts                    # Line-ending normalization on save (normalizeLineEndings, CRLF/LF/mixed)
+├── list-keys-seam.ts               # Tab/Shift-Tab list keymap and typed markers (#107)
 ├── vscode-floor/                   # VS Code floor check: run.mjs (driver) + extension-tests.ts (in-host checks)
 ├── fixtures/synthetic/*.md         # One feature per fixture
 └── golden/                         # Committed baselines (corpus + seams), captured on the pre-upgrade dependency tree
@@ -119,12 +125,14 @@ Extension provides these settings via `tuiMarkdown.*` namespace:
 - `autoDeleteImages` (boolean, default: true) - Automatically delete image files when removed from Markdown (moves to Trash, warns if used elsewhere)
 - `autoHideToolbar` (boolean, default: false) - Auto-hide toolbar when typing (show on hover)
 - `listIndent` (`"editor"` | `2` | `4` | `"tab"`, default: `"editor"`) - List and code-block indentation. `"editor"` follows `editor.insertSpaces` / `editor.tabSize` resolved for `markdown`
+- `chromiumPath` (string, default: empty) - Explicit Chrome/Edge/Chromium/Brave executable for PDF export; empty means auto-discovery (`chromium-discovery.ts`)
+- `exportPageSize` (string, default: `A4`) - Page size for PDF export
 
 ## Tiptap Integration
 
 Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for markdown roundtrip.
 
-**Extensions:** StarterKit (includes Link with `autolink: true, linkOnPaste: true`), Image, Highlight, Table (resizable + custom `renderMarkdown` hook), CodeBlockLowlight (syntax highlighting via lowlight/highlight.js), TaskList + TaskItem, Placeholder, Markdown (GFM + configurable indentation), AlertNode (GitHub-style alerts), MermaidDiagram (SVG preview), TableContextMenu (right-click menu), CodeBlockEnhancement (language badge + copy button), SearchPlugin (Cmd+F via @tiptap/extension-find-and-replace), FileMention (@-mention file autocomplete via @tiptap/suggestion), WikiLink (wiki links), WikiLinkSuggestion ([[...]] autocomplete via @tiptap/suggestion), RawHtmlBlock + RawHtmlInline (verbatim raw HTML).
+**Extensions:** StarterKit (includes Link with `autolink: true, linkOnPaste: true`), Image, Highlight, Table (resizable + custom `renderMarkdown` hook), CodeBlockLowlight (syntax highlighting via lowlight/highlight.js), TaskList + TaskItem, Placeholder, Markdown (GFM + configurable indentation), AlertNode (GitHub-style alerts), MermaidDiagram (SVG preview), TableContextMenu (right-click menu), CodeBlockEnhancement (language badge + copy button), SearchPlugin (Cmd+F via @tiptap/extension-find-and-replace), FileMention (@-mention file autocomplete via @tiptap/suggestion), WikiLink (wiki links), WikiLinkSuggestion ([[...]] autocomplete via @tiptap/suggestion), RawHtmlBlock + RawHtmlInline (verbatim raw HTML), CustomUnderline (replaces StarterKit's Underline; parses `ins`/`u`/`text-decoration`, serializes `<ins>`, #106), CustomOrderedList (replaces StarterKit's OrderedList; tokenizer override for continuation indent, #109), ListKeymapExtension (Tab/Shift-Tab list behaviour, registered after StarterKit and Table, #107).
 
 **Markdown API:**
 
@@ -148,7 +156,9 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 - Tiptap 3.30's decorations hook was considered for the badge/collapse/code-block plugins and not adopted: widget decorations render inside the zoomed `.tiptap`, so the hand-managed ProseMirror plugins stay until the zoom interaction is tested by hand
 - Text escaping on save goes through ONE place: `installMarkdownTextEscape()` overrides `MarkdownManager`'s escaping rather than patching each call site. Four issues (#97, #99, #100, #101) were one defect in `escapeMarkdownSyntax`, and #99 and #101 wanted opposite things from the same rule for `[`. Add a rule there, not a new override
 - `harness/editor.ts` mirrors the markdown-relevant extensions of `initEditor()`; a change to one without the other makes the harness measure something that does not ship. It is NOT a full mirror, and the two can disagree: `harness/vscode-floor/sample.md` is not a first-pass fixed point under `roundtripMarkdown` yet the webview writes no edit for it, which is why the floor check passes
-- `verify:vscode-floor` is sensitive to machine load. Its `document still unmodified after the hold` check has been seen to fail spuriously while several agents were saturating the CPU. Re-run on an idle machine before believing a red result
+- `verify:vscode-floor` cannot be run twice at once. `harness/vscode-floor/run.mjs` derives `ws`, `ud` and `ext` from one fixed base (`/tmp/tuimd-floor`), so concurrent runs overwrite each other's `sample.md` and share VS Code's user-data dir and IPC socket. That, not machine load, is why `document still unmodified after the hold` has failed spuriously during parallel agent waves (#110)
+- Messages between the extension host and the webview go through the typed unions in `src/shared/messages.ts`. Add a kind there, not an inline `as { type?: string }` cast; a typo on one side is then a `tsc` error
+- The editor stylesheet is `src/webview/editor.css`, imported by `main.ts` before `themes/index.css`. That import order is the cascade order, and the provider must stay free of `<style>` blocks
 - DOCX export runs in the Node extension host, so any mdast2docx plugin that touches `document` crashes it. `@m2d/html` did, which is why raw HTML is skipped rather than rendered there; PDF export renders it through `remark-rehype` with `allowDangerousHtml`
 - Security trade-offs are documented where they are made: mermaid `securityLevel: "loose"` and nonce exposure in `mermaid-plugin.ts` / `mermaid-bridge.ts`, PDF export invariants in `export-pdf.ts`
 

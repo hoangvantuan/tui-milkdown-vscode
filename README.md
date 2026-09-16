@@ -6,7 +6,7 @@
   *A beautiful WYSIWYG Markdown editor for VS Code, powered by Tiptap*
 
   [![VS Code](https://img.shields.io/badge/VS_Code-%3E%3D1.85.0-007ACC?style=flat-square&logo=visual-studio-code)](https://code.visualstudio.com/)
-  [![Version](https://img.shields.io/badge/version-2.8.6-blue?style=flat-square)](CHANGELOG.md)
+  [![Version](https://img.shields.io/visual-studio-marketplace/v/hoangvantuan.tui-milkdown-vscode?style=flat-square&label=version&color=blue)](CHANGELOG.md)
   [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
   [Features](#features) · [Usage](#usage) · [Configuration](#configuration) · [Themes](#themes) · [Export](#export)
@@ -19,7 +19,7 @@
 
 ### Rich Text Editing
 
-Full WYSIWYG markdown editing with Tiptap + `@tiptap/markdown` (GFM support via MarkedJS). Format text using the glassmorphic toolbar or keyboard shortcuts. Toggle between WYSIWYG and source view with `Ctrl/Cmd+Shift+M`.
+Full WYSIWYG markdown editing with Tiptap + `@tiptap/markdown` (GFM support via MarkedJS). Format text using the glassmorphic toolbar or keyboard shortcuts, including underline with `Ctrl/Cmd+U`, which is saved as `<ins>text</ins>` so it still renders underlined on GitHub and in the VS Code preview. `Ctrl/Cmd+Shift+M` toggles between WYSIWYG and source view in both directions.
 
 ### Code & Diagrams
 
@@ -45,6 +45,8 @@ Resizable tables with multi-line cell content. Right-click context menu for row/
 - **Search** (`Cmd/Ctrl+F`) — Find with match highlighting, next/prev navigation, match counter
 - **Link Navigation** — `Cmd+Click` / `Ctrl+Click` to follow links, scroll to headings, open files, or launch URLs
 - **Table of Contents** — Sidebar with click-to-scroll, active heading tracking, collapse/expand
+- **Wiki Links** — Type `[[` for autocomplete over the workspace's Markdown files; `[[Page]]` links resolve on click
+- **File Mentions** — Type `@` to search any file in the workspace and insert a relative link
 
 ### Writing Experience
 
