@@ -11,6 +11,7 @@ npm run build      # Production build (minified, no sourcemaps)
 npm run build:dev  # Development build (with sourcemaps, unminified)
 npm run watch      # Watch mode for development
 npm run lint       # TypeScript type checking (tsc --noEmit)
+npm test           # Unit tests via node:test (extension-host pure functions, see test/)
 npm run roundtrip  # Markdown roundtrip harness: corpus vs golden baselines (see harness/README.md)
 npm run roundtrip:update  # Re-capture golden baselines (deliberate use only)
 npm run verify:vscode-floor  # Run the extension on the VS Code version in engines.vscode (see harness/vscode-floor/)
@@ -170,6 +171,14 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 - When a change can affect what the extension host or the webview does at runtime, also run `npm run verify:vscode-floor`: it downloads the VS Code version in `engines.vscode` and checks activation, the custom editor and the live webview there
 - Classify every golden diff as intended fix / accepted change / regression, in the commit that caused it
 - Per-bump diff classifications and declined-upgrade reasoning: `harness/README.md`, plus the dependency notes in the affected module headers (e.g. puppeteer-core in `export-pdf.ts`)
+
+**Which check to add:**
+
+- **Unit test (`npm test`)** for a pure extension-host function: `frontmatter-parser.ts`, `image-rename-handler.ts`, `chromium-discovery.ts`. `node:test`, no framework dependency; `test/vscode-stub.ts` stands in for the `vscode` module and drives real files under a temp directory. Reach for this when the behaviour is a return value or a file on disk
+- **Roundtrip fixture (`npm run roundtrip`)** when the behaviour is visible as markdown in, markdown out. One feature per fixture, and the fixture must hold the RAW input, never the serialized output
+- **Harness seam** when the behaviour is a webview function's observable result that is not a markdown string: search ranking, escaping rules, column widths. A seam is a golden of measurements
+- **Floor check (`npm run verify:vscode-floor`)** when the behaviour only exists inside a live extension host or webview: message dispatch, the custom editor, CSP, lazy artifacts. It opens a real VS Code window, so it is a separate command
+- A test that cannot go red is worse than no test. Before committing one, break the code it covers and confirm it fails
 
 **Tiptap-First Approach:**
 
