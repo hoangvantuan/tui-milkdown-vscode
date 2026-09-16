@@ -80,6 +80,11 @@ const MERMAID_TIMEOUT_MS = 40000;
  * spelled twice.
  */
 const EDIT_SENTINEL = "FLOORPROBE";
+/**
+ * The character typed and immediately removed by the transient-keystroke
+ * phase (#111). One character, so a single Backspace undoes it exactly.
+ */
+const TRANSIENT_CHAR = "Z";
 
 const args = process.argv.slice(2);
 const keep = args.includes("--keep");
@@ -377,6 +382,118 @@ async function probeWebview(session) {
 }
 
 /**
+ * Type one character and remove it again inside a single debounce window,
+ * then leave the document alone (#111).
+ *
+ * What this pins: a round trip through the editor that ends where it started
+ * must not reach the file. The webview posts `editor.getMarkdown()`, not the
+ * text it was given, and `sample.md` is deliberately not a fixed point under
+ * that serializer, so ANY transaction arriving after the load guard drops
+ * rewrites the user's file with normalizations they never asked for. #111 is
+ * that, fired by something during load; this is the same defect driven on
+ * purpose, which makes it deterministic instead of a coin flip.
+ *
+ * Both keystrokes must land inside one 300 ms debounce window, so that one
+ * `edit` is posted and its content is the round-tripped document. If they
+ * drift apart the first post has already gone and the check fails on
+ * unpatched AND patched code — a false red, never a false green, and the
+ * measured gap is in the detail so the next reader can see that is what
+ * happened.
+ *
+ * It proves the guard exists. It does NOT prove the load-time transaction
+ * that #111 actually observed is covered; nothing here fires that.
+ */
+async function driveTransientKeystroke(base, session, contextId) {
+  const marker = path.join(base, "phase-transient");
+  const donePath = path.join(base, "phase-transient-done");
+  const finish = (detail) => {
+    try {
+      fs.writeFileSync(donePath, detail, "utf8");
+    } catch {
+      /* the base is gone; the run is over anyway */
+    }
+    return detail;
+  };
+
+  if (!session || contextId == null) return finish("FAIL no webview context to drive");
+
+  const deadline = Date.now() + 45000;
+  while (!fs.existsSync(marker) && Date.now() < deadline) await sleep(500);
+  if (!fs.existsSync(marker)) return "FAIL extension host never signalled phase-transient";
+
+  const evaluate = async (expression) => {
+    const result = await session.send("Runtime.evaluate", {
+      expression,
+      contextId,
+      returnByValue: true,
+      awaitPromise: true,
+    });
+    if (result.exceptionDetails) throw new Error(result.exceptionDetails.text ?? "evaluate threw");
+    return result.result.value;
+  };
+
+  try {
+    // Caret at the end of the first paragraph, the same placement the
+    // FLOORPROBE phase uses.
+    const before = await evaluate(`(() => {
+      const root = document.querySelector('.tiptap');
+      if (!root) return null;
+      const target = root.querySelector('p');
+      if (!target) return null;
+      root.focus();
+      const range = document.createRange();
+      range.selectNodeContents(target);
+      range.collapse(false);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return target.textContent;
+    })()`);
+    if (before === null) return finish("FAIL could not place the caret");
+
+    const started = Date.now();
+    await session.send("Input.insertText", { text: TRANSIENT_CHAR });
+    // A real Backspace, not a DOM mutation: ProseMirror's own key handling and
+    // its DOM observer are part of what is being exercised.
+    for (const type of ["keyDown", "keyUp"]) {
+      await session.send("Input.dispatchKeyEvent", {
+        type,
+        key: "Backspace",
+        code: "Backspace",
+        windowsVirtualKeyCode: 8,
+        nativeVirtualKeyCode: 8,
+      });
+    }
+    const gap = Date.now() - started;
+
+    await sleep(1200); // 300ms debounce, the host's WorkspaceEdit, and slack
+    // The TARGET PARAGRAPH's text, not the whole `.tiptap`: that also carries
+    // the text inside the rendered mermaid SVG and the code-block language
+    // badge, which the plugins rebuild whenever the document is replaced. On
+    // unpatched code this phase provokes exactly such a replacement — the very
+    // bug being measured — so comparing the whole subtree would report the
+    // symptom as a broken probe. Re-queried rather than held: a `setContent`
+    // discards the old element.
+    const after = await evaluate(
+      `document.querySelector('.tiptap')?.querySelector('p')?.textContent ?? null`,
+    );
+    if (after !== before) {
+      let at = 0;
+      while (at < before.length && at < after.length && before[at] === after[at]) at++;
+      return finish(
+        `FAIL the editor did not return to its starting text (gap ${gap}ms); ` +
+          `len ${before.length}->${String(after).length}, first difference at ${at}: ` +
+          `${JSON.stringify(before.slice(Math.max(0, at - 20), at + 20))} -> ` +
+          `${JSON.stringify(String(after).slice(Math.max(0, at - 20), at + 20))}`,
+      );
+    }
+    return finish(`typed and removed ${JSON.stringify(TRANSIENT_CHAR)} ${gap}ms apart, debounce 300ms`);
+  } catch (err) {
+    return finish(`FAIL threw: ${err.message}`);
+  }
+}
+
+/**
  * Drive the webview through its own UI, so the extension host's message
  * dispatch is exercised end to end.
  *
@@ -624,6 +741,11 @@ async function main() {
   // what the driving produced. Everything above only READS; from here on the
   // document is deliberately modified, which is why this runs after the
   // in-host `document still unmodified after the hold` check and never before.
+  // Strictly before the FLOORPROBE phase: that one posts a real edit, after
+  // which the document is dirty for a legitimate reason and this could not
+  // tell the two apart.
+  await driveTransientKeystroke(base, webviewSession, webview?.contextId);
+
   const driven = await driveInteractions(base, webviewSession, webview?.contextId);
 
   const consoleEntries = [...sessions.values()].flatMap((s) => s.consoleEntries);

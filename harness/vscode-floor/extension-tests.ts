@@ -148,6 +148,39 @@ export async function run(): Promise<void> {
     // ---- Phase two: the document is modified from here on. ----
     if (afterHold && resultPath) {
       const base = path.dirname(resultPath);
+
+      // Phase 1.5 (#111): the runner types one character and removes it again
+      // inside a single 300ms debounce window. The editor ends where it began,
+      // so nothing should reach the file — but the webview posts
+      // `editor.getMarkdown()` rather than the text it was handed, and
+      // `sample.md` is deliberately not a fixed point under that serializer,
+      // so an unguarded post rewrites the user's file with normalizations they
+      // never typed. That is #111's defect, driven on purpose so it is
+      // deterministic rather than a coin flip.
+      //
+      // This proves the guard exists. It does NOT reproduce the load-time
+      // transaction #111 observed; nothing here fires that one.
+      fs.writeFileSync(path.join(base, "phase-transient"), "go", "utf8");
+      const transientPath = path.join(base, "phase-transient-done");
+      if (!(await waitForFile(transientPath, DRIVEN_TIMEOUT_MS))) {
+        record(
+          "a keystroke undone inside the debounce window leaves the document clean",
+          false,
+          "phase-transient-done never appeared",
+        );
+      } else {
+        const transientDetail = fs.readFileSync(transientPath, "utf8").trim();
+        const drivenOk = !transientDetail.startsWith("FAIL");
+        record(
+          "a keystroke undone inside the debounce window leaves the document clean",
+          drivenOk && !afterHold.isDirty,
+          `isDirty=${afterHold.isDirty} version=${afterHold.version}; ${transientDetail}`,
+        );
+      }
+
+      // Captured AFTER the transient phase: on code where that phase dirties
+      // the document, the version here is no longer 1, and the assertion below
+      // is about the delta rather than an absolute number.
       const versionBeforeEdit = afterHold.version;
       fs.writeFileSync(path.join(base, "phase-interact"), "go", "utf8");
 
