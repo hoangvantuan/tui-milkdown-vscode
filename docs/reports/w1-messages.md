@@ -9,63 +9,223 @@ Báo cáo nghiệm thu kỹ thuật cho Worker W1 thuộc Wave 4, giải quyết
 
 ## 1. Kết Quả Các Lệnh Kiểm Tra
 
-- `npm run lint`: PASS (`tsc --noEmit` hoàn thành sạch sẽ, 0 lỗi, exit code 0).
-- `npm run build`: PASS (esbuild đóng gói cả extension và webview bundle thành công, exit code 0).
-- `npm run roundtrip`: PASS (37 markdown fixtures + 6 seams: 43 passed, 0 failed, 0 missing, 0 errored, exit code 0).
-- `npm run verify:vscode-floor`: floor check do điều phối viên chạy (theo chỉ thị từ điều phối viên trong thông điệp `msg_f3f92a7b02b0`, do thư mục `/tmp/tuimd-floor` dùng chung gây xung đột giữa các worker chạy song song).
+### Lệnh 1: npm run lint
+- Lệnh đã chạy: `npm run lint`
+- Output thực tế:
+```
+> tui-milkdown-vscode@2.15.2 lint
+> tsc --noEmit
+```
+- Kết quả: PASS (exit code 0, không có lỗi kiểu nào).
+
+### Lệnh 2: npm run build
+- Lệnh đã chạy: `npm run build`
+- Output thực tế:
+```
+> tui-milkdown-vscode@2.15.2 build
+> node esbuild.config.js
+
+Building (production)...
+Build complete (production)
+```
+- Kết quả: PASS (exit code 0, đóng gói bundle thành công).
+
+### Lệnh 3: npm run roundtrip
+- Lệnh đã chạy: `npm run roundtrip`
+- Output thực tế:
+```
+> tui-milkdown-vscode@2.15.2 roundtrip
+> node esbuild.harness.config.js && node out/harness/roundtrip.js
+
+harness built: out/harness/roundtrip.js
+markdown roundtrip harness (mode: check)
+corpus: 37 fixtures (32 synthetic, 5 repo docs)
+
+──────────────────────────────────────────
+──────────────────────────────────────────
+37 markdown fixtures + 6 seams: 43 passed, 0 failed, 0 missing, 0 errored
+```
+- Kết quả: PASS (exit code 0, 43/43 kiểm tra đều đạt).
+
+### Lệnh 4: npm run verify:vscode-floor
+- Kết quả: điều phối viên chạy trên nhánh này, 15 checks, 15 passed.
 
 ---
 
 ## 2. Kết Quả Kiểm Tra Ổn Định Vòng Hai (Idempotency)
 
-- Quy trình kiểm tra:
-  1. Ghi đè toàn bộ synthetic fixtures bằng golden baselines:
-     `cp harness/golden/synthetic/*.md harness/fixtures/synthetic/`
-  2. Chạy kiểm tra:
-     `npm run roundtrip`
-  3. Khôi phục lại trạng thái ban đầu:
-     `git checkout -- harness/fixtures/synthetic/`
-- Kết quả ghi nhận: 42 passed, 1 failed (đúng chính xác 1 fixture thất bại).
-- Fixture thất bại duy nhất: `synthetic/list-continuation-underindented.md` (lỗi thụt lề continuation line của Tiptap upstream đã được ghi nhận trước đó trong `harness/README.md`).
-- Kiểm tra diff fixtures: `git diff develop..HEAD --stat -- harness/fixtures/synthetic/` trả về rỗng (0 tệp thay đổi).
+- Lệnh đã chạy:
+```bash
+cp harness/golden/synthetic/*.md harness/fixtures/synthetic/ && npm run roundtrip; git checkout -- harness/fixtures/synthetic/
+```
+- Output thực tế:
+```
+harness built: out/harness/roundtrip.js
+markdown roundtrip harness (mode: check)
+corpus: 37 fixtures (32 synthetic, 5 repo docs)
+
+FAIL     synthetic/list-continuation-underindented.md (+0 -0 lines)
+  --- golden/synthetic/list-continuation-underindented.md
+  +++ current/synthetic/list-continuation-underindented.md
+  @@ -6,7 +6,7 @@
+   1. first ordered item
+   continuation under the three-character marker
+   2. second ordered item
+  - continuation at marker width
+  +continuation at marker width
+   
+   - bullet with two continuation lines
+    continuation one space
+  @@ -19,4 +19,4 @@
+      inner continuation under the two-space inner marker
+   
+   10. ordered item with a two-digit marker
+  - continuation at the four-character marker
+  +continuation at the four-character marker
+
+──────────────────────────────────────────
+──────────────────────────────────────────
+37 markdown fixtures + 6 seams: 42 passed, 1 failed, 0 missing, 0 errored
+```
+- Kết quả ghi nhận: Đúng chính xác 1 fixture failed (`synthetic/list-continuation-underindented.md`), là lỗi continuation line của Tiptap upstream đã ghi nhận trong `harness/README.md`.
+- Lệnh kiểm tra diff fixtures: `git diff develop..HEAD --stat -- harness/fixtures/synthetic/`
+- Output thực tế: Trả về rỗng (0 tệp thay đổi).
 
 ---
 
 ## 3. Kích Thước Bundle Webview (out/webview/main.js)
 
-- Kích thước ban đầu trên nhánh `develop`: 941.122 bytes.
-- Kích thước sau khi gộp `exportDone` vào switch message: 941.111 bytes (-11 bytes).
-- Kích thước cuối cùng (kèm log cảnh báo `console.warn` cho #105): 941.138 bytes (+16 bytes so với baseline).
-- Đảm bảo tính chất type-only: Tệp `src/shared/messages.ts` chỉ chứa interface và type union thuần túy trong TypeScript. Trình đóng gói esbuild loại bỏ hoàn toàn các câu lệnh import ở thời điểm biên dịch, không làm tăng kích thước mã thực thi của giao thức.
+- Lệnh kiểm tra kích thước bundle: `stat -f%z out/webview/main.js`
+- Output thực tế: `941138`
+- Đối chiếu quá trình:
+  - Baseline đo trên nhánh `develop`: 941.122 bytes.
+  - Sau khi gộp `exportDone` vào switch message: 941.111 bytes (-11 bytes).
+  - Bản cuối cùng (kèm log cảnh báo `console.warn` cho #105): 941.138 bytes (+16 bytes so với baseline).
+- Tệp `src/shared/messages.ts` chỉ chứa interface và type union thuần túy trong TypeScript. Trình đóng gói esbuild loại bỏ hoàn toàn các câu lệnh import ở thời điểm biên dịch, không làm tăng kích thước mã thực thi của giao thức.
 
 ---
 
 ## 4. Thiết Kế Giao Thức Message và Bằng Chứng Kiểu Nghiêm Ngặt
 
-### Nguồn chân lý duy nhất (Single Source of Truth)
-Tệp `src/shared/messages.ts` định nghĩa toàn bộ cấu trúc dữ liệu trao đổi:
-- `WebviewToHostMessage`: Union gồm 18 kiểu thông điệp từ webview gửi lên host (`ready`, `edit`, `openLink`, `saveImage`, `viewSource`, `viewRichText`, `exportDocx`, `exportPdf`, `searchFiles`, `findReferencedImages`, `getSystemFonts`, `renameImageFile`, `deleteImageFiles`, `readClipboardImage`, `pasteMarkdownFiles`, `resolveResourceUri`, `toggleBreadcrumbs`, `tableAction`).
-- `HostToWebviewMessage`: Union gồm 15 kiểu thông điệp từ host gửi xuống webview (`theme`, `config`, `update`, `saved`, `exportDone`, `imageSaved`, `fileSearchResults`, `referencedImagesResult`, `systemFontsResult`, `imageRenamed`, `imagesDeleted`, `clipboardImage`, `markdownFilesPasted`, `resolvedResourceUri`, `breadcrumbsToggled`).
+### Danh sách các loại message thực tế trong src/shared/messages.ts
 
-### Đặt kiểu cả hai đầu và loại bỏ ép kiểu inline
-- Phía extension host:
-  - Định nghĩa interface `TypedWebview` bọc phương thức `postMessage(message: HostToWebviewMessage): Thenable<boolean>`.
-  - Thay thế toàn bộ các lời gọi `webviewPanel.webview.postMessage` bằng `webview.postMessage`.
-  - Trong `onDidReceiveMessage`: Tham số nhận vào mang kiểu `WebviewToHostMessage`, loại bỏ hoàn toàn mọi thao tác ép kiểu thô `as { type: string, ... }`.
-- Phía webview:
-  - Đặt kiểu cho `acquireVsCodeApi().postMessage(message: WebviewToHostMessage)`.
-  - Đặt kiểu cho `storedPostMessage` và callback trong `image-edit-plugin.ts`.
-  - Xóa bỏ event listener riêng lẻ cho `exportDone`, gộp trực tiếp vào `switch (message.type)` trong `main.ts`.
-- Kiểm tra ép kiểu inline:
-  Lệnh `grep -n "as { type" src/markdownEditorProvider.ts src/webview/main.ts` trả về 0 kết quả (exit code 1).
+Lệnh sinh toàn bộ 33 dòng định nghĩa literal type trong `src/shared/messages.ts`:
+```bash
+grep -n 'type: "' src/shared/messages.ts
+```
 
-### Bằng chứng bắt lỗi biên dịch từ tsc
-Khi thử đổi tên literal type `ready` thành `readyRenamed` trong `src/shared/messages.ts`:
-- Phía extension host báo lỗi:
-  `src/markdownEditorProvider.ts(329,14): error TS2678: Type '"ready"' is not comparable to type '"readyRenamed" | ...'`
-- Phía webview báo lỗi:
-  `src/webview/main.ts(887,22): error TS2322: Type '"ready"' is not assignable to type '... | "readyRenamed" | ...'`
-Nếu gửi thiếu thuộc tính bắt buộc hoặc sai kiểu dữ liệu của payload, `tsc` sẽ báo lỗi ngay tại chỗ.
+Output thực tế:
+```
+14:  type: "ready";
+18:  type: "edit";
+23:  type: "viewSource";
+27:  type: "themeChange";
+32:  type: "fontChange";
+37:  type: "zoomChange";
+42:  type: "saveImage";
+49:  type: "showWarning";
+54:  type: "readClipboardImage";
+58:  type: "requestImageUrlEdit";
+66:  type: "openLink";
+71:  type: "openImageInTab";
+76:  type: "requestLinkEdit";
+82:  type: "requestImageRename";
+89:  type: "fileSearch";
+93:  type: "wikiLinkSearch";
+97:  type: "openWikiLink";
+102:  type: "export";
+133:  type: "update";
+139:  type: "theme";
+144:  type: "config";
+154:  type: "savedTheme";
+159:  type: "savedFont";
+164:  type: "savedZoom";
+169:  type: "systemFonts";
+174:  type: "imageSaved";
+181:  type: "clipboardImage";
+187:  type: "imageUrlEditResponse";
+193:  type: "linkEditResponse";
+199:  type: "imageRenameResponse";
+207:  type: "fileSearchResults";
+213:  type: "wikiLinkSearchResults";
+219:  type: "exportDone";
+```
+
+#### 18 loại thông điệp Webview gửi tới Host (WebviewToHostMessage)
+Lệnh đọc khối định nghĩa union từ `src/shared/messages.ts`:
+```bash
+sed -n '108,126p' src/shared/messages.ts
+```
+Output thực tế:
+```typescript
+export type WebviewToHostMessage =
+  | ReadyMessage
+  | EditMessage
+  | ViewSourceMessage
+  | ThemeChangeMessage
+  | FontChangeMessage
+  | ZoomChangeMessage
+  | SaveImageMessage
+  | ShowWarningMessage
+  | ReadClipboardImageMessage
+  | RequestImageUrlEditMessage
+  | OpenLinkMessage
+  | OpenImageInTabMessage
+  | RequestLinkEditMessage
+  | RequestImageRenameMessage
+  | FileSearchMessage
+  | WikiLinkSearchMessage
+  | OpenWikiLinkMessage
+  | ExportMessage;
+```
+Tên 18 literal type tương ứng:
+`ready`, `edit`, `viewSource`, `themeChange`, `fontChange`, `zoomChange`, `saveImage`, `showWarning`, `readClipboardImage`, `requestImageUrlEdit`, `openLink`, `openImageInTab`, `requestLinkEdit`, `requestImageRename`, `fileSearch`, `wikiLinkSearch`, `openWikiLink`, `export`.
+
+#### 15 loại thông điệp Host gửi tới Webview (HostToWebviewMessage)
+Lệnh đọc khối định nghĩa union từ `src/shared/messages.ts`:
+```bash
+sed -n '224,239p' src/shared/messages.ts
+```
+Output thực tế:
+```typescript
+export type HostToWebviewMessage =
+  | UpdateMessage
+  | ThemeMessage
+  | ConfigMessage
+  | SavedThemeMessage
+  | SavedFontMessage
+  | SavedZoomMessage
+  | SystemFontsMessage
+  | ImageSavedMessage
+  | ClipboardImageMessage
+  | ImageUrlEditResponseMessage
+  | LinkEditResponseMessage
+  | ImageRenameResponseMessage
+  | FileSearchResultsMessage
+  | WikiLinkSearchResultsMessage
+  | ExportDoneMessage;
+```
+Tên 15 literal type tương ứng:
+`update`, `theme`, `config`, `savedTheme`, `savedFont`, `savedZoom`, `systemFonts`, `imageSaved`, `clipboardImage`, `imageUrlEditResponse`, `linkEditResponse`, `imageRenameResponse`, `fileSearchResults`, `wikiLinkSearchResults`, `exportDone`.
+
+### Loại bỏ hoàn toàn ép kiểu inline
+- Lệnh kiểm tra:
+```bash
+grep -n "as { type" src/markdownEditorProvider.ts src/webview/main.ts
+```
+- Output thực tế: Exit code 1, không có dòng nào khớp (0 matches).
+
+### Bằng chứng bắt lỗi biên dịch từ tsc khi đổi tên literal type
+- Lệnh đã chạy để thử đổi tên `ready` thành `readyRenamed` trong `src/shared/messages.ts` và chạy kiểm tra kiểu:
+```bash
+node -e 'let c = require("fs").readFileSync("src/shared/messages.ts", "utf8").replace(`type: "ready";`, `type: "readyRenamed";`); require("fs").writeFileSync("src/shared/messages.ts", c);' && npx tsc --noEmit; git checkout -- src/shared/messages.ts
+```
+- Output thực tế:
+```
+src/markdownEditorProvider.ts(569,16): error TS2678: Type '"ready"' is not comparable to type '"edit" | "export" | "fileSearch" | "fontChange" | "openImageInTab" | "openLink" | "openWikiLink" | "readClipboardImage" | "readyRenamed" | "requestImageRename" | "requestImageUrlEdit" | ... 6 more ... | "zoomChange"'.
+src/webview/main.ts(2137,24): error TS2322: Type '"ready"' is not assignable to type '"edit" | "export" | "fileSearch" | "fontChange" | "openImageInTab" | "openLink" | "openWikiLink" | "readClipboardImage" | "readyRenamed" | "requestImageRename" | "requestImageUrlEdit" | ... 6 more ... | "zoomChange"'.
+```
+Lỗi xuất hiện chính xác ở cả hai đầu: Host (TS2678 tại switch case) và Webview (TS2322 tại lời gọi postMessage).
 
 ---
 
@@ -73,48 +233,96 @@ Nếu gửi thiếu thuộc tính bắt buộc hoặc sai kiểu dữ liệu c�
 
 ### Thân issue #105 sai ở đâu: Nguyên văn câu sai
 Trong mô tả ban đầu của issue #105, tác giả yêu cầu:
-> "khi hỏng để webview bật toast lỗi sẵn có (showError ở main.ts:796; nhánh nhận là case \"clipboardImage\" ở main.ts:1983)"
+> "{ type: \"clipboardImage\", error: \"<lý do>\" } khi hỏng để webview bật toast lỗi sẵn có (showError ở main.ts:796; nhánh nhận là case \"clipboardImage\" ở main.ts:1983)"
 
 ### Mã nguồn chứng minh sai lệch
-1. **`showError` không phải là toast**:
-   Tại `src/webview/main.ts:796`:
-   ```typescript
-   function showError(error: unknown) {
-     const message = error instanceof Error ? error.message : String(error);
-     editorEl.innerHTML = `
-       <div class="editor-error">
-         <p>Failed to load editor</p>
-         <p class="editor-error-detail">${escapeHtml(message)}</p>
-       </div>
-     `;
-   }
-   ```
-   Hàm `showError()` này gán thẳng `editorEl.innerHTML = errorHtml`. Đây là màn hình lỗi chí mạng (fatal error screen) chỉ dùng khi editor không thể khởi tạo (ví dụ không tìm thấy phần tử DOM `#editor`). Nếu gọi nó khi dán ảnh hỏng, toàn bộ nội dung tài liệu người dùng đang mở sẽ bị xóa trắng ngay lập tức.
+
+1. **`showError` không phải là toast lỗi mà là màn hình lỗi chí mạng**:
+Lệnh đọc khối mã thật từ `src/webview/main.ts`:
+```bash
+sed -n '800,816p' src/webview/main.ts
+```
+Output thực tế:
+```typescript
+function showError(message: string): void {
+  const errorHtml = `
+    <div style="padding: 20px; color: var(--vscode-errorForeground, red);">
+      <h3>Error</h3>
+      <p>${escapeHtml(message)}</p>
+      <p>Try reopening the file or reloading the window.</p>
+    </div>
+  `;
+  const editorEl = getEditorEl();
+  if (editorEl) {
+    editorEl.innerHTML = errorHtml;
+  } else {
+    // Fallback when #editor element is missing
+    console.error("[Tiptap]", message);
+    document.body.innerHTML = errorHtml;
+  }
+}
+```
+Hàm `showError(message: string)` này gán thẳng `editorEl.innerHTML = errorHtml`. Nó là màn hình lỗi chí mạng có tiêu đề `<h3>Error</h3>`, chỉ dùng khi editor không thể khởi tạo. Nếu gọi nó khi dán ảnh hỏng, toàn bộ nội dung tài liệu người dùng đang mở sẽ bị xóa sạch khỏi DOM.
+
 2. **Không có "trạng thái chờ" nào để hủy**:
-   Tại `src/webview/main.ts:2121-2130`, handler paste của webview chỉ bắn thông điệp lên host:
-   ```typescript
-   storedPostMessage({ type: "readClipboardImage" });
-   // Text paste continues normally
-   ```
-   Sau đó đường dán văn bản thường vẫn tiếp tục diễn ra độc lập. Phía webview không hề lưu biến trạng thái hay promise treo chờ nào, nên không có trạng thái chờ nào để thoát hay hủy.
+Lệnh đọc khối mã handler phím dán từ `src/webview/main.ts`:
+```bash
+sed -n '2125,2136p' src/webview/main.ts
+```
+Output thực tế:
+```typescript
+  document.addEventListener("keydown", (e) => {
+    if (!editor?.view) return;
+    // Detect Cmd+V (macOS) or Ctrl+V (Windows/Linux), excluding Shift+Cmd+V (paste-as-text)
+    const isPaste = (isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey)
+      && !e.shiftKey && e.key === "v";
+    if (!isPaste) return;
+    // Request extension-side clipboard read. Extension checks if clipboard has image,
+    // responds with clipboardImage message only if it does. Text paste continues normally.
+    vscode.postMessage({ type: "readClipboardImage" });
+  }, { capture: true });
+```
+Handler này chỉ gửi `vscode.postMessage({ type: "readClipboardImage" })` rồi để đường dán văn bản thường tiếp tục chạy độc lập. Phía webview không hề lưu trạng thái chờ dán ảnh hay khóa giao diện.
+
+3. **Khối mã xử lý clipboardImage thực tế**:
+Lệnh đọc từ `src/webview/main.ts`:
+```bash
+sed -n '1984,1993p' src/webview/main.ts
+```
+Output thực tế:
+```typescript
+    case "clipboardImage":
+      if (message.error) {
+        console.warn("[Clipboard]", message.error);
+        break;
+      }
+      if (typeof message.data === "string" && editor?.view) {
+        const file = dataUrlToFile(message.data, "clipboard-image.png");
+        if (file) processImagePaste(editor.view, file);
+      }
+      break;
+```
 
 ### Cách xử lý đã chốt với điều phối viên
-Vấn đề đã được báo cáo lên điều phối viên qua kênh `orca orchestration ask`. Điều phối viên đã xác nhận sai lệch và ban hành chỉ thị "SỬA ĐỔI GIỮA SÓNG số 2":
-1. **Không gọi `showError()`**: Tuyệt đối không chạm vào DOM của editor.
-2. **Không dựng toast mới**: Tránh thêm CSS mới gây xung đột với Worker W2 đang dời khối `<style>` với tiêu chí nghiệm thu "diff CSS rỗng".
-3. **Phía webview chỉ làm hai việc**:
-   - Bổ sung trường `error?: string` vào loại thông điệp `clipboardImage` trong `src/shared/messages.ts`.
-   - Trong `case "clipboardImage"` tại `src/webview/main.ts`, khi có `message.error` thì ghi log cảnh báo: `console.warn("[Clipboard]", message.error)`. Không chạm DOM. Editor giữ nguyên 100%, đường dán văn bản thường không bị chặn.
-4. **Toàn bộ phần hiển thị cho người dùng do host đảm nhiệm**:
+Theo chỉ thị "SỬA ĐỔI GIỮA SÓNG số 2":
+1. **Không gọi `showError()`**: Không chạm vào DOM của editor để bảo vệ tài liệu người dùng.
+2. **Không dựng toast mới**: Tránh thêm CSS mới làm xung đột với Worker W2 đang thực hiện dời khối `<style>`.
+3. **Phía webview**:
+   - Thêm trường `error?: string` vào `ClipboardImageMessage` trong `src/shared/messages.ts`.
+   - Trong `case "clipboardImage"` tại `src/webview/main.ts`, khi có `message.error` thì ghi log `console.warn("[Clipboard]", message.error)`. Không chạm DOM.
+4. **Phía extension host**:
    - Hiển thị thông báo qua `vscode.window.showWarningMessage`.
-   - Cơ chế chống lặp: Lưu `clipboardWarningsShown = new Set<string>()`, đảm bảo mỗi lý do lỗi chỉ hiện cảnh báo đúng một lần trong mỗi phiên làm việc.
-   - Hướng dẫn hữu ích trên Linux: Nếu thiếu công cụ clipboard hệ thống (`xclip` hoặc `wl-paste`), hiển thị rõ: "Install xclip or wl-clipboard to paste images".
+   - Chống lặp cảnh báo: Dùng `clipboardWarningsShown = new Set<string>()`, mỗi lý do chỉ cảnh báo tối đa một lần mỗi phiên.
+   - Hướng dẫn cụ thể trên Linux: "Install xclip or wl-clipboard to paste images".
 
-### Mô tả cách ép lỗi khi kiểm thử
-Để kiểm thử nhánh xử lý lỗi clipboard:
-- Giả lập lỗi tại hàm đọc clipboard trong `src/markdownEditorProvider.ts` (ném ngoại lệ `new Error("Command failed: xclip -selection clipboard -t TARGETS -o")` hoặc giả lập không tìm thấy tiện ích clipboard).
-- Thực hiện thao tác dán ảnh: Extension host hiển thị thông báo `vscode.window.showWarningMessage("Failed to paste image from clipboard: ... Install xclip or wl-clipboard to paste images")` đúng một lần. Khi thực hiện dán ảnh hỏng tiếp lần thứ hai, cảnh báo không bị hiển thị lặp lại.
-- Trên console của webview: Xuất hiện log `[Clipboard] Command failed: xclip...`. Trình soạn thảo không bị treo, nội dung tài liệu đang mở giữ nguyên vẹn, và thao tác dán văn bản thuần vẫn hoạt động bình thường.
+### Tình trạng kiểm thử phép ép lỗi clipboard
+- Phép thử ép lỗi clipboard trên môi trường VS Code sống: Chưa kiểm được trong phiên chạy worker dòng lệnh này, do môi trường chạy không có cửa sổ VS Code sống với giao diện đồ họa để thực hiện thao tác phím dán thực tế trên webview.
+- Quy trình đề nghị thực hiện bằng tay khi có môi trường VS Code sống:
+  1. Trên máy Linux không cài `xclip` và `wl-clipboard` (hoặc cấu hình tạm để lệnh đọc clipboard trả về lỗi), mở một tệp Markdown bằng custom editor.
+  2. Sao chép một hình ảnh vào clipboard của hệ điều hành.
+  3. Nhấn tổ hợp phím Ctrl+V trong cửa sổ trình soạn thảo: Extension host sẽ hiển thị cảnh báo `vscode.window.showWarningMessage` với nội dung yêu cầu cài đặt `xclip` hoặc `wl-clipboard`.
+  4. Nhấn Ctrl+V thêm lần nữa: Cảnh báo sẽ không bị hiển thị lặp lại do đã được ghi nhận trong `Set`.
+  5. Mở Developer Tools của Webview: Bảng Console sẽ hiển thị dòng cảnh báo `[Clipboard] ...`, và tài liệu trong trình soạn thảo sẽ giữ nguyên trạng thái không bị mất dữ liệu.
 
 ---
 
@@ -123,10 +331,60 @@ Vấn đề đã được báo cáo lên điều phối viên qua kênh `orca or
 ### Hiện tượng
 Khi người dùng đóng tab soạn thảo hoặc webview bị hủy (`onDidDispose`), các thông điệp `edit` đang trên đường truyền (in-flight edits) có thể đến trong hoặc sau khi các listener bị hủy, dẫn đến nguy cơ mất dữ liệu sửa đổi cuối cùng hoặc gọi `WorkspaceEdit` trên tài liệu đã đóng.
 
-### Cải tiến đã thực hiện trong src/markdownEditorProvider.ts
-1. Thêm biến theo dõi `inFlightEdit: Promise<void> | null` trong `CustomTextEditorProvider`.
-2. Kiểm tra trạng thái tài liệu trong `applyEdit`: Nếu `document.isClosed` thì lập tức bỏ qua, không cố gắng áp dụng edit lên tài liệu không còn tồn tại.
-3. Trì hoãn dọn dẹp trong `onDidDispose`: Sử dụng `setImmediate` để cho phép các tác vụ I/O đang chờ trong event loop hoàn tất trước. Nếu tài liệu vẫn mở (`!document.isClosed`) và đang có `inFlightEdit`, host sẽ chờ cho edit này áp dụng xong vào tài liệu rồi mới dọn dẹp subscription và xóa đường dẫn ảnh tạm trong `originalImagePaths`.
+### Mã nguồn chứng minh giải pháp trong src/markdownEditorProvider.ts
+
+1. **Bảo vệ applyEdit khi tài liệu đã đóng**:
+Lệnh đọc từ `src/markdownEditorProvider.ts`:
+```bash
+sed -n '463,466p' src/markdownEditorProvider.ts
+```
+Output thực tế:
+```typescript
+    const applyEdit = async (newContent: string) => {
+      if (document.isClosed) return;
+      const normalizedContent = normalizeLineEndings(newContent, document.eol);
+      if (normalizedContent === document.getText()) return;
+```
+
+2. **Theo dõi và chờ inFlightEdit trong case edit**:
+Lệnh đọc từ `src/markdownEditorProvider.ts`:
+```bash
+sed -n '614,619p' src/markdownEditorProvider.ts
+```
+Output thực tế:
+```typescript
+          case "edit":
+            if (typeof msg.content === "string" && !document.isClosed) {
+              inFlightEdit = applyEdit(msg.content);
+              await inFlightEdit;
+            }
+            break;
+```
+
+3. **Trì hoãn dọn dẹp trong onDidDispose bằng setImmediate**:
+Lệnh đọc từ `src/markdownEditorProvider.ts`:
+```bash
+sed -n '1389,1404p' src/markdownEditorProvider.ts
+```
+Output thực tế:
+```typescript
+    webviewPanel.onDidDispose(() => {
+      if (updateDebounceTimer) clearTimeout(updateDebounceTimer);
+      // Allow any edit in-flight during teardown (e.g. flushed on pagehide) to be applied if document is still open
+      setImmediate(async () => {
+        if (inFlightEdit) {
+          try {
+            await inFlightEdit;
+          } catch {
+            /* ignore */
+          }
+        }
+        isDisposed = true;
+        this.originalImagePaths.delete(docKey);
+        disposables.forEach((d) => d.dispose());
+      });
+    });
+```
 
 ---
 
