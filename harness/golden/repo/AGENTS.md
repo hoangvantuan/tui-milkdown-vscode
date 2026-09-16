@@ -38,7 +38,24 @@ npm run package    # Package extension as .vsix
 ```
 src/
 ├── extension.ts              # Entry point, registers MarkdownEditorProvider + viewSource/viewRichText commands
-├── markdownEditorProvider.ts # CustomTextEditorProvider + HTML/CSS template
+├── markdownEditorProvider.ts # CustomTextEditorProvider: HTML template + wiring; the per-document work is in src/host/
+├── host/                     # Extension-host side of resolveCustomTextEditor (#88)
+│   ├── session.ts            # EditorSession: the 9 per-document state fields + updateWebview/sendTheme/sendConfig/applyEdit/dispose
+│   ├── messageHandlers.ts    # Handler table keyed by WebviewToHostMessage["type"] + dispatchMessage
+│   ├── typedWebview.ts       # TypedWebview — here, not shared/messages.ts, which must stay free of `vscode`
+│   ├── config.ts             # tuiMarkdown.* getters, buildConfigMessage, handleConfigurationChange
+│   ├── imagePaths.ts         # extractImagePaths / resolveImagePath / buildImageMap / buildOriginalImageMap
+│   ├── lineEndings.ts        # normalizeLineEndings (re-exported by the provider for harness/crlf-seam.ts)
+│   ├── documentSave.ts       # onDidSaveTextDocument: image delete detection + map rebuild
+│   ├── workspaceFiles.ts     # buildExcludePattern / getDocFolder for the @ and [[ pickers
+│   ├── openLocalFile.ts      # openLocalFileInEditor, shared by openLink and openImageInTab
+│   ├── savedPreferences.ts   # ready: replay the saved theme/font/zoom
+│   ├── systemFonts.ts        # System font enumeration (module-level cache)
+│   ├── saveImage.ts          # saveImage: filename + folder validation, write, reply
+│   ├── readClipboardImage.ts # Native clipboard read (osascript / PowerShell / xclip)
+│   ├── requestImageRename.ts # Rename on disk + rewrite this document + workspace references
+│   ├── openWikiLink.ts       # [[name]] resolution and open
+│   └── exportDocument.ts     # export: busy lock, synchronous read, lazy require of the renderers
 ├── constants.ts              # Shared constants (MAX_FILE_SIZE)
 ├── shared/
 │   └── messages.ts           # Type-only message protocol: WebviewToHostMessage / HostToWebviewMessage
@@ -159,6 +176,9 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 - `harness/editor.ts` mirrors the markdown-relevant extensions of `initEditor()`; a change to one without the other makes the harness measure something that does not ship. It is NOT a full mirror, and the two can disagree: `harness/vscode-floor/sample.md` is not a first-pass fixed point under `roundtripMarkdown` yet the webview writes no edit for it, which is why the floor check passes
 - `verify:vscode-floor` is safe to run concurrently, since #110. It used to derive `ws`, `ud` and `ext` from one fixed base (`/tmp/tuimd-floor`), so two runs overwrote each other's `sample.md`, shared VS Code's user-data dir and IPC socket, and the second run's startup `rmSync` deleted the first run's tree. That, not machine load, is why `document still unmodified after the hold` failed spuriously during parallel agent waves. Each run now gets its own `mkdtemp` base and stages its writes into the shared download cache before renaming them into place
 - Messages between the extension host and the webview go through the typed unions in `src/shared/messages.ts`. Add a kind there, not an inline `as { type?: string }` cast; a typo on one side is then a `tsc` error
+- A new message kind in `src/shared/messages.ts` must have a handler in `src/host/messageHandlers.ts`. The table is a mapped type over the union, so a missing handler is a `tsc` error rather than a message that silently does nothing at runtime. `dispatchMessage` checks `hasOwnProperty` before calling: the old `switch` fell through on an unknown `type`, but an object-literal lookup would find `constructor` or `toString` on `Object.prototype` and call it
+- `originalImagePaths` is always passed as the whole outer map plus a `docKey`, never as the inner map. `handleDocumentSave` REPLACES the inner map after every save, so anything holding a reference to the old one silently stops detecting renames. No automated check catches this
+- `normalizeLineEndings` lives in `src/host/lineEndings.ts` but the provider re-exports it, because `harness/crlf-seam.ts` imports it from `src/markdownEditorProvider.ts` and a worker may not edit the harness
 - The editor stylesheet is `src/webview/editor.css`, imported by `main.ts` before `themes/index.css`. That import order is the cascade order, and the provider must stay free of `<style>` blocks
 - DOCX export runs in the Node extension host, so any mdast2docx plugin that touches `document` crashes it. `@m2d/html` did, which is why raw HTML is skipped rather than rendered there; PDF export renders it through `remark-rehype` with `allowDangerousHtml`
 - Security trade-offs are documented where they are made: mermaid `securityLevel: "loose"` and nonce exposure in `mermaid-plugin.ts` / `mermaid-bridge.ts`, PDF export invariants in `export-pdf.ts`
