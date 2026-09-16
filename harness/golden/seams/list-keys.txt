@@ -1,0 +1,55 @@
+list-keys seam: ListKeymapExtension (src/webview/list-keymap-extension.ts)
+verifies Tab/Shift-Tab list navigation and hand-typed marker absorption (#107)
+
+[case 1: tab-first-item-after-ordered-list]
+  handled: yes
+  nested under previous list: yes
+  actual:
+    1. a
+      - b
+
+[case 2: tab-first-item-no-preceding-list]
+  swallowed (focus retained): yes
+  paragraph untouched: yes
+  actual:
+    Paragraph before list
+    
+    - first item
+    - second item
+
+[case 3: tab-second-ordered-item-creates-bullet-sublist]
+  handled: yes
+  sub-list is bulletList: yes
+  actual:
+    1. first
+      - second
+
+[case 4: tab-second-ordered-item-joins-existing-ordered-sublist]
+  handled: yes
+  sub-list preserves ordered type: yes
+  actual:
+    1. first
+      1. sub1
+      2. second
+
+[case 5: shift-tab-lifts-nested-list-item]
+  handled: yes
+  lifted to top level: yes
+  actual:
+    1. first
+    2. second
+
+[case 6: absorb-manual-ordered-marker]
+  marker absorbed (no duplicate 2. 2.): yes
+  actual:
+    1. first
+    2. second
+
+[case 7: table-tab-navigation-and-add-row]
+  tab to cell 2 handled: yes
+  tab on last cell added row: yes
+
+[case 8: table-cell-with-list-sink-and-navigate]
+  second item sunk within table cell: yes
+  first item navigated to next cell: yes
+

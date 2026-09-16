@@ -6,7 +6,7 @@ another continuation, exactly at marker width
 1. first ordered item
 continuation under the three-character marker
 2. second ordered item
- continuation at marker width
+continuation at marker width
 
 - bullet with two continuation lines
  continuation one space
@@ -19,4 +19,4 @@ Nested list variant:
    inner continuation under the two-space inner marker
 
 10. ordered item with a two-digit marker
- continuation at the four-character marker
+continuation at the four-character marker

@@ -17,6 +17,10 @@
  * from Node. Persist webview state with `{ ...getState(), key }`.
  */
 import { Editor, Extension } from "@tiptap/core";
+import type {
+  WebviewToHostMessage,
+  HostToWebviewMessage,
+} from "../shared/messages";
 import StarterKit from "@tiptap/starter-kit";
 import { MarkdownLink, MarkdownImage } from "./markdown-destination";
 import { Highlight } from "@tiptap/extension-highlight";
@@ -49,6 +53,7 @@ import ruby from "highlight.js/lib/languages/ruby";
 import diff from "highlight.js/lib/languages/diff";
 import shell from "highlight.js/lib/languages/shell";
 import plaintext from "highlight.js/lib/languages/plaintext";
+import "./editor.css";
 import "./themes/index.css";
 import {
   parseContent,
@@ -76,6 +81,9 @@ import { FileMention, setFileMentionFiles } from "./file-mention-plugin";
 import { WikiLink, WikiLinkSuggestion, setWikiLinkFiles } from "./wiki-link-plugin";
 import { RawHtmlBlock, RawHtmlInline } from "./raw-html";
 import { installMarkdownTextEscape } from "./markdown-text-escape";
+import { CustomOrderedList } from "./ordered-list-extension";
+import { ListKeymapExtension } from "./list-keymap-extension";
+import { escapeHtml } from "./file-search-utils";
 
 // Install unified text escape overrides on MarkdownManager (#97, #99, #100, #101).
 installMarkdownTextEscape();
@@ -135,6 +143,15 @@ const origParseTokens = (MarkdownManager.prototype as any).parseTokens;
 //   "\n\n" (2) = normal paragraph break -> 0 empty paras
 //   "\n\n\n" (3) = 1 blank line -> 1 empty para
 //   "\n\n\n\n" (4) = 2 blank lines -> 2 empty paras
+//
+// Loose list normalization (#91):
+// A loose list (`- a\n\n- b`) is serialized back as a tight list (`- a\n- b`).
+// This behavior originates upstream in @tiptap/extension-list (bulletList /
+// orderedList serializers join child items with '\n', not '\n\n') rather than
+// in our own code, so it cannot be customized here.
+// Per CONTEXT.md, this is an accepted Normalized change: surface syntax is
+// allowed to normalize on first save as long as it reaches a fixed point and
+// remains stable from the second save onward, which it does.
 const BlankLineHandler = Extension.create({
   name: "blankLineHandler",
   markdownTokenName: "space",
@@ -231,7 +248,7 @@ interface WebviewState {
 }
 
 declare function acquireVsCodeApi(): {
-  postMessage(message: unknown): void;
+  postMessage(message: WebviewToHostMessage): void;
   getState(): WebviewState | null;
   setState(state: WebviewState): void;
 };
@@ -841,12 +858,6 @@ function setupMetadataHandlers(): void {
   }
 }
 
-function escapeHtml(text: string): string {
-  const div = document.createElement("div");
-  div.textContent = text;
-  return div.innerHTML;
-}
-
 function showError(message: string): void {
   const errorHtml = `
     <div style="padding: 20px; color: var(--vscode-errorForeground, red);">
@@ -1098,6 +1109,7 @@ function initEditor(initialContent: string = ""): Editor | null {
           blockquote: false, // Replaced by custom Blockquote with alert detection
           link: false, // Replaced by MarkdownLink below (destination escaping)
           underline: false, // Replaced by CustomUnderline below (<ins> serialization)
+          orderedList: false, // Replaced by CustomOrderedList below (#109)
         }),
         CustomUnderline,
         // Link/Image that escape destinations containing spaces, so a file
@@ -1192,6 +1204,8 @@ function initEditor(initialContent: string = ""): Editor | null {
         TaskItem.configure({
           nested: true,
         }),
+        CustomOrderedList,
+        ListKeymapExtension,
         Placeholder.configure({
           placeholder: "Type something...",
         }),
@@ -1865,24 +1879,21 @@ function scrollToHeading(slug: string): void {
 }
 
 window.addEventListener("message", async (event) => {
-  const message = event.data;
+  const message = event.data as HostToWebviewMessage;
   if (!message || typeof message !== "object") return;
 
-  if (message.type === "exportDone") {
-    const btn = document.getElementById("btn-export-go") as
-      | (HTMLButtonElement & { _safetyTimer?: number })
-      | null;
-    if (btn) {
-      if (btn._safetyTimer !== undefined) {
+  switch (message.type) {
+    case "exportDone": {
+      const btn = document.getElementById("btn-export-go") as
+        | (HTMLButtonElement & { _safetyTimer?: number })
+        | null;
+      if (btn) {
         window.clearTimeout(btn._safetyTimer);
         btn._safetyTimer = undefined;
+        btn.disabled = false;
       }
-      btn.disabled = false;
+      break;
     }
-    return;
-  }
-
-  switch (message.type) {
     case "update":
       if (typeof message.content === "string") {
         const newImageMap = message.imageMap || {};
@@ -2048,7 +2059,10 @@ window.addEventListener("message", async (event) => {
       }
       break;
     case "clipboardImage":
-      // Extension-side clipboard read returned an image (base64 PNG)
+      if (message.error) {
+        console.warn("[Clipboard]", message.error);
+        break;
+      }
       if (typeof message.data === "string" && editor?.view) {
         const file = dataUrlToFile(message.data, "clipboard-image.png");
         if (file) processImagePaste(editor.view, file);
@@ -2184,7 +2198,7 @@ function init() {
     setupImageEditOverlay(
       editorEl,
       () => editor?.view ?? null,
-      (msg) => vscode.postMessage(msg)
+      (msg: WebviewToHostMessage) => vscode.postMessage(msg)
     );
   }
 

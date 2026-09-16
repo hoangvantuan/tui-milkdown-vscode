@@ -79,6 +79,46 @@ function renderListItemText(item: JSONContent, h: MarkdownRendererHelpers): stri
 }
 
 /**
+ * Render a list and its nested sub-lists into cell parts separated by <br>.
+ * Supports bulletList, orderedList, and taskList at any nesting depth.
+ */
+function renderListToParts(listNode: JSONContent, h: MarkdownRendererHelpers, parts: string[]): void {
+  if (listNode.type === 'bulletList') {
+    for (const item of listNode.content || []) {
+      const text = renderListItemText(item, h);
+      if (text) parts.push(`- ${text}`);
+      for (const sub of item.content || []) {
+        if (sub.type === 'bulletList' || sub.type === 'orderedList' || sub.type === 'taskList') {
+          renderListToParts(sub, h, parts);
+        }
+      }
+    }
+  } else if (listNode.type === 'orderedList') {
+    let num = (listNode.attrs?.start as number) || 1;
+    for (const item of listNode.content || []) {
+      const text = renderListItemText(item, h);
+      if (text) { parts.push(`${num}. ${text}`); num++; }
+      for (const sub of item.content || []) {
+        if (sub.type === 'bulletList' || sub.type === 'orderedList' || sub.type === 'taskList') {
+          renderListToParts(sub, h, parts);
+        }
+      }
+    }
+  } else if (listNode.type === 'taskList') {
+    for (const item of listNode.content || []) {
+      const checked = item.attrs?.checked ? 'x' : ' ';
+      const text = renderListItemText(item, h);
+      if (text) parts.push(`[${checked}] ${text}`);
+      for (const sub of item.content || []) {
+        if (sub.type === 'bulletList' || sub.type === 'orderedList' || sub.type === 'taskList') {
+          renderListToParts(sub, h, parts);
+        }
+      }
+    }
+  }
+}
+
+/**
  * Render a cell's content. For cells with multiple block children,
  * uses <br> tags to preserve line breaks in GFM table format.
  * Handles hardBreak nodes within paragraphs (Shift+Enter = soft break).
@@ -101,27 +141,10 @@ function renderCellContent(cellNode: JSONContent, h: MarkdownRendererHelpers): s
         if (text) parts.push(text);
         break;
       }
-      case 'bulletList': {
-        for (const item of child.content || []) {
-          const text = renderListItemText(item, h);
-          if (text) parts.push(`- ${text}`);
-        }
-        break;
-      }
-      case 'orderedList': {
-        let num = (child.attrs?.start as number) || 1;
-        for (const item of child.content || []) {
-          const text = renderListItemText(item, h);
-          if (text) { parts.push(`${num}. ${text}`); num++; }
-        }
-        break;
-      }
+      case 'bulletList':
+      case 'orderedList':
       case 'taskList': {
-        for (const item of child.content || []) {
-          const checked = item.attrs?.checked ? 'x' : ' ';
-          const text = renderListItemText(item, h);
-          if (text) parts.push(`[${checked}] ${text}`);
-        }
+        renderListToParts(child, h, parts);
         break;
       }
       default: {

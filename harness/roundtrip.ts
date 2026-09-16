@@ -27,6 +27,7 @@ import { runTableColwidthSeam } from "./table-colwidth-seam";
 import { runPlaceholderSeam } from "./placeholder-seam";
 import { runFileMentionSeam } from "./filemention-seam";
 import { runCrlfSeam } from "./crlf-seam";
+import { runListKeysSeam } from "./list-keys-seam";
 import { formatUnifiedDiff } from "./diff";
 
 const MAX_DIFF_LINES = 120;
@@ -162,6 +163,11 @@ function main(): number {
       name: "seams/crlf.txt",
       goldenPath: path.join(repoRoot, "harness", "golden", "seams", "crlf.txt"),
       run: runCrlfSeam,
+    },
+    {
+      name: "seams/list-keys.txt",
+      goldenPath: path.join(repoRoot, "harness", "golden", "seams", "list-keys.txt"),
+      run: runListKeysSeam,
     },
   ];
 

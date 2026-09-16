@@ -75,6 +75,8 @@ import {
 import { WikiLink } from "../src/webview/wiki-link-plugin";
 import { RawHtmlBlock, RawHtmlInline } from "../src/webview/raw-html";
 import { installMarkdownTextEscape } from "../src/webview/markdown-text-escape";
+import { CustomOrderedList } from "../src/webview/ordered-list-extension";
+import { ListKeymapExtension } from "../src/webview/list-keymap-extension";
 import {
   parseContent,
   reconstructContent,
@@ -136,6 +138,15 @@ const origParseTokens = (MarkdownManager.prototype as any).parseTokens;
 };
 
 // Mirror of BlankLineHandler in src/webview/main.ts.
+//
+// Loose list normalization (#91):
+// A loose list (`- a\n\n- b`) is serialized back as a tight list (`- a\n- b`).
+// This behavior originates upstream in @tiptap/extension-list (bulletList /
+// orderedList serializers join child items with '\n', not '\n\n') rather than
+// in our own code, so it cannot be customized here.
+// Per CONTEXT.md, this is an accepted Normalized change: surface syntax is
+// allowed to normalize on first save as long as it reaches a fixed point and
+// remains stable from the second save onward, which it does.
 const BlankLineHandler = Extension.create({
   name: "blankLineHandler",
   markdownTokenName: "space",
@@ -252,6 +263,7 @@ function buildMarkdownExtensions(
       blockquote: false,
       link: false,
       underline: false,
+      orderedList: false, // Replaced by CustomOrderedList below (#109)
     }),
     CustomUnderline,
     MarkdownLink.configure({
@@ -343,6 +355,8 @@ function buildMarkdownExtensions(
     TaskItem.configure({
       nested: true,
     }),
+    CustomOrderedList,
+    ListKeymapExtension,
     Markdown.configure({
       marked: customMarked,
       indentation,

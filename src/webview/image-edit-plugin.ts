@@ -1,4 +1,5 @@
 import type { EditorView } from "@tiptap/pm/view";
+import type { WebviewToHostMessage } from "../shared/messages";
 import { IMAGE_NODE_TYPES } from "./main";
 import { cleanImagePath } from "../utils/clean-image-path";
 import { openLightbox } from "./image-lightbox-plugin";
@@ -26,7 +27,7 @@ const pendingRenames = new Map<string, PendingRename>();
 
 // Store references
 let storedGetView: (() => EditorView | null) | null = null;
-let storedPostMessage: ((msg: unknown) => void) | null = null;
+let storedPostMessage: ((msg: WebviewToHostMessage) => void) | null = null;
 let currentImageMap: Record<string, string> = {};
 
 // Overlay elements
@@ -182,7 +183,7 @@ function hideOverlay(): void {
 export function setupImageEditOverlay(
   editorEl: HTMLElement,
   getView: () => EditorView | null,
-  postMessage: (msg: unknown) => void
+  postMessage: (msg: WebviewToHostMessage) => void
 ): () => void {
   storedGetView = getView;
   storedPostMessage = postMessage;
@@ -468,7 +469,7 @@ export function setImageMap(imageMap: Record<string, string>): void {
  */
 function requestUrlEdit(
   currentUrl: string,
-  postMessage: (msg: unknown) => void,
+  postMessage: (msg: WebviewToHostMessage) => void,
   onResult: EditCallback
 ): void {
   const editId = `edit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
