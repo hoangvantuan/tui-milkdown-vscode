@@ -47,6 +47,12 @@ const SAMPLE = path.join(HERE, "sample.md");
 const TESTS_ENTRY = path.join(REPO, "out", "harness", "vscode-floor-tests.js");
 /** How long to wait for the webview to mount before giving up. */
 const WEBVIEW_TIMEOUT_MS = 40000;
+/**
+ * What the driving phase types into the document. Both processes need it, so
+ * it travels to the extension host in the environment rather than being
+ * spelled twice.
+ */
+const EDIT_SENTINEL = "FLOORPROBE";
 
 const args = process.argv.slice(2);
 const keep = args.includes("--keep");
@@ -335,12 +341,114 @@ async function probeWebview(session) {
         returnByValue: true,
       });
       const value = JSON.parse(result.result.value);
-      if (value.editorMounted) return value;
+      if (value.editorMounted) return { ...value, contextId: context.id };
     } catch {
       /* context went away, or belongs to another frame */
     }
   }
   return null;
+}
+
+/**
+ * Drive the webview through its own UI, so the extension host's message
+ * dispatch is exercised end to end.
+ *
+ * The webview's `acquireVsCodeApi()` handle is a module-level const in
+ * `main.ts` and is deliberately not published on `window`, so there is no way
+ * to post a host message from here — and adding a hook to the shipped bundle
+ * to make one would be test scaffolding in production. Driving the UI is the
+ * stronger pin anyway: a typed character travels the real Tiptap `onUpdate`,
+ * the real 300 ms debounce and the real host `edit` case, and a click on
+ * `#btn-source` travels the real `viewSource` case.
+ *
+ * The two processes rendezvous on marker files inside the per-run base, the
+ * one directory both of them already know (the host has it as the parent of
+ * `TUI_FLOOR_RESULT`). The host writes `phase-interact` once its read-only
+ * checks are done; this drives; this writes `phase-driven`; the host then
+ * asserts. Putting this between the probe loop and the exit race matters:
+ * the race SIGKILLs the host 60 s later, and the DOM checks above read a
+ * snapshot taken during the probe loop, so modifying the document now cannot
+ * corrupt them.
+ */
+async function driveInteractions(base, session, contextId) {
+  const interactMarker = path.join(base, "phase-interact");
+  const drivenMarker = path.join(base, "phase-driven");
+  const steps = [];
+
+  if (!session || contextId == null) {
+    return { ok: false, detail: "no webview context to drive; earlier checks say why" };
+  }
+
+  const evaluate = async (expression) => {
+    const result = await session.send("Runtime.evaluate", {
+      expression,
+      contextId,
+      returnByValue: true,
+      awaitPromise: true,
+    });
+    if (result.exceptionDetails) throw new Error(result.exceptionDetails.text ?? "evaluate threw");
+    return result.result.value;
+  };
+
+  const deadline = Date.now() + 45000;
+  while (!fs.existsSync(interactMarker) && Date.now() < deadline) await sleep(500);
+  if (!fs.existsSync(interactMarker)) {
+    return { ok: false, detail: "extension host never signalled phase-interact" };
+  }
+
+  try {
+    // 1. Type into the first paragraph. `Input.insertText` is what a real
+    //    keystroke's text insertion looks like to the page, so ProseMirror
+    //    handles it through its own beforeinput path.
+    const focused = await evaluate(`(() => {
+      const root = document.querySelector('.tiptap');
+      if (!root) return 'no .tiptap';
+      const target = root.querySelector('p');
+      if (!target) return 'no paragraph';
+      root.focus();
+      const range = document.createRange();
+      range.selectNodeContents(target);
+      range.collapse(false);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return 'ok';
+    })()`);
+    if (focused !== "ok") return { ok: false, detail: `could not place the caret: ${focused}` };
+
+    await session.send("Input.insertText", { text: EDIT_SENTINEL });
+    steps.push(`typed ${EDIT_SENTINEL}`);
+
+    // The webview debounces the `edit` message by 300 ms and the host then
+    // applies a WorkspaceEdit; 2 s is that with room to spare, and it is also
+    // long enough for an edit LOOP to show itself in the host's version count.
+    await sleep(2000);
+
+    const typed = await evaluate(
+      `document.querySelector('.tiptap')?.textContent?.includes(${JSON.stringify(EDIT_SENTINEL)}) ?? false`,
+    );
+    if (!typed) return { ok: false, detail: "the sentinel never appeared in the editor DOM" };
+    steps.push("sentinel present in the editor DOM");
+
+    // 2. Click the view-source button, the cheapest host dispatch there is.
+    const clicked = await evaluate(`(() => {
+      const button = document.getElementById('btn-source');
+      if (!button) return 'no #btn-source';
+      button.click();
+      return 'ok';
+    })()`);
+    if (clicked !== "ok") return { ok: false, detail: `could not click view source: ${clicked}` };
+    steps.push("clicked #btn-source");
+    await sleep(1500);
+  } catch (err) {
+    return { ok: false, detail: `${steps.join("; ")}${steps.length ? "; " : ""}threw: ${err.message}` };
+  } finally {
+    // Always release the host, even on failure: without this it waits out its
+    // own timeout and the run takes a minute longer to report the same thing.
+    fs.writeFileSync(drivenMarker, steps.join("\n"), "utf8");
+  }
+
+  return { ok: true, detail: steps.join("; ") };
 }
 
 /** Attach to every page/iframe target the browser endpoint reports. */
@@ -411,6 +519,7 @@ async function main() {
       env: childEnv({
         TUI_FLOOR_RESULT: resultFile,
         TUI_FLOOR_SAMPLE: sample,
+        TUI_FLOOR_SENTINEL: EDIT_SENTINEL,
       }),
     },
   );
@@ -426,6 +535,7 @@ async function main() {
   // would report a diagram that is merely still loading.
   const sessions = new Map();
   let webview = null;
+  let webviewSession = null;
   const deadline = Date.now() + WEBVIEW_TIMEOUT_MS;
   while (Date.now() < deadline) {
     await sleep(1500);
@@ -435,6 +545,7 @@ async function main() {
         const probe = await probeWebview(session);
         if (probe) {
           webview = probe;
+          webviewSession = session;
           break;
         }
       }
@@ -443,6 +554,12 @@ async function main() {
     }
     if (webview && webview.mermaidRendered >= 1 && webview.mermaidStuck === 0) break;
   }
+
+  // Phase two: drive the live webview, then let the extension host assert
+  // what the driving produced. Everything above only READS; from here on the
+  // document is deliberately modified, which is why this runs after the
+  // in-host `document still unmodified after the hold` check and never before.
+  const driven = await driveInteractions(base, webviewSession, webview?.contextId);
 
   const consoleEntries = [...sessions.values()].flatMap((s) => s.consoleEntries);
   for (const session of sessions.values()) session.close();
@@ -504,6 +621,11 @@ async function main() {
       detail: `toolbar=${webview.toolbar} metadataPanel=${webview.metadataPanel} bodyClass=${webview.bodyClass}`,
     });
   }
+  checks.push({
+    name: "webview interactions could be driven",
+    ok: driven.ok,
+    detail: driven.detail,
+  });
   checks.push({
     name: "no CSP violation in the console",
     ok: violations.length === 0,
