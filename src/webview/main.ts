@@ -1811,10 +1811,8 @@ window.addEventListener("message", async (event) => {
         | (HTMLButtonElement & { _safetyTimer?: number })
         | null;
       if (btn) {
-        if (btn._safetyTimer !== undefined) {
-          window.clearTimeout(btn._safetyTimer);
-          btn._safetyTimer = undefined;
-        }
+        window.clearTimeout(btn._safetyTimer);
+        btn._safetyTimer = undefined;
         btn.disabled = false;
       }
       break;
@@ -1984,7 +1982,10 @@ window.addEventListener("message", async (event) => {
       }
       break;
     case "clipboardImage":
-      // Extension-side clipboard read returned an image (base64 PNG)
+      if (message.error) {
+        console.warn("[Clipboard]", message.error);
+        break;
+      }
       if (typeof message.data === "string" && editor?.view) {
         const file = dataUrlToFile(message.data, "clipboard-image.png");
         if (file) processImagePaste(editor.view, file);
