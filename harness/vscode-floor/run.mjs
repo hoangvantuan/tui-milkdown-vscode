@@ -375,7 +375,20 @@ async function driveInteractions(base, session, contextId) {
   const drivenMarker = path.join(base, "phase-driven");
   const steps = [];
 
+  // Release the host on every path out of here, including the two early ones.
+  // Without it the host waits out its own 60 s timeout while the exit race is
+  // also counting 60 s, and a run that merely failed to mount the webview
+  // reports "no result file" instead of the reason.
+  const release = () => {
+    try {
+      fs.writeFileSync(drivenMarker, "done", "utf8");
+    } catch {
+      /* the base is gone; the run is over anyway */
+    }
+  };
+
   if (!session || contextId == null) {
+    release();
     return { ok: false, detail: "no webview context to drive; earlier checks say why" };
   }
 
@@ -393,6 +406,8 @@ async function driveInteractions(base, session, contextId) {
   const deadline = Date.now() + 45000;
   while (!fs.existsSync(interactMarker) && Date.now() < deadline) await sleep(500);
   if (!fs.existsSync(interactMarker)) {
+    // Nothing to release here: the host never reached the rendezvous, so it is
+    // not waiting on `phase-driven`.
     return { ok: false, detail: "extension host never signalled phase-interact" };
   }
 
@@ -445,7 +460,11 @@ async function driveInteractions(base, session, contextId) {
   } finally {
     // Always release the host, even on failure: without this it waits out its
     // own timeout and the run takes a minute longer to report the same thing.
-    fs.writeFileSync(drivenMarker, steps.join("\n"), "utf8");
+    try {
+      fs.writeFileSync(drivenMarker, steps.join("\n"), "utf8");
+    } catch {
+      release();
+    }
   }
 
   return { ok: true, detail: steps.join("; ") };

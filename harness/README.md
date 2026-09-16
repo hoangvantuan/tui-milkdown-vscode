@@ -508,6 +508,32 @@ What it does:
    table rows, task items, code blocks, alert), the lazily injected mermaid
    artifact loaded and rendered with no stuck placeholder, toolbar and
    metadata panel present, and no CSP violation in the console.
+4. Drives that webview and lets the extension host assert what the driving
+   produced: a typed sentinel reaches the document, it does not bounce back as
+   a second update, and a click on `#btn-source` opens the raw markdown in a
+   text editor. This exists because `resolveCustomTextEditor` carries the whole
+   per-document contract and the markdown roundtrip harness measures a string
+   through an editor, not a provider through VS Code (#88).
+
+   It drives the UI rather than posting host messages: `main.ts` calls
+   `acquireVsCodeApi()` at module scope and does not publish the handle, and
+   adding a hook to the shipped bundle to create one would be test scaffolding
+   in production. Driving the UI also covers the webview side of each path.
+
+   Steps 1 to 3 are read-only and two of their checks assert the document is
+   NOT dirty; step 4 deliberately makes it dirty. The two processes therefore
+   rendezvous on marker files in the per-run base — the host writes
+   `phase-interact` after its read-only checks, the runner drives, the runner
+   writes `phase-driven`, the host asserts — and step 4 sits between the probe
+   loop and the exit race that SIGKILLs the host.
+
+   Measured teeth: stubbing out `case "edit"` in the provider turns the
+   typed-character check red, and stubbing out `case "viewSource"` turns the
+   view-source check red. The no-bounce check is weaker and should be read as
+   such: it is an invariant over four layered guards (`!pendingEdit` in
+   `onDidChangeTextDocument`, `pendingEdit || isDisposed` in `updateWebview`,
+   the `queueMicrotask` reset in `applyEdit`, and `lastSentState` in the
+   webview), and removing any ONE of them does not turn it red.
 
 ```bash
 npm run verify:vscode-floor                  # the floor from engines.vscode
