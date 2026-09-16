@@ -40,7 +40,8 @@ import { TaskList, TaskItem } from "@tiptap/extension-list";
 import { Paragraph } from "@tiptap/extension-paragraph";
 import { Document } from "@tiptap/extension-document";
 import { Blockquote } from "@tiptap/extension-blockquote";
-import { Markdown } from "@tiptap/markdown";
+import { Markdown, MarkdownManager, extractAbsorbedBlankLines } from "@tiptap/markdown";
+import { Marked } from "marked";
 import { createLowlight } from "lowlight";
 import javascript from "highlight.js/lib/languages/javascript";
 import typescript from "highlight.js/lib/languages/typescript";
@@ -72,10 +73,14 @@ import {
 } from "../src/webview/alert-extension";
 import { WikiLink } from "../src/webview/wiki-link-plugin";
 import { RawHtmlBlock, RawHtmlInline } from "../src/webview/raw-html";
+import { installMarkdownTextEscape } from "../src/webview/markdown-text-escape";
 import {
   parseContent,
   reconstructContent,
 } from "../src/utils/frontmatter-parser";
+
+// Install unified text escape overrides on MarkdownManager (#97, #99, #100, #101).
+installMarkdownTextEscape();
 
 const lowlight = createLowlight();
 lowlight.register({
@@ -93,12 +98,48 @@ const EscapeToken = Extension.create({
   },
 });
 
+// Issue #95: Mirror of MarkdownManager prototype patch in src/webview/main.ts.
+const origParseTokens = (MarkdownManager.prototype as any).parseTokens;
+(MarkdownManager.prototype as any).parseTokens = function (tokens: any[], parseImplicitEmptyParagraphs = false) {
+  const prevTokens = (this as any)._currentTokens;
+  const normalizedTokens = parseImplicitEmptyParagraphs ? extractAbsorbedBlankLines(tokens) : tokens;
+  (this as any)._currentTokens = normalizedTokens;
+  try {
+    return origParseTokens.call(this, tokens, parseImplicitEmptyParagraphs);
+  } finally {
+    (this as any)._currentTokens = prevTokens;
+  }
+};
+
+(MarkdownManager.prototype as any).createImplicitEmptyParagraphsFromSpace = function (
+  token: any,
+  previousNonSpaceTokenIndex: number,
+  nextNonSpaceTokenIndex: number,
+) {
+  const newlines = (token.raw?.replace(/\r\n/g, "\n").match(/\n/g) || []).length;
+  if (newlines === 0) return [];
+  const prevToken = previousNonSpaceTokenIndex >= 0 ? (this as any)._currentTokens?.[previousNonSpaceTokenIndex] : null;
+  const prevIsTable = prevToken?.type === "table";
+  let emptyCount = 0;
+  if (nextNonSpaceTokenIndex === -1) {
+    // EOF
+    emptyCount = prevIsTable ? Math.max(0, newlines - 1) : newlines;
+  } else if (previousNonSpaceTokenIndex === -1) {
+    // BOF
+    emptyCount = Math.max(0, newlines - 2);
+  } else {
+    // Between blocks
+    emptyCount = prevIsTable ? Math.max(0, newlines - 3) : Math.max(0, newlines - 2);
+  }
+  return Array.from({ length: emptyCount }, () => ({ type: "paragraph", content: [] }));
+};
+
 // Mirror of BlankLineHandler in src/webview/main.ts.
 const BlankLineHandler = Extension.create({
   name: "blankLineHandler",
   markdownTokenName: "space",
   parseMarkdown(token: any, helpers: any) {
-    const newlines = (token.raw?.match(/\n/g) || []).length;
+    const newlines = (token.raw?.replace(/\r\n/g, "\n").match(/\n/g) || []).length;
     const emptyCount = newlines - 2;
     if (emptyCount <= 0) return [];
     return Array.from({ length: emptyCount }, () =>
@@ -107,7 +148,79 @@ const BlankLineHandler = Extension.create({
   },
 });
 
-function buildMarkdownExtensions() {
+// Expands leading tab indentation and tabs after list markers into spaces according
+// to 4-space tab stops, avoiding marked list tokenizer bug where `-\ta\n\tcontinuation`
+// preserves extra leading spaces and causes continuation lines to detach on subsequent saves.
+// Preserves literal tabs inside fenced code blocks.
+function expandPrefixTabsInText(src: string): string {
+  const lines = src.split("\n");
+  let inCodeBlock = false;
+  let codeBlockFence = "";
+
+  const result: string[] = [];
+
+  for (const line of lines) {
+    const fenceMatch = line.match(/^(\s*)(```+|~~~+)/);
+    if (fenceMatch) {
+      const fence = fenceMatch[2];
+      if (!inCodeBlock) {
+        inCodeBlock = true;
+        codeBlockFence = fence[0];
+      } else if (fence.startsWith(codeBlockFence)) {
+        inCodeBlock = false;
+        codeBlockFence = "";
+      }
+      result.push(line);
+      continue;
+    }
+
+    if (inCodeBlock) {
+      result.push(line);
+      continue;
+    }
+
+    const match = line.match(/^(\s*)(?:([-*+]|\d+[.)])(\s*))?/);
+    if (!match || !match[0].includes("\t")) {
+      result.push(line);
+      continue;
+    }
+
+    let col = 0;
+    let expanded = "";
+    for (let i = 0; i < match[0].length; i++) {
+      const ch = match[0][i];
+      if (ch === "\t") {
+        const numSpaces = 4 - (col % 4);
+        expanded += " ".repeat(numSpaces);
+        col += numSpaces;
+      } else {
+        expanded += ch;
+        col++;
+      }
+    }
+    result.push(expanded + line.slice(match[0].length));
+  }
+
+  return result.join("\n");
+}
+
+function createCustomMarked(): any {
+  const m = new Marked();
+  class CustomLexer extends (m.Lexer as any) {
+    lex(src: string) {
+      return super.lex(expandPrefixTabsInText(src));
+    }
+  }
+  m.Lexer = CustomLexer as any;
+  return m;
+}
+
+const customMarked = createCustomMarked();
+
+function buildMarkdownExtensions(
+  indentation: { style: "space" | "tab"; size: number } = { style: "space", size: 2 },
+  tabSize: number = 2,
+) {
   return [
     StarterKit.configure({
       codeBlock: false,
@@ -181,17 +294,33 @@ function buildMarkdownExtensions() {
     TableRow,
     TableCell,
     TableHeader,
-    CodeBlockLowlight.configure({
+    CodeBlockLowlight.extend({
+      // Issue #92: dynamic fence length so nested code blocks (fenced with 3 or more backticks)
+      // roundtrip without corruption. Upstream hardcodes 3 backticks.
+      renderMarkdown(node: any, h: any) {
+        const language = node.attrs?.language || '';
+        const text = node.content ? h.renderChildren(node.content) : '';
+        const backtickMatches = text.match(/`+/g) || [];
+        let maxBackticks = 0;
+        for (const m of backtickMatches) {
+          if (m.length > maxBackticks) maxBackticks = m.length;
+        }
+        const fenceLength = Math.max(3, maxBackticks + 1);
+        const fence = '`'.repeat(fenceLength);
+        return `${fence}${language}\n${text}\n${fence}`;
+      },
+    }).configure({
       lowlight,
       enableTabIndentation: true,
-      tabSize: 2,
+      tabSize,
     }),
     TaskList,
     TaskItem.configure({
       nested: true,
     }),
     Markdown.configure({
-      indentation: { style: "space", size: 2 },
+      marked: customMarked,
+      indentation,
       markedOptions: {
         gfm: true,
         breaks: false,
@@ -206,6 +335,76 @@ function buildMarkdownExtensions() {
   ];
 }
 
+/**
+ * Detect list indentation style from markdown source text.
+ * Used by harness runner to match document indentation when no explicit configuration is provided.
+ */
+export function detectIndentation(text: string): {
+  indentation: { style: "space" | "tab"; size: number };
+  tabSize: number;
+} {
+  const lines = text.split("\n");
+  let inCodeBlock = false;
+  let codeBlockFence = "";
+  let hasTabList = false;
+  let hasTwoSpaceList = false;
+  let hasFourSpaceList = false;
+
+  for (const line of lines) {
+    const fenceMatch = line.match(/^(\s*)(```+|~~~+)/);
+    if (fenceMatch) {
+      const fence = fenceMatch[2];
+      if (!inCodeBlock) {
+        inCodeBlock = true;
+        codeBlockFence = fence[0];
+      } else if (fence.startsWith(codeBlockFence)) {
+        inCodeBlock = false;
+        codeBlockFence = "";
+      }
+      continue;
+    }
+
+    if (inCodeBlock) {
+      continue;
+    }
+
+    // Tab-indented list item or tab after list marker or tab continuation line
+    if (
+      /^\t+([-*+]|\d+[.)])\s/.test(line) ||
+      /^([-*+]|\d+[.)])\t/.test(line) ||
+      /^\t+\S/.test(line)
+    ) {
+      hasTabList = true;
+    }
+
+    if (/^  ([-*+]|\d+[.)])\s/.test(line)) {
+      hasTwoSpaceList = true;
+    }
+    if (/^    ([-*+]|\d+[.)])\s/.test(line)) {
+      hasFourSpaceList = true;
+    }
+  }
+
+  if (hasTabList) {
+    return {
+      indentation: { style: "tab", size: 1 },
+      tabSize: 4,
+    };
+  }
+
+  if (hasFourSpaceList && !hasTwoSpaceList) {
+    return {
+      indentation: { style: "space", size: 4 },
+      tabSize: 4,
+    };
+  }
+
+  return {
+    indentation: { style: "space", size: 2 },
+    tabSize: 2,
+  };
+}
+
 export interface HarnessEditorOptions {
   /** Initial document content. */
   content: string;
@@ -217,6 +416,10 @@ export interface HarnessEditorOptions {
    * example) pass it here instead of widening the shared set.
    */
   extraExtensions?: unknown[];
+  /** List indentation style and size. */
+  indentation?: { style: "space" | "tab"; size: number };
+  /** Tab size for code blocks. */
+  tabSize?: number;
 }
 
 /**
@@ -238,7 +441,7 @@ export function createHarnessEditor(options: HarnessEditorOptions): {
   const editor = new Editor({
     element: host,
     extensions: [
-      ...buildMarkdownExtensions(),
+      ...buildMarkdownExtensions(options.indentation, options.tabSize),
       ...((options.extraExtensions ?? []) as any[]),
     ],
     content: options.content,
@@ -263,11 +466,23 @@ export function createHarnessEditor(options: HarnessEditorOptions): {
  *
  * Returns the serialized document. Observes nothing but the resulting string.
  */
-export function roundtripMarkdown(source: string): string {
+export function roundtripMarkdown(
+  source: string,
+  options?: {
+    indentation?: { style: "space" | "tab"; size: number };
+    tabSize?: number;
+  },
+): string {
   const parsed = parseContent(source);
+  const detected = detectIndentation(parsed.body);
+  const indentation = options?.indentation ?? detected.indentation;
+  const tabSize = options?.tabSize ?? detected.tabSize;
+
   const { editor, dispose } = createHarnessEditor({
     content: parsed.body,
     contentType: "markdown",
+    indentation,
+    tabSize,
   });
 
   try {

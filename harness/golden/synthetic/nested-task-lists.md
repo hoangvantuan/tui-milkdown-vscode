@@ -11,6 +11,6 @@ Mixed list around tasks:
   - [x] task inside a plain bullet
 - another plain bullet
 
-1. \[ \] ordered parent
+1. [ ] ordered parent
   - [x] mixed-type child
-2. \[x\] second ordered parent
+2. [x] second ordered parent
