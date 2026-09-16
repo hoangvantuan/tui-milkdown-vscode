@@ -279,8 +279,22 @@ ngân sách (mount và mermaid, đếm từ lúc mount) và làm cho dòng detai
 biệt "còn đang tải" với "render hỏng". Một giờ sau nó đỏ thật, ba lượt liền,
 `STILL LOADING after 40748ms`, và chính dòng detail mới nói ra rằng 40 giây
 không-làm-gì không phải là chậm. Rồi thêm hai trường `scheduled=` và
-`visibility=` để lần đỏ sau tự trả lời câu hỏi còn lại. Thước đo là thứ giao
-được, kể cả khi kết luận thì chưa.
+`visibility=` để lần đỏ sau tự trả lời câu hỏi còn lại.
+
+Lần đỏ sau tới trong cùng phiên, và hai trường đó trả lời ngay:
+`scheduled=0 visibility=hidden`. Render lần đầu được lên lịch trong một
+`requestAnimationFrame`, mà Chromium không chạy rAF cho cửa sổ nó coi là không
+hiển thị, nên cửa sổ bị che thì KHÔNG CÓ LỊCH NÀO cả, và không ngân sách nào
+cứu được. Bug sản phẩm, không phải bug harness. Thước đo là thứ giao được, kể
+cả khi kết luận thì chưa, và ở đây chính nó đã tự tìm ra kết luận.
+
+**Ép đúng ĐIỀU KIỆN, và ép cho đúng LÚC.** Phép thử răng cho `#112` suýt cho
+kết quả sai. Thu nhỏ cửa sổ VS Code mỗi 2 giây thì check VẪN XANH kể cả khi đã
+gỡ bản vá, vì tới lúc thu nhỏ thì animation frame đã kịp chạy; probe đọc thấy
+`visibility=hidden` nên trông như đã ép thành công. Chỉ khi ép lại mỗi 0.3 giây
+ngay từ giây đầu, tức HIDDEN TRƯỚC KHI tài liệu nạp, nó mới đỏ với
+`scheduled=0`. Một điều kiện đặt đúng nhưng muộn là một phép thử răng cùn mà
+trông vẫn sắc.
 
 **Phép thử răng cũng phải kiểm phép thử.** Sóng 6, check mới cho `#111` so
 `textContent` của cả `.tiptap`, và nó đỏ với `len 6194->256`. Không phải tài
@@ -439,15 +453,11 @@ kiểm là CHỈ hai file đó đổi. Tiền lệ `ad2b67b`.
 
 Mục này gắn với một thời điểm, không phải quy trình. Kiểm lại trước khi tin.
 
-- **`#112` vẫn mở, và tiêu đề của nó nay sai.** Nó nói "cửa sổ dò 40 giây quá
-  ngắn"; sóng 6 đo và bác điều đó. Đã tái hiện được đúng một lần (ba lượt song
-  song, cả ba `STILL LOADING after 40748ms`), trong khi 6 lượt song song và 3
-  lượt với CPU bão hoà đều xanh ở 1.5 giây. Giả thuyết hiện tại, CHƯA kiểm:
-  `mermaid-plugin.ts:400` lên lịch render trong một `requestAnimationFrame`,
-  và Chromium không chạy rAF cho cửa sổ nó coi là không hiển thị; chạy song
-  song thì các cửa sổ VS Code che nhau. Nếu đúng thì đây là bug SẢN PHẨM, không
-  phải bug harness, và không ngân sách nào chữa được. Harness nay tự báo
-  `scheduled=` và `visibility=` nên lần đỏ tới sẽ tự trả lời.
+- **`#112` đã đóng, nhưng đọc lại nó để thấy một thân issue sai tới mức nào.**
+  Tiêu đề nói "cửa sổ dò 40 giây quá ngắn dưới tải". Thực tế không liên quan tới
+  tải lẫn ngân sách: `mermaid-plugin.ts` lên lịch render lần đầu trong một
+  `requestAnimationFrame`, cửa sổ ẩn thì rAF không chạy, nên không có lịch nào.
+  Nay lịch do rAF hoặc một timer 50ms, cái nào tới trước thì thắng.
 - **Một tài nguyên dùng chung mà `#110` không phủ**: mỗi lượt
   `verify:vscode-floor` chạy `npm run build` ghi vào `out/` của chính repo, và
   VS Code nạp extension từ đường dẫn repo. Hai lượt song song ghi đè bundle của
@@ -474,19 +484,16 @@ Mục này gắn với một thời điểm, không phải quy trình. Kiểm l�
 - Hai worktree của sóng 5 (`w5-unittests`, `w5-provider`) đã merge hết vào
   `develop`. Xoá được bằng `orca worktree rm`, cùng với mục `w5-unittests` trong
   `trustedWorkspaces` của `~/.gemini/antigravity-cli/settings.json`.
-- Sóng 6 tạo ba nhánh local, đã fast-forward hết vào `develop` và xoá được:
-  `hoangvantuan/w6-floor-timing`, `hoangvantuan/w6-net-111`,
-  `hoangvantuan/w6-open-clean`. `develop` CHƯA push.
+- Ba nhánh local của sóng 6 đã fast-forward vào `develop` và đã xoá. `develop`
+  CHƯA push, và lịch sử của nó ĐÃ ĐƯỢC VIẾT LẠI một lần bằng `git filter-branch`
+  để bỏ gạch dài khỏi ba commit message, nên mọi SHA của sóng này khác với SHA
+  từng xuất hiện ở đâu đó trước lúc viết lại.
 
 ## Sóng 7 nên làm gì
 
 Release 2.16 (`#83`) đã đóng hết issue con. Việc còn lại của nó là mười tiêu
 chí kiểm tay ở trên, không phải code. `#111` hoá ra đúng là bug sản phẩm chứ
 không chỉ bug harness, đúng như dự đoán của sóng 5.
-
-`#112` còn lại một câu hỏi duy nhất và nó rẻ: dựng một lượt floor với cửa sổ bị
-che rồi đọc `scheduled=`. `scheduled=0` thì lời giải nằm ở `mermaid-plugin.ts`,
-không ở harness, và nên đổi tiêu đề issue trước khi ai đó sửa theo tiêu đề cũ.
 
 Sau đó là `#84` (Release 2.17), mà thân issue nói rõ mỗi mục chỉ thành issue khi
 2.16 xong. Giờ nó xong rồi. Nền đã sẵn: `#90` cho slash command, `#87` cho
@@ -521,17 +528,20 @@ Giữ lại làm ví dụ về mức độ chi tiết một bàn giao nên có. 
 ngay khi có commit tiếp theo; kiểm lại bằng git và `gh issue list`.
 
 ```
-develop            7d70aa1, CHƯA push
+develop            xem `git log`, lịch sử đã viết lại một lần, CHƯA push
 lint, build, build:dev  xanh
 roundtrip          39 fixtures + 7 seams: 46 passed, 0 failed
 vòng hai           46 passed, 0 failed
 npm test           35 passed, 0 failed
 verify:vscode-floor 20/20                     <- 19/19 trước sóng này
-issue mở           4: #83 #84 #85 (issue mẹ) + #112
+issue mở           3: #83 #84 #85, cả ba là issue mẹ
 ```
 
-Sóng 6 đóng `#111`, làm được hai phần ba của `#112` và để nó mở kèm một giả
-thuyết đã đo. Không worker nào, bốn commit mã và ba commit tài liệu.
+Sóng 6 đóng `#111` và `#112`, không worker nào, mười commit. Cả hai ticket đều
+sai CƠ CHẾ trong thân issue, và cả hai lần thứ tìm ra nguyên nhân là một phép
+đo chứ không phải một lần đọc mã: `#111` lộ ra khi log chỗ gửi edit
+(`len 378->379`, đúng một ký tự xuống dòng), `#112` lộ ra khi thêm `scheduled=`
+vào dòng detail rồi đợi lần đỏ kế tiếp.
 
 Hai trên hai ticket của sóng này sai CƠ CHẾ trong thân issue. Tỉ lệ luỹ kế:
 10 trên 28.
