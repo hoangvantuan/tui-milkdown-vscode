@@ -72,6 +72,7 @@ import {
   stripAlertPrefix,
 } from "../src/webview/alert-extension";
 import { WikiLink } from "../src/webview/wiki-link-plugin";
+import { RawHtmlBlock, RawHtmlInline } from "../src/webview/raw-html";
 import { installMarkdownTextEscape } from "../src/webview/markdown-text-escape";
 import {
   parseContent,
@@ -329,6 +330,8 @@ function buildMarkdownExtensions(
     EscapeToken,
     BlankLineHandler,
     WikiLink,
+    RawHtmlBlock,
+    RawHtmlInline,
   ];
 }
 

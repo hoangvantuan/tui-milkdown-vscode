@@ -11,3 +11,56 @@
 @import "./catppuccin-mocha.css";
 @import "./paper.css";
 @import "./midnight.css";
+
+/* Raw HTML block & inline styles (issue #96) */
+.tiptap .raw-html-block {
+  position: relative;
+  margin: 1em 0;
+  padding: 0.75em 1em;
+  background: var(--vscode-textCodeBlock-background, rgba(127, 127, 127, 0.1));
+  border: 1px solid var(--vscode-widget-border, rgba(127, 127, 127, 0.2));
+  border-radius: 4px;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 0.9em;
+}
+
+.tiptap .raw-html-block pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--vscode-descriptionForeground, #888);
+  font-family: inherit;
+}
+
+.tiptap .raw-html-block pre code {
+  font-family: inherit;
+  font-size: inherit;
+  background: none;
+  padding: 0;
+}
+
+.tiptap .raw-html-badge {
+  display: inline-block;
+  font-size: 0.7em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: var(--vscode-badge-background, rgba(127, 127, 127, 0.2));
+  color: var(--vscode-badge-foreground, var(--vscode-descriptionForeground, #888));
+  margin-bottom: 0.5em;
+  user-select: none;
+}
+
+.tiptap .raw-html-inline {
+  display: inline;
+  padding: 1px 4px;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 0.85em;
+  border-radius: 3px;
+  background: var(--vscode-textCodeBlock-background, rgba(127, 127, 127, 0.15));
+  color: var(--vscode-descriptionForeground, #888);
+  border: 1px solid var(--vscode-widget-border, rgba(127, 127, 127, 0.2));
+  user-select: all;
+}

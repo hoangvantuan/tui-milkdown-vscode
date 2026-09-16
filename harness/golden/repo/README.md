@@ -1,4 +1,5 @@
-![TUI Markdown Editor](media/icon.png)
+<div align="center">
+  <img src="media/icon.png" width="96" alt="TUI Markdown Editor">
 
 # TUI Markdown Editor
 
@@ -10,6 +11,7 @@
 
   [Features](#features) · [Usage](#usage) · [Configuration](#configuration) · [Themes](#themes) · [Export](#export)
 
+</div>
 
 ![Preview](media/preview.png)
 

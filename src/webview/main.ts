@@ -70,6 +70,7 @@ import { initLightbox } from "./image-lightbox-plugin";
 import { svgToPngBlob } from "./svg-to-png";
 import { FileMention, setFileMentionFiles } from "./file-mention-plugin";
 import { WikiLink, WikiLinkSuggestion, setWikiLinkFiles } from "./wiki-link-plugin";
+import { RawHtmlBlock, RawHtmlInline } from "./raw-html";
 import { installMarkdownTextEscape } from "./markdown-text-escape";
 
 // Install unified text escape overrides on MarkdownManager (#97, #99, #100, #101).
@@ -1156,6 +1157,8 @@ function initEditor(initialContent: string = ""): Editor | null {
         FileMention,
         WikiLink,
         WikiLinkSuggestion,
+        RawHtmlBlock,
+        RawHtmlInline,
         ...conditionalExtensions,
       ],
       content: initialContent,
