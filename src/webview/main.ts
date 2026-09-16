@@ -23,7 +23,7 @@ import { TaskList, TaskItem } from "@tiptap/extension-list";
 import { Paragraph } from "@tiptap/extension-paragraph";
 import { Document } from "@tiptap/extension-document";
 import { Placeholder } from "@tiptap/extension-placeholder";
-import { Markdown } from "@tiptap/markdown";
+import { Markdown, MarkdownManager, extractAbsorbedBlankLines } from "@tiptap/markdown";
 import { createLowlight } from "lowlight";
 import javascript from "highlight.js/lib/languages/javascript";
 import typescript from "highlight.js/lib/languages/typescript";
@@ -84,16 +84,56 @@ const EscapeToken = Extension.create({
   },
 });
 
+// Issue #95: Patch MarkdownManager prototype to accurately preserve consecutive blank lines.
+// Upstream @tiptap/markdown intercepts root `space` tokens inside `parseTokens` via
+// `createImplicitEmptyParagraphsFromSpace`, completely bypassing `BlankLineHandler.parseMarkdown`.
+// Upstream also used `raw.match(/\n\n/g)` which misses overlapping newlines (e.g. \n\n\n has 1 match),
+// causing consecutive blank lines to erode by one per save.
+const origParseTokens = (MarkdownManager.prototype as any).parseTokens;
+(MarkdownManager.prototype as any).parseTokens = function (tokens: any[], parseImplicitEmptyParagraphs = false) {
+  const prevTokens = (this as any)._currentTokens;
+  const normalizedTokens = parseImplicitEmptyParagraphs ? extractAbsorbedBlankLines(tokens) : tokens;
+  (this as any)._currentTokens = normalizedTokens;
+  try {
+    return origParseTokens.call(this, tokens, parseImplicitEmptyParagraphs);
+  } finally {
+    (this as any)._currentTokens = prevTokens;
+  }
+};
+
+(MarkdownManager.prototype as any).createImplicitEmptyParagraphsFromSpace = function (
+  token: any,
+  previousNonSpaceTokenIndex: number,
+  nextNonSpaceTokenIndex: number,
+) {
+  const newlines = (token.raw?.replace(/\r\n/g, "\n").match(/\n/g) || []).length;
+  if (newlines === 0) return [];
+  const prevToken = previousNonSpaceTokenIndex >= 0 ? (this as any)._currentTokens?.[previousNonSpaceTokenIndex] : null;
+  const prevIsTable = prevToken?.type === "table";
+  let emptyCount = 0;
+  if (nextNonSpaceTokenIndex === -1) {
+    // EOF
+    emptyCount = prevIsTable ? Math.max(0, newlines - 1) : newlines;
+  } else if (previousNonSpaceTokenIndex === -1) {
+    // BOF
+    emptyCount = Math.max(0, newlines - 2);
+  } else {
+    // Between blocks
+    emptyCount = prevIsTable ? Math.max(0, newlines - 3) : Math.max(0, newlines - 2);
+  }
+  return Array.from({ length: emptyCount }, () => ({ type: "paragraph", content: [] }));
+};
+
 // Parse marked `space` tokens (blank lines between blocks) as empty paragraphs.
 // marked preserves exact newline count in space.raw:
-//   "\n\n" (2) = normal paragraph break → 0 empty paras
-//   "\n\n\n" (3) = 1 blank line → 1 empty para
-//   "\n\n\n\n" (4) = 2 blank lines → 2 empty paras
+//   "\n\n" (2) = normal paragraph break -> 0 empty paras
+//   "\n\n\n" (3) = 1 blank line -> 1 empty para
+//   "\n\n\n\n" (4) = 2 blank lines -> 2 empty paras
 const BlankLineHandler = Extension.create({
   name: "blankLineHandler",
   markdownTokenName: "space",
   parseMarkdown(token: any, helpers: any) {
-    const newlines = (token.raw?.match(/\n/g) || []).length;
+    const newlines = (token.raw?.replace(/\r\n/g, "\n").match(/\n/g) || []).length;
     const emptyCount = newlines - 2;
     if (emptyCount <= 0) return [];
     return Array.from({ length: emptyCount }, () =>
@@ -996,7 +1036,22 @@ function initEditor(initialContent: string = ""): Editor | null {
         TableRow,
         TableCell,
         TableHeader,
-        CodeBlockLowlight.configure({
+        CodeBlockLowlight.extend({
+          // Issue #92: dynamic fence length so nested code blocks (fenced with 3 or more backticks)
+          // roundtrip without corruption. Upstream hardcodes 3 backticks.
+          renderMarkdown(node: any, h: any) {
+            const language = node.attrs?.language || '';
+            const text = node.content ? h.renderChildren(node.content) : '';
+            const backtickMatches = text.match(/`+/g) || [];
+            let maxBackticks = 0;
+            for (const m of backtickMatches) {
+              if (m.length > maxBackticks) maxBackticks = m.length;
+            }
+            const fenceLength = Math.max(3, maxBackticks + 1);
+            const fence = '`'.repeat(fenceLength);
+            return `${fence}${language}\n${text}\n${fence}`;
+          },
+        }).configure({
           lowlight,
           enableTabIndentation: true,
           tabSize: 2,
