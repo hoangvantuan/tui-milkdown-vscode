@@ -73,6 +73,7 @@ import { FileMention, setFileMentionFiles } from "./file-mention-plugin";
 import { WikiLink, WikiLinkSuggestion, setWikiLinkFiles } from "./wiki-link-plugin";
 import { RawHtmlBlock, RawHtmlInline } from "./raw-html";
 import { installMarkdownTextEscape } from "./markdown-text-escape";
+import { escapeHtml } from "./file-search-utils";
 
 // Install unified text escape overrides on MarkdownManager (#97, #99, #100, #101).
 installMarkdownTextEscape();
@@ -786,12 +787,6 @@ function setupMetadataHandlers(): void {
       sendFullContent();
     });
   }
-}
-
-function escapeHtml(text: string): string {
-  const div = document.createElement("div");
-  div.textContent = text;
-  return div.innerHTML;
 }
 
 function showError(message: string): void {
