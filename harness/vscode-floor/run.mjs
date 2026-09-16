@@ -33,6 +33,14 @@
  * staged then renamed (`ensureVsCode`). That was not true before #110, and
  * the failure looked like flakiness under load rather than a collision.
  * A passing run deletes its directory; a failing one keeps it.
+ *
+ * One thing is still shared and is NOT private to the run: `npm run
+ * verify:vscode-floor` builds into the repo's own `out/`, and VS Code loads
+ * the extension from the repo path, so concurrent runs overwrite each other's
+ * bundles while their webviews are about to fetch them. A truncated artifact
+ * surfaces as `errors=1`, not as the `errors=0 stuck=1` of #112, so it is not
+ * that bug — but "two runs may go at once" is only true because the builds
+ * happen to produce identical bytes from one checkout.
  */
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
@@ -46,7 +54,26 @@ const REPO = path.resolve(HERE, "..", "..");
 const SAMPLE = path.join(HERE, "sample.md");
 const TESTS_ENTRY = path.join(REPO, "out", "harness", "vscode-floor-tests.js");
 /** How long to wait for the webview to mount before giving up. */
-const WEBVIEW_TIMEOUT_MS = 40000;
+const MOUNT_TIMEOUT_MS = 40000;
+/**
+ * How long the lazily-fetched mermaid artifact gets, counted FROM THE MOUNT
+ * rather than from the start of the probe (#112). The number is unchanged;
+ * what changed is that the diagram no longer pays for the mount out of its
+ * own budget. Measured on this machine (12-core darwin, VS Code 1.85.0),
+ * time from mount to `rendered>=1 && stuck===0`, probe granularity 1.5s:
+ *
+ *   1 run                        1507ms   (mount 1530ms)
+ *   3 concurrent                 1506ms   (mount 3170ms)
+ *   6 concurrent                 1510ms   (mount 5172ms)
+ *   3 concurrent, 12 busy cores  1523ms   (mount 3875ms, load average 24)
+ *
+ * Contention moves the MOUNT and leaves the diagram flat, so this budget is
+ * roughly 25x the worst measurement. #112 reported three concurrent runs all
+ * exhausting the old budget with `stuckPlaceholders=1 errors=0`; none of the
+ * rows above reproduces that, so the budget is not why it failed and raising
+ * it would have been a guess dressed as a fix. See the issue for the table.
+ */
+const MERMAID_TIMEOUT_MS = 40000;
 /**
  * What the driving phase types into the document. Both processes need it, so
  * it travels to the extension host in the environment rather than being
@@ -326,7 +353,7 @@ async function probeWebview(session) {
     taskCheckboxes: document.querySelectorAll('.tiptap input[type="checkbox"]').length,
     alerts: document.querySelectorAll('.tiptap [data-type="alert"], .tiptap .alert').length,
     codeBlocks: document.querySelectorAll('.tiptap pre').length,
-    mermaidRendered: document.querySelectorAll('.mermaid-preview[data-rendered="true"] svg').length,
+    mermaidRendered: document.querySelectorAll('.mermaid-preview[data-rendered="true"]').length,
     mermaidErrors: document.querySelectorAll('.mermaid-err-msg').length,
     mermaidStuck: document.querySelectorAll('.mermaid-loading').length,
     metadataPanel: !!document.querySelector('#metadata-panel'),
@@ -555,7 +582,14 @@ async function main() {
   const sessions = new Map();
   let webview = null;
   let webviewSession = null;
-  const deadline = Date.now() + WEBVIEW_TIMEOUT_MS;
+  const probeStart = Date.now();
+  let mountedAt = null;
+  let mermaidReadyAt = null;
+  // Two conditions, two budgets (#112). The mount is fast and MOUNT_TIMEOUT_MS
+  // is generous for it; the mermaid artifact is a separate lazily-fetched
+  // bundle carrying mermaid plus ELK, and its budget starts when the editor
+  // mounts rather than sharing the mount's.
+  let deadline = probeStart + MOUNT_TIMEOUT_MS;
   while (Date.now() < deadline) {
     await sleep(1500);
     try {
@@ -571,8 +605,20 @@ async function main() {
     } catch {
       /* endpoint not up yet */
     }
-    if (webview && webview.mermaidRendered >= 1 && webview.mermaidStuck === 0) break;
+    if (webview && mountedAt === null) {
+      mountedAt = Date.now();
+      deadline = mountedAt + MERMAID_TIMEOUT_MS;
+    }
+    if (webview && webview.mermaidRendered >= 1 && webview.mermaidStuck === 0) {
+      mermaidReadyAt = Date.now();
+      break;
+    }
   }
+
+  // Captured here, not where the checks are built: by then `driveInteractions`
+  // and the 60s exit race have run, and a "still loading after Xms" detail
+  // would report their time as the diagram's.
+  const probeEnd = Date.now();
 
   // Phase two: drive the live webview, then let the extension host assert
   // what the driving produced. Everything above only READS; from here on the
@@ -614,7 +660,9 @@ async function main() {
   checks.push({
     name: "webview mounts the editor",
     ok: !!webview,
-    detail: webview ? webview.href : "no frame reported a .tiptap element",
+    detail: webview
+      ? `${webview.href} — mounted ${mountedAt - probeStart}ms into the probe`
+      : `no frame reported a .tiptap element within ${MOUNT_TIMEOUT_MS}ms`,
   });
   if (webview) {
     checks.push({
@@ -629,10 +677,21 @@ async function main() {
         webview.codeBlocks >= 1,
       detail: `heading=${JSON.stringify(webview.heading)} tableRows=${webview.tableRows} bold=${webview.boldText} codeBlocks=${webview.codeBlocks} taskItems=${webview.taskItems} checkboxes=${webview.taskCheckboxes} alerts=${webview.alerts}`,
     });
+    // `stuckPlaceholders>0 errors=0` means the diagram was STILL LOADING when
+    // the budget ran out, which is a different failure from one that rendered
+    // nothing or rendered an error — #112 was misread as the latter for two
+    // waves. The detail says which, and how long it actually took, because the
+    // budget below is only defensible next to a measurement.
+    const counts = `rendered=${webview.mermaidRendered} errors=${webview.mermaidErrors} stuckPlaceholders=${webview.mermaidStuck}`;
+    const sinceMount = (mermaidReadyAt ?? probeEnd) - mountedAt;
     checks.push({
       name: "lazy mermaid artifact loads and renders",
       ok: webview.mermaidRendered >= 1 && webview.mermaidErrors === 0 && webview.mermaidStuck === 0,
-      detail: `rendered=${webview.mermaidRendered} errors=${webview.mermaidErrors} stuckPlaceholders=${webview.mermaidStuck}`,
+      detail: mermaidReadyAt
+        ? `${counts} — ${sinceMount}ms after mount, budget ${MERMAID_TIMEOUT_MS}ms`
+        : webview.mermaidStuck > 0 && webview.mermaidErrors === 0
+          ? `${counts} — STILL LOADING after ${sinceMount}ms, budget ${MERMAID_TIMEOUT_MS}ms exhausted; this is contention, not a broken diagram`
+          : `${counts} — ${sinceMount}ms after mount, nothing left loading, so the artifact did not render`,
     });
     checks.push({
       name: "toolbar and metadata panel present",
