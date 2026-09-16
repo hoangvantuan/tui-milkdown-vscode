@@ -24,6 +24,7 @@ import { Paragraph } from "@tiptap/extension-paragraph";
 import { Document } from "@tiptap/extension-document";
 import { Placeholder } from "@tiptap/extension-placeholder";
 import { Markdown, MarkdownManager, extractAbsorbedBlankLines } from "@tiptap/markdown";
+import { Marked } from "marked";
 import { createLowlight } from "lowlight";
 import javascript from "highlight.js/lib/languages/javascript";
 import typescript from "highlight.js/lib/languages/typescript";
@@ -939,6 +940,80 @@ function applyHeadingSizes(sizes: Record<string, number>): void {
   }
 }
 
+let currentListIndentation: { style: "space" | "tab"; size: number } = { style: "space", size: 2 };
+let currentTabSize = 2;
+
+/**
+ * Expands leading tab indentation and tabs after list markers into spaces according
+ * to 4-space tab stops, avoiding marked's list tokenizer bug where `-\ta\n\tcontinuation`
+ * preserves extra leading spaces and causes continuation lines to detach on subsequent saves.
+ * Preserves literal tabs inside fenced code blocks.
+ */
+function expandPrefixTabsInText(src: string): string {
+  const lines = src.split("\n");
+  let inCodeBlock = false;
+  let codeBlockFence = "";
+
+  const result: string[] = [];
+
+  for (const line of lines) {
+    const fenceMatch = line.match(/^(\s*)(```+|~~~+)/);
+    if (fenceMatch) {
+      const fence = fenceMatch[2];
+      if (!inCodeBlock) {
+        inCodeBlock = true;
+        codeBlockFence = fence[0];
+      } else if (fence.startsWith(codeBlockFence)) {
+        inCodeBlock = false;
+        codeBlockFence = "";
+      }
+      result.push(line);
+      continue;
+    }
+
+    if (inCodeBlock) {
+      result.push(line);
+      continue;
+    }
+
+    const match = line.match(/^(\s*)(?:([-*+]|\d+[.)])(\s*))?/);
+    if (!match || !match[0].includes("\t")) {
+      result.push(line);
+      continue;
+    }
+
+    let col = 0;
+    let expanded = "";
+    for (let i = 0; i < match[0].length; i++) {
+      const ch = match[0][i];
+      if (ch === "\t") {
+        const numSpaces = 4 - (col % 4);
+        expanded += " ".repeat(numSpaces);
+        col += numSpaces;
+      } else {
+        expanded += ch;
+        col++;
+      }
+    }
+    result.push(expanded + line.slice(match[0].length));
+  }
+
+  return result.join("\n");
+}
+
+function createCustomMarked(): any {
+  const m = new Marked();
+  class CustomLexer extends (m.Lexer as any) {
+    lex(src: string) {
+      return super.lex(expandPrefixTabsInText(src));
+    }
+  }
+  m.Lexer = CustomLexer as any;
+  return m;
+}
+
+const customMarked = createCustomMarked();
+
 // Editor initialization
 function initEditor(initialContent: string = ""): Editor | null {
 
@@ -1054,7 +1129,7 @@ function initEditor(initialContent: string = ""): Editor | null {
         }).configure({
           lowlight,
           enableTabIndentation: true,
-          tabSize: 2,
+          tabSize: currentTabSize,
         }),
         TaskList,
         TaskItem.configure({
@@ -1064,7 +1139,8 @@ function initEditor(initialContent: string = ""): Editor | null {
           placeholder: "Type something...",
         }),
         Markdown.configure({
-          indentation: { style: 'space', size: 2 },
+          marked: customMarked,
+          indentation: currentListIndentation,
           markedOptions: {
             gfm: true,
             breaks: false,
@@ -1847,6 +1923,30 @@ window.addEventListener("message", async (event) => {
       }
       if (typeof message.autoHideToolbar === "boolean") {
         setupToolbarAutoHide(message.autoHideToolbar);
+      }
+      if (message.listIndentation && typeof message.listIndentation === "object") {
+        const style = message.listIndentation.style === "tab" ? "tab" : "space";
+        const size = typeof message.listIndentation.size === "number" ? message.listIndentation.size : (style === "tab" ? 1 : 2);
+        currentListIndentation = { style, size };
+        if ((editor?.storage?.markdown?.manager as any)) {
+          (editor!.storage.markdown.manager as any).indentStyle = style;
+          (editor!.storage.markdown.manager as any).indentSize = size;
+        }
+        const mdExt = editor?.extensionManager?.extensions?.find((e: any) => e.name === "markdown");
+        if (mdExt) {
+          mdExt.options.indentation = currentListIndentation;
+        }
+      }
+      if (typeof message.tabSize === "number") {
+        currentTabSize = message.tabSize;
+        if (editor) {
+          const codeBlockExt = editor.extensionManager.extensions.find(
+            (e) => e.name === "codeBlock",
+          );
+          if (codeBlockExt) {
+            codeBlockExt.options.tabSize = message.tabSize;
+          }
+        }
       }
       break;
     case "savedTheme":

@@ -351,13 +351,76 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       return config.get<boolean>("autoHideToolbar", false);
     };
 
+    const getListIndentation = (): {
+      indentation: { style: "space" | "tab"; size: number };
+      tabSize: number;
+    } => {
+      const tuiConfig = vscode.workspace.getConfiguration("tuiMarkdown", document.uri);
+      const listIndent = tuiConfig.get<string | number>("listIndent", "editor");
+
+      const editorConfig = vscode.workspace.getConfiguration("editor", {
+        uri: document.uri,
+        languageId: document.languageId || "markdown",
+      });
+      let insertSpaces = editorConfig.get<boolean>("insertSpaces", true);
+      let tabSize = editorConfig.get<number>("tabSize", 2);
+
+      const visibleEditor = vscode.window.visibleTextEditors.find(
+        (e) => e.document.uri.toString() === document.uri.toString(),
+      );
+      if (visibleEditor) {
+        if (typeof visibleEditor.options.insertSpaces === "boolean") {
+          insertSpaces = visibleEditor.options.insertSpaces;
+        }
+        if (typeof visibleEditor.options.tabSize === "number") {
+          tabSize = visibleEditor.options.tabSize;
+        }
+      }
+
+      const resolvedTabSize = typeof tabSize === "number" && tabSize > 0 ? tabSize : 2;
+
+      if (listIndent === 2 || listIndent === "2") {
+        return {
+          indentation: { style: "space", size: 2 },
+          tabSize: 2,
+        };
+      }
+      if (listIndent === 4 || listIndent === "4") {
+        return {
+          indentation: { style: "space", size: 4 },
+          tabSize: 4,
+        };
+      }
+      if (listIndent === "tab") {
+        return {
+          indentation: { style: "tab", size: 1 },
+          tabSize: resolvedTabSize,
+        };
+      }
+
+      // Default: "editor"
+      if (!insertSpaces) {
+        return {
+          indentation: { style: "tab", size: 1 },
+          tabSize: resolvedTabSize,
+        };
+      }
+      return {
+        indentation: { style: "space", size: resolvedTabSize },
+        tabSize: resolvedTabSize,
+      };
+    };
+
     const sendConfig = () => {
+      const { indentation, tabSize } = getListIndentation();
       webviewPanel.webview.postMessage({
         type: "config",
         fontSize: getFontSize(),
         headingSizes: getHeadingSizes(),
         highlightCurrentLine: getHighlightCurrentLine(),
         autoHideToolbar: getAutoHideToolbar(),
+        listIndentation: indentation,
+        tabSize,
       });
     };
 
@@ -1168,7 +1231,17 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         if (
           e.affectsConfiguration("tuiMarkdown.fontSize") ||
           e.affectsConfiguration("tuiMarkdown.headingSizes") ||
-          e.affectsConfiguration("tuiMarkdown.highlightCurrentLine")
+          e.affectsConfiguration("tuiMarkdown.highlightCurrentLine") ||
+          e.affectsConfiguration("tuiMarkdown.autoHideToolbar") ||
+          e.affectsConfiguration("tuiMarkdown.listIndent", document.uri) ||
+          e.affectsConfiguration("editor.tabSize", {
+            uri: document.uri,
+            languageId: document.languageId || "markdown",
+          }) ||
+          e.affectsConfiguration("editor.insertSpaces", {
+            uri: document.uri,
+            languageId: document.languageId || "markdown",
+          })
         ) {
           sendConfig();
         }

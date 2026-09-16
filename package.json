@@ -109,6 +109,20 @@
           "default": false,
           "description": "Auto-hide toolbar when typing (show on hover)"
         },
+        "tuiMarkdown.listIndent": {
+          "type": [
+            "string",
+            "number"
+          ],
+          "enum": [
+            "editor",
+            2,
+            4,
+            "tab"
+          ],
+          "default": "editor",
+          "description": "List indentation style: 'editor' to follow VS Code settings, or force 2, 4 spaces or 'tab'"
+        },
         "tuiMarkdown.chromiumPath": {
           "type": "string",
           "default": "",
