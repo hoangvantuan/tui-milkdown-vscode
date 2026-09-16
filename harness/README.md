@@ -541,7 +541,7 @@ npm run verify:vscode-floor -- --version 1.95.0
 npm run verify:vscode-floor -- --keep        # keep the temp dirs for inspection
 ```
 
-Two runs may go at once. (Three is a different matter: they all miss the lazy mermaid render inside the 40 s probe window — that one is genuine load, and it is #112.) Every directory a run writes hangs off its own
+Two runs may go at once. (Concurrent runs used to miss the lazy mermaid render inside the probe window. That was read as load and it was not: a covered window gets no animation frame, and the initial render was scheduled inside one. See #112.) Every directory a run writes hangs off its own
 `fs.mkdtempSync` base, and every write into the shared 120 MB download cache
 is staged under a pid-private name and renamed into place, so a half-written
 `app/` never becomes visible. Before #110 all of it came off one fixed
