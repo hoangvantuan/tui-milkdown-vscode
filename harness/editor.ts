@@ -40,7 +40,7 @@ import { TaskList, TaskItem } from "@tiptap/extension-list";
 import { Paragraph } from "@tiptap/extension-paragraph";
 import { Document } from "@tiptap/extension-document";
 import { Blockquote } from "@tiptap/extension-blockquote";
-import { Markdown } from "@tiptap/markdown";
+import { Markdown, MarkdownManager, extractAbsorbedBlankLines } from "@tiptap/markdown";
 import { Marked } from "marked";
 import { createLowlight } from "lowlight";
 import javascript from "highlight.js/lib/languages/javascript";
@@ -72,10 +72,14 @@ import {
   stripAlertPrefix,
 } from "../src/webview/alert-extension";
 import { WikiLink } from "../src/webview/wiki-link-plugin";
+import { installMarkdownTextEscape } from "../src/webview/markdown-text-escape";
 import {
   parseContent,
   reconstructContent,
 } from "../src/utils/frontmatter-parser";
+
+// Install unified text escape overrides on MarkdownManager (#97, #99, #100, #101).
+installMarkdownTextEscape();
 
 const lowlight = createLowlight();
 lowlight.register({
@@ -93,12 +97,48 @@ const EscapeToken = Extension.create({
   },
 });
 
+// Issue #95: Mirror of MarkdownManager prototype patch in src/webview/main.ts.
+const origParseTokens = (MarkdownManager.prototype as any).parseTokens;
+(MarkdownManager.prototype as any).parseTokens = function (tokens: any[], parseImplicitEmptyParagraphs = false) {
+  const prevTokens = (this as any)._currentTokens;
+  const normalizedTokens = parseImplicitEmptyParagraphs ? extractAbsorbedBlankLines(tokens) : tokens;
+  (this as any)._currentTokens = normalizedTokens;
+  try {
+    return origParseTokens.call(this, tokens, parseImplicitEmptyParagraphs);
+  } finally {
+    (this as any)._currentTokens = prevTokens;
+  }
+};
+
+(MarkdownManager.prototype as any).createImplicitEmptyParagraphsFromSpace = function (
+  token: any,
+  previousNonSpaceTokenIndex: number,
+  nextNonSpaceTokenIndex: number,
+) {
+  const newlines = (token.raw?.replace(/\r\n/g, "\n").match(/\n/g) || []).length;
+  if (newlines === 0) return [];
+  const prevToken = previousNonSpaceTokenIndex >= 0 ? (this as any)._currentTokens?.[previousNonSpaceTokenIndex] : null;
+  const prevIsTable = prevToken?.type === "table";
+  let emptyCount = 0;
+  if (nextNonSpaceTokenIndex === -1) {
+    // EOF
+    emptyCount = prevIsTable ? Math.max(0, newlines - 1) : newlines;
+  } else if (previousNonSpaceTokenIndex === -1) {
+    // BOF
+    emptyCount = Math.max(0, newlines - 2);
+  } else {
+    // Between blocks
+    emptyCount = prevIsTable ? Math.max(0, newlines - 3) : Math.max(0, newlines - 2);
+  }
+  return Array.from({ length: emptyCount }, () => ({ type: "paragraph", content: [] }));
+};
+
 // Mirror of BlankLineHandler in src/webview/main.ts.
 const BlankLineHandler = Extension.create({
   name: "blankLineHandler",
   markdownTokenName: "space",
   parseMarkdown(token: any, helpers: any) {
-    const newlines = (token.raw?.match(/\n/g) || []).length;
+    const newlines = (token.raw?.replace(/\r\n/g, "\n").match(/\n/g) || []).length;
     const emptyCount = newlines - 2;
     if (emptyCount <= 0) return [];
     return Array.from({ length: emptyCount }, () =>
@@ -253,7 +293,22 @@ function buildMarkdownExtensions(
     TableRow,
     TableCell,
     TableHeader,
-    CodeBlockLowlight.configure({
+    CodeBlockLowlight.extend({
+      // Issue #92: dynamic fence length so nested code blocks (fenced with 3 or more backticks)
+      // roundtrip without corruption. Upstream hardcodes 3 backticks.
+      renderMarkdown(node: any, h: any) {
+        const language = node.attrs?.language || '';
+        const text = node.content ? h.renderChildren(node.content) : '';
+        const backtickMatches = text.match(/`+/g) || [];
+        let maxBackticks = 0;
+        for (const m of backtickMatches) {
+          if (m.length > maxBackticks) maxBackticks = m.length;
+        }
+        const fenceLength = Math.max(3, maxBackticks + 1);
+        const fence = '`'.repeat(fenceLength);
+        return `${fence}${language}\n${text}\n${fence}`;
+      },
+    }).configure({
       lowlight,
       enableTabIndentation: true,
       tabSize,
