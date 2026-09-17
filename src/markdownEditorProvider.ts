@@ -417,7 +417,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             <div id="word-count"></div>
           </div>
         </div>
-        <div id="lightbox-overlay">
+        <div id="lightbox-overlay" role="dialog" aria-modal="true" aria-label="Image preview" tabindex="-1">
           <div class="lightbox-backdrop"></div>
           <div class="lightbox-content">
             <img id="lightbox-image" src="" alt="" />
