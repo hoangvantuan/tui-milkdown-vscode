@@ -73,7 +73,7 @@ import { Blockquote } from "@tiptap/extension-blockquote";
 import { setupTocSidebar, updateTocFromEditor } from "./toc-sidebar";
 import { HeadingCollapse, collapsePluginKey, getCollapsedHeadings, setCollapsedHeadings } from "./heading-collapse-plugin";
 import { CodeBlockEnhancement } from "./code-block-plugin";
-import { SearchPlugin, performSearch, clearSearch, searchNext, searchPrev, getMatchInfo } from "./search-plugin";
+import { SearchPlugin, performSearch, clearSearch, searchNext, searchPrev, getMatchInfo, setCaseSensitivity, replaceCurrent, replaceAllMatches } from "./search-plugin";
 import { initFontSelector, type FontSelectorAPI, sanitizeFontName } from "./font-selector";
 import { initLightbox } from "./image-lightbox-plugin";
 import { svgToPngBlob } from "./svg-to-png";
@@ -1545,9 +1545,16 @@ function setupSearchBar(): void {
   const searchPrevBtn = document.getElementById("search-prev");
   const searchNextBtn = document.getElementById("search-next");
   const searchCloseBtn = document.getElementById("search-close");
+  const searchToggleReplaceBtn = document.getElementById("search-toggle-replace");
+  const searchCaseBtn = document.getElementById("search-case");
+  const replaceRow = document.getElementById("replace-row");
+  const replaceInput = document.getElementById("replace-input") as HTMLInputElement | null;
+  const replaceBtn = document.getElementById("replace-btn");
+  const replaceAllBtn = document.getElementById("replace-all-btn");
   if (!searchBar || !searchInput) return;
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let caseSensitive = false;
 
   function updateCount(): void {
     if (!searchCount || !editor) return;
@@ -1564,33 +1571,68 @@ function setupSearchBar(): void {
     }
   }
 
-  function openSearchBar(): void {
+  function setReplaceVisible(visible: boolean): void {
+    if (!replaceRow) return;
+    if (visible) {
+      replaceRow.classList.remove("hidden");
+      searchToggleReplaceBtn?.classList.add("expanded");
+    } else {
+      replaceRow.classList.add("hidden");
+      searchToggleReplaceBtn?.classList.remove("expanded");
+    }
+  }
+
+  function openSearchBar(showReplace = false): void {
     searchBar!.classList.remove("hidden");
-    searchInput!.focus();
-    searchInput!.select();
+    if (showReplace) {
+      setReplaceVisible(true);
+      if (searchInput!.value.length > 0 && replaceInput) {
+        replaceInput.focus();
+        replaceInput.select();
+      } else {
+        searchInput!.focus();
+        searchInput!.select();
+      }
+    } else {
+      searchInput!.focus();
+      searchInput!.select();
+    }
   }
 
   function closeSearchBar(): void {
     if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
     searchBar!.classList.add("hidden");
     searchInput!.value = "";
+    if (replaceInput) replaceInput.value = "";
     searchCount!.textContent = "";
     searchInput!.classList.remove("no-results");
+    setReplaceVisible(false);
     if (editor) {
       clearSearch(editor);
       editor.commands.focus();
     }
   }
 
-  function toggleSearchBar(): void {
+  function toggleSearchBar(e?: Event): void {
+    const custom = e as CustomEvent<{ showReplace?: boolean }> | undefined;
+    const wantReplace = custom?.detail?.showReplace;
     if (searchBar!.classList.contains("hidden")) {
-      openSearchBar();
+      openSearchBar(!!wantReplace);
+    } else if (wantReplace && replaceRow?.classList.contains("hidden")) {
+      setReplaceVisible(true);
+      if (searchInput!.value.length > 0 && replaceInput) {
+        replaceInput.focus();
+        replaceInput.select();
+      } else {
+        searchInput!.focus();
+        searchInput!.select();
+      }
     } else {
       closeSearchBar();
     }
   }
 
-  // Listen for Mod-f from search-plugin.ts
+  // Listen for Mod-f and Mod-h from search-plugin.ts
   document.addEventListener("toggle-search-bar", toggleSearchBar);
 
   // Input → debounced search
@@ -1604,6 +1646,43 @@ function setupSearchBar(): void {
     }, 150);
   });
 
+  // Case sensitive toggle
+  searchCaseBtn?.addEventListener("click", () => {
+    caseSensitive = !caseSensitive;
+    searchCaseBtn.classList.toggle("active", caseSensitive);
+    if (editor) {
+      setCaseSensitivity(editor, caseSensitive);
+      updateCount();
+    }
+  });
+
+  // Toggle replace row button
+  searchToggleReplaceBtn?.addEventListener("click", () => {
+    const isHidden = replaceRow?.classList.contains("hidden") ?? true;
+    setReplaceVisible(isHidden);
+    if (isHidden && replaceInput) {
+      replaceInput.focus();
+      replaceInput.select();
+    }
+  });
+
+  function doReplace(): void {
+    if (!editor) return;
+    const term = replaceInput?.value ?? "";
+    replaceCurrent(editor, term);
+    updateCount();
+  }
+
+  function doReplaceAll(): void {
+    if (!editor) return;
+    const term = replaceInput?.value ?? "";
+    replaceAllMatches(editor, term);
+    updateCount();
+  }
+
+  replaceBtn?.addEventListener("click", doReplace);
+  replaceAllBtn?.addEventListener("click", doReplaceAll);
+
   // Keyboard shortcuts in search input
   searchInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -1612,6 +1691,20 @@ function setupSearchBar(): void {
     } else if (e.key === "Enter" && e.shiftKey) {
       e.preventDefault();
       if (editor) { searchPrev(editor); updateCount(); }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      closeSearchBar();
+    }
+  });
+
+  // Keyboard shortcuts in replace input
+  replaceInput?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey) {
+      e.preventDefault();
+      doReplace();
+    } else if (e.key === "Enter" && (e.altKey || e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      doReplaceAll();
     } else if (e.key === "Escape") {
       e.preventDefault();
       closeSearchBar();
