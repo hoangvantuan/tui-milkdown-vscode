@@ -615,9 +615,13 @@ cái đã trả lẫn cái vừa lộ ra.
   trông như có tác dụng trong khi nó không làm gì. Bản thật bắt và gọi lại
   `Paragraph.config.parseMarkdown` đã chụp từ trước, và cờ là hằng số module
   `IMAGE_IS_INLINE`.
-- **`#125` mới: mỗi ảnh render kèm một `<img>` rỗng thứ hai.** Tìm ra từ dòng detail của
-  một check floor (`images=4` khi sample chỉ có 2 ảnh), không phải từ báo cáo người dùng.
-  Chưa sửa.
+- **`#125`: mỗi ảnh render kèm một `<img>` rỗng thứ hai.** Tìm ra từ dòng detail của
+  một check floor (`images=4` khi sample chỉ có 2 ảnh), không phải từ báo cáo người
+  dùng. Đo tiếp thì nó KHÔNG phải node nhân đôi: đó là `img.ProseMirror-separator` của
+  chính prosemirror-view, chèn cạnh một leaf node trong trình duyệt thật nhưng không
+  chèn dưới jsdom. Đã đóng: sửa cache hover của `image-edit-plugin.ts` cho khỏi đi qua
+  chúng, và check floor nay khẳng định mỗi ảnh đúng một phần tử thật. Bài học là dòng
+  detail mang SỐ ĐẾM đáng giá hơn dòng detail chỉ mang pass/fail.
 
 ### Còn treo
 
@@ -633,10 +637,14 @@ cái đã trả lẫn cái vừa lộ ra.
   webview của VS Code tự huỷ `contextmenu`. Ghi lại để sóng sau không đo lại ba lần.
 - **`#48` vẫn mở về bản chất.** `#122` chữa việc MỞ file, và điều đó nay có bằng chứng.
   Diff editor của Git Graph thì chưa ai cài, bấm vào một commit và xem kết quả.
-- **`#124` mới đóng một nửa.** Ca `<img>` đã xanh. Hai ca thẻ đôi `<kbd>` và `<sub>`
-  vẫn đưa link CHUI VÀO TRONG thẻ thay vì bọc ngoài. Lossless nên không gấp, nhưng
-  vẫn sai. Bảng đo nằm trong thân `#124`, đừng đo lại.
-- **`#125` chưa sửa.**
+- **`#124` vẫn đóng một nửa, và nửa còn lại nay có cơ chế chứ không chỉ có triệu
+  chứng.** Serializer của `@tiptap/markdown` ĐÓNG mọi mark đang mở TRƯỚC một node
+  không phải text rồi mở lại SAU nó, nên một mark không bao giờ bọc được một atom;
+  `<kbd>` là hai atom với đoạn text mang mark nằm giữa. Thêm `rawHtmlInline` vào
+  `applyMarkToNodes` làm nó TỆ HƠN: sinh ra một `[` không đóng. Ba cách vá đã cân và
+  loại cả ba, mỗi cách đánh đổi tính lossless hoặc đánh đổi cú pháp của chính người
+  dùng. Đo nằm trong `docs/upstream/tiptap-markdown-mark-around-atom.md` và trong
+  thân `#124`, đừng đo lại.
 - `#96` còn hai tiêu chí hành vi editor chưa kiểm được bằng harness.
 - `src/webview/main.ts` nay là file lớn nhất của repo. Sóng sau thêm tính năng
   webview thì nên tách theo nhóm, y như `#88` đã làm với provider.
@@ -647,14 +655,14 @@ cái đã trả lẫn cái vừa lộ ra.
 - Bốn worktree của sóng 7 (`w7-slash`, `w7-selection`, `w7-interaction`, `w7-host`)
   đã merge hết vào `develop`. Xoá được bằng `orca worktree rm`, cùng với bốn mục
   tương ứng trong `trustedWorkspaces` của `~/.gemini/antigravity-cli/settings.json`.
-- `package.json` vẫn ở `2.16.0` trong khi CHANGELOG đã có mục `2.17.0`.
 - `develop` CHƯA push.
 
 ## Sóng 8 nên làm gì
 
 Không phải code trước. Việc lớn nhất là **một lượt kiểm tay mười bốn tiêu chí còn lại**,
-và nó cần một con người ngồi trước cửa sổ VS Code chứ không cần một sóng worker. Sau
-đó tới `#125`, rồi hai ca thẻ đôi của `#124`.
+và nó cần một con người ngồi trước cửa sổ VS Code chứ không cần một sóng worker. Sau đó
+là quyết định về nửa còn lại của `#124`, và đó là một quyết định đánh đổi chứ không phải
+một việc code: ba cách vá đều đã đo, xem `docs/upstream/tiptap-markdown-mark-around-atom.md`.
 
 Và một bài học của sóng này đáng đem sang sóng sau: **món nợ lưới là món trả trước, không
 phải trả sau.** Sáu món nợ ghi ở trên trả hết trong một lượt, nhưng cái lượt ấy tìm ra một
@@ -675,7 +683,8 @@ npm test           54 passed, 0 failed          <- 35 trước sóng
 roundtrip          40 fixtures + 12 seams: 52 passed, 0 failed   <- 39 + 7 = 46 trước sóng
 vòng hai           52 passed, 0 failed
 verify:vscode-floor 29/29                       <- 20 lúc kết sóng, 9 check trả nợ thêm sau
-issue mở           3: #85, #124, #125
+package.json       2.17.0
+issue mở           2: #85, #124 (còn nửa thẻ đôi)
 ```
 
 Sóng 7 đóng `#114` tới `#124` cộng `#84`, bốn worker `agy`, bốn worktree, một xung đột
