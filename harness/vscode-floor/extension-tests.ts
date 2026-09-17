@@ -93,6 +93,72 @@ async function waitForCustomTab(timeoutMs: number): Promise<vscode.Tab | null> {
   return null;
 }
 
+
+/**
+ * Does `workbench.editorAssociations` at workspace scope actually change which
+ * editor opens a `.md` file? (#122, and the half of #48 that is testable here.)
+ *
+ * Three states, each asserted by opening the document with `vscode.open`, which
+ * is what a click in the explorer or a link does: no association (the
+ * extension's own `priority: "default"` wins), `"default"` (VS Code's text
+ * editor must win), and back to the custom editor.
+ *
+ * What this does NOT cover, and the reason #48 stays open: a diff editor is a
+ * different path in VS Code, and Git Graph is not installed here. This proves
+ * the setting works for ordinary opens, nothing more.
+ */
+async function runDefaultEditorAssociationCheck(uri: vscode.Uri): Promise<void> {
+  const config = vscode.workspace.getConfiguration("workbench");
+  const original = config.inspect<Record<string, string>>("editorAssociations")?.workspaceValue;
+
+  const activeViewType = async (): Promise<string> => {
+    await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+    await sleep(400);
+    await vscode.commands.executeCommand("vscode.open", uri);
+    await sleep(1200);
+    const input: any = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+    if (input && typeof input === "object" && typeof input.viewType === "string") {
+      return input.viewType;
+    }
+    // A plain text editor's tab input has a `uri` and no `viewType`.
+    return input && typeof input === "object" && input.uri ? "text" : "unknown";
+  };
+
+  try {
+    const withoutSetting = await activeViewType();
+
+    await config.update("editorAssociations", { "*.md": "default" }, vscode.ConfigurationTarget.Workspace);
+    await sleep(600);
+    const withText = await activeViewType();
+
+    await config.update(
+      "editorAssociations",
+      { "*.md": VIEW_TYPE },
+      vscode.ConfigurationTarget.Workspace,
+    );
+    await sleep(600);
+    const withCustom = await activeViewType();
+
+    record(
+      "workbench.editorAssociations decides which editor opens .md",
+      withoutSetting === VIEW_TYPE && withText === "text" && withCustom === VIEW_TYPE,
+      `noSetting=${withoutSetting} "*.md":"default"=${withText} "*.md":"${VIEW_TYPE}"=${withCustom}`,
+    );
+  } catch (err) {
+    record(
+      "workbench.editorAssociations decides which editor opens .md",
+      false,
+      err instanceof Error ? `${err.name}: ${err.message}` : String(err),
+    );
+  } finally {
+    try {
+      await config.update("editorAssociations", original, vscode.ConfigurationTarget.Workspace);
+    } catch {
+      /* the per-run workspace is thrown away anyway */
+    }
+  }
+}
+
 export async function run(): Promise<void> {
   const resultPath = process.env.TUI_FLOOR_RESULT;
   const samplePath = process.env.TUI_FLOOR_SAMPLE;
@@ -237,6 +303,17 @@ export async function run(): Promise<void> {
         } catch {
           /* the run is over either way; the checks above are already recorded */
         }
+
+        // LAST, because it changes workspace settings and then reopens the
+        // document: everything above must already be recorded.
+        //
+        // What #122 actually claims. `contributes.customEditors` registers this
+        // editor with priority "default", so `.md` opens here everywhere, and
+        // #48 asked for the opposite: a workspace where it does not. The unit
+        // tests prove the command writes the right JSON; they cannot prove VS
+        // Code then honours it. This opens the file the ordinary way, with no
+        // viewType, and asks which editor won.
+        await runDefaultEditorAssociationCheck(uri);
       }
     }
   } catch (err) {
