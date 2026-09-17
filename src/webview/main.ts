@@ -2138,6 +2138,29 @@ window.addEventListener("message", async (event) => {
         vscode.setState({ ...vscode.getState(), zoomLevel: currentZoom });
       }
       break;
+    case "savedEditorPosition": {
+      const applyPos = () => {
+        const scroller = document.getElementById("editor-container");
+        if (typeof message.scrollTop === "number" && scroller) {
+          scroller.scrollTop = message.scrollTop;
+        }
+        if (typeof message.cursor === "number" && editor) {
+          const docSize = editor.state.doc.content.size;
+          const safePos = Math.max(0, Math.min(message.cursor, docSize));
+          try {
+            editor.commands.setTextSelection(safePos);
+          } catch {
+            // ignore selection error
+          }
+        }
+      };
+      if (editor) {
+        applyPos();
+      } else {
+        requestAnimationFrame(applyPos);
+      }
+      break;
+    }
     case "systemFonts":
       if (Array.isArray(message.fonts) && fontSelector) {
         fontSelector.setFonts(message.fonts);
@@ -2305,6 +2328,42 @@ function init() {
     vscode.postMessage({ type: "readClipboardImage" });
   }, { capture: true });
 
+  const scroller = document.getElementById("editor-container");
+  if (scroller) {
+    let positionDebounce: ReturnType<typeof setTimeout> | undefined;
+    const reportPosition = () => {
+      if (!editor) return;
+      const cursor = editor.state.selection.from;
+      const scrollTop = scroller.scrollTop;
+      vscode.postMessage({
+        type: "saveEditorPosition",
+        cursor,
+        scrollTop,
+      });
+    };
+
+    scroller.addEventListener("scroll", () => {
+      clearTimeout(positionDebounce);
+      positionDebounce = setTimeout(reportPosition, 300);
+    }, { passive: true });
+
+    document.addEventListener("selectionchange", () => {
+      clearTimeout(positionDebounce);
+      positionDebounce = setTimeout(reportPosition, 300);
+    });
+
+    window.addEventListener("pagehide", () => {
+      clearTimeout(positionDebounce);
+      reportPosition();
+    });
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") {
+        clearTimeout(positionDebounce);
+        reportPosition();
+      }
+    });
+  }
 
   vscode.postMessage({ type: "ready" });
 }
