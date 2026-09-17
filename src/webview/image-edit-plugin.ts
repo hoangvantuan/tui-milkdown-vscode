@@ -45,9 +45,19 @@ let lastMouseY = 0;
 let cachedImages: HTMLImageElement[] = [];
 let imageCacheValid = false;
 
-/** Refresh image cache from DOM */
+/**
+ * Refresh image cache from DOM.
+ *
+ * `:not(.ProseMirror-separator)` is load-bearing. prosemirror-view inserts its
+ * own srcless `<img class="ProseMirror-separator">` next to a leaf node in a
+ * real browser, so the DOM carries twice as many `img` elements as the document
+ * has images (#125). They are zero-size, so hover never actually matched one,
+ * but every walk over this cache paid for them. jsdom takes a different branch
+ * and emits `<br class="ProseMirror-trailingBreak">` instead, which is why no
+ * harness seam can see this and the floor check's detail line is what found it.
+ */
 function refreshImageCache(editorEl: HTMLElement): void {
-  cachedImages = Array.from(editorEl.querySelectorAll("img"));
+  cachedImages = Array.from(editorEl.querySelectorAll("img:not(.ProseMirror-separator)"));
   imageCacheValid = true;
 }
 

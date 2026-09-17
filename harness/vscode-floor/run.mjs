@@ -785,6 +785,13 @@ async function driveSurfaces(evaluate, session) {
         // template literal, and one in a comment ends it. That has now cost two
         // syntax errors.
         srcs: imgs.map((el) => (el.parentElement?.tagName?.toLowerCase() ?? '?') + ':' + ((el.getAttribute('src') || '(empty)').split('/').pop())).join(' '),
+        // prosemirror-view puts its own srcless img.ProseMirror-separator next
+        // to a leaf node in a real browser, so the raw count is twice the number
+        // of images. That is upstream behaviour, not a duplicate node (#125);
+        // what must stay true is that the document renders exactly one real
+        // element per image and that nothing walks the separators.
+        classes: imgs.map((el) => el.className || '(none)').join(' '),
+        real: imgs.filter((el) => !el.classList.contains('ProseMirror-separator')).length,
         sizedWidth: sized?.style.width ?? null,
         // An inline image sits inside a paragraph. A direct child of .tiptap
         // would be the invalid document that stopped the editor mounting.
@@ -795,8 +802,13 @@ async function driveSurfaces(evaluate, session) {
     })()`);
     add(
       "an image with a width is an image node, not a raw-HTML badge",
-      img.sizedWidth === "96px" && img.badges === 0 && img.sizedParent === "p" && img.handles >= 1,
-      `sizedImgCssWidth=${img.sizedWidth ?? "-"} parent=<${img.sizedParent ?? "-"}> imgs=${img.total} [${img.srcs}] rawHtmlBadges=${img.badges} resizeHandles=${img.handles}`,
+      img.sizedWidth === "96px" &&
+        img.badges === 0 &&
+        img.sizedParent === "p" &&
+        img.handles >= 1 &&
+        img.real === 2 &&
+        img.real === img.handles,
+      `sizedImgCssWidth=${img.sizedWidth ?? "-"} parent=<${img.sizedParent ?? "-"}> imgs=${img.total} real=${img.real} [${img.srcs}] classes=[${img.classes}] rawHtmlBadges=${img.badges} resizeHandles=${img.handles}`,
     );
   } catch (err) {
     add("an image with a width is an image node, not a raw-HTML badge", false, `threw: ${err.message}`);
