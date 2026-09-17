@@ -574,6 +574,16 @@ Mục này gắn với một thời điểm, không phải quy trình. Kiểm l�
   Cộng với sáu của `#88` (dán ảnh, đổi tên ảnh, xoá ảnh, export DOCX, export PDF,
   `@` và `[[`), bốn của sóng 4 (`#105`, `#104`, `#86`, `#108`) và một của `#102`.
   Nên làm MỘT lượt bằng tay trước khi phát hành 2.17, và đó là việc lớn nhất còn lại.
+- **Một ca trong danh sách đó không worker nào từng thấy: kéo tay cầm resize trên một
+  ảnh INLINE.** W3 dựng NodeView resize khi `MarkdownImage` còn là `inline: false`;
+  W2 lật nó sang `inline: true`; hai bên chỉ gặp nhau ở bước merge cuối. Và
+  `harness/vscode-floor/sample.md` không đếm ảnh, nên chưa có check tự động nào dựng
+  một tấm ảnh trong webview sống kể từ lúc lật, chứ chưa nói tới kéo nó. Đây là ca
+  đáng kiểm tay trước nhất trong mười bốn ca.
+- **Hai tính năng nhỏ điều phối viên tự làm cũng chưa ai kiểm tay**: nút copy anchor
+  trên heading (nó ghi clipboard từ bên trong contenteditable và bắt `mousedown` chứ
+  không phải `click`, nên đường đi qua ProseMirror là thứ chỉ cửa sổ thật trả lời
+  được), và dòng reading time cạnh word count.
 - **`#122` chưa được chứng minh là chữa được `#48`.** `workbench.editorAssociations`
   áp cho việc MỞ file; diff editor của Git Graph là một đường khác trong VS Code.
   Chưa ai cài Git Graph, bấm vào một commit và xem kết quả. Có thể còn một việc nữa.
