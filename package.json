@@ -170,6 +170,10 @@
         "command": "tuiMarkdown.viewRichText",
         "title": "View Rich Text (WYSIWYG)",
         "icon": "$(eye)"
+      },
+      {
+        "command": "tuiMarkdown.useAsDefaultEditor",
+        "title": "Choose Default Editor for Markdown in this Workspace"
       }
     ],
     "menus": {

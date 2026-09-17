@@ -99,6 +99,12 @@ export interface ExportMessage {
   mermaidImages?: Array<{ code: string; base64: string }>;
 }
 
+export interface SaveEditorPositionMessage {
+  type: "saveEditorPosition";
+  cursor?: number;
+  scrollTop?: number;
+}
+
 export type WebviewToHostMessage =
   | ReadyMessage
   | EditMessage
@@ -116,10 +122,11 @@ export type WebviewToHostMessage =
   | FileSearchMessage
   | WikiLinkSearchMessage
   | OpenWikiLinkMessage
-  | ExportMessage;
+  | ExportMessage
+  | SaveEditorPositionMessage;
 
 // ============================================================================
-// Host -> Webview Messages (15 types)
+// Host -> Webview Messages (16 types)
 // ============================================================================
 
 export interface UpdateMessage {
@@ -208,6 +215,12 @@ export interface ExportDoneMessage {
   reason?: string;
 }
 
+export interface SavedEditorPositionMessage {
+  type: "savedEditorPosition";
+  cursor?: number;
+  scrollTop?: number;
+}
+
 export type HostToWebviewMessage =
   | UpdateMessage
   | ThemeMessage
@@ -222,4 +235,5 @@ export type HostToWebviewMessage =
   | ImageRenameResponseMessage
   | FileSearchResultsMessage
   | WikiLinkSearchResultsMessage
-  | ExportDoneMessage;
+  | ExportDoneMessage
+  | SavedEditorPositionMessage;

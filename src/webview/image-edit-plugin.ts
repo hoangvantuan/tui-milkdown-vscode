@@ -95,7 +95,11 @@ function createOverlay(editorEl: HTMLElement): HTMLDivElement {
     e.preventDefault();
     e.stopPropagation();
     if (currentHoveredImg) {
-      openLightbox(currentHoveredImg.getAttribute("src") || "", currentHoveredImg.getAttribute("alt") || "");
+      openLightbox(
+        currentHoveredImg.getAttribute("src") || "",
+        currentHoveredImg.getAttribute("alt") || "",
+        currentHoveredImg as HTMLElement,
+      );
     }
   });
 

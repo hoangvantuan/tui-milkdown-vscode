@@ -9,11 +9,13 @@ import {
 
 /**
  * Right-click context menu for table operations.
- * Shows a floating menu with select/add/delete row/column/table options
- * when the user right-clicks inside a table cell.
+ * Shows a floating menu with select/add/delete row/column/table and alignment options
+ * when the user right-clicks inside a table cell. Keyboard navigable with roving focus.
  */
 
 const contextMenuPluginKey = new PluginKey("tableContextMenu");
+
+export type ColumnAlignment = "left" | "center" | "right" | "none" | null;
 
 interface MenuItem {
     label: string;
@@ -76,6 +78,78 @@ function selectTable(editor: any) {
     dispatch(state.tr.setSelection(sel));
 }
 
+export function setTableColumnAlignment(
+    editor: any,
+    alignment: ColumnAlignment,
+    cellPos?: number,
+): boolean {
+    const { state, dispatch } = editor.view;
+    let cellResolved;
+    if (cellPos !== undefined) {
+        const $pos = state.doc.resolve(cellPos);
+        cellResolved = cellAround($pos);
+        if (!cellResolved && cellPos + 1 < state.doc.content.size) {
+            cellResolved = cellAround(state.doc.resolve(cellPos + 1));
+        }
+    } else {
+        const { $from } = state.selection;
+        cellResolved = cellAround($from);
+    }
+    if (!cellResolved) return false;
+
+    let table: any = null;
+    let tableStart = 0;
+    for (let d = cellResolved.depth; d > 0; d--) {
+        const node = cellResolved.node(d);
+        if (node.type.name === "table") {
+            table = node;
+            tableStart = cellResolved.start(d);
+            break;
+        }
+    }
+    if (!table) return false;
+
+    const map = TableMap.get(table);
+    const cellPosInTable = cellResolved.pos - tableStart;
+    const rect = map.findCell(cellPosInTable);
+
+    let colStart = rect.left;
+    let colEnd = rect.left;
+    if (cellPos === undefined && state.selection instanceof CellSelection) {
+        const sel = state.selection as any;
+        const selRect = map.rectBetween(sel.$anchorCell.pos - tableStart, sel.$headCell.pos - tableStart);
+        colStart = selRect.left;
+        colEnd = selRect.right - 1;
+    }
+
+    const targetAlign = (alignment === "none" || alignment === null) ? null : alignment;
+    const tr = state.tr;
+    const seenOffsets = new Set<number>();
+
+    for (let col = colStart; col <= colEnd; col++) {
+        for (let r = 0; r < map.height; r++) {
+            const cellOffset = map.map[r * map.width + col];
+            if (seenOffsets.has(cellOffset)) continue;
+            seenOffsets.add(cellOffset);
+
+            const cellNodePos = tableStart + cellOffset;
+            const cellNode = state.doc.nodeAt(cellNodePos);
+            if (cellNode && cellNode.attrs.align !== targetAlign) {
+                tr.setNodeMarkup(cellNodePos, undefined, {
+                    ...cellNode.attrs,
+                    align: targetAlign,
+                });
+            }
+        }
+    }
+
+    if (tr.docChanged) {
+        dispatch(tr);
+        return true;
+    }
+    return false;
+}
+
 function getMenuItems(): MenuItem[] {
     return [
         {
@@ -115,6 +189,22 @@ function getMenuItems(): MenuItem[] {
             action: (editor) => editor.chain().focus().addColumnAfter().run(),
         },
         {
+            label: "Align Column Left",
+            icon: "←",
+            dividerBefore: true,
+            action: (editor) => setTableColumnAlignment(editor, "left"),
+        },
+        {
+            label: "Align Column Center",
+            icon: "↔",
+            action: (editor) => setTableColumnAlignment(editor, "center"),
+        },
+        {
+            label: "Align Column Right",
+            icon: "→",
+            action: (editor) => setTableColumnAlignment(editor, "right"),
+        },
+        {
             label: "Delete Row",
             icon: "🗑",
             dividerBefore: true,
@@ -151,6 +241,7 @@ function createMenuElement(
     const menu = document.createElement("div");
     menu.className = "table-context-menu";
     menu.setAttribute("role", "menu");
+    menu.setAttribute("tabindex", "-1");
 
     for (const item of items) {
         if (item.dividerBefore) {
@@ -176,15 +267,49 @@ function createMenuElement(
         labelSpan.textContent = item.label;
         btn.appendChild(labelSpan);
 
-        btn.addEventListener("mousedown", (e) => {
+        btn.addEventListener("click", (e) => {
             e.preventDefault();
             e.stopPropagation();
             removeMenu();
             item.action(editor);
+            editor.view.focus();
         });
 
         menu.appendChild(btn);
     }
+
+    menu.addEventListener("keydown", (e: KeyboardEvent) => {
+        const buttons = Array.from(
+            menu.querySelectorAll<HTMLButtonElement>("button.table-ctx-item")
+        );
+        if (buttons.length === 0) return;
+        const currentIndex = buttons.indexOf(document.activeElement as HTMLButtonElement);
+
+        if (e.key === "ArrowDown" || (e.key === "Tab" && !e.shiftKey)) {
+            e.preventDefault();
+            e.stopPropagation();
+            const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % buttons.length : 0;
+            buttons[nextIndex].focus();
+        } else if (e.key === "ArrowUp" || (e.key === "Tab" && e.shiftKey)) {
+            e.preventDefault();
+            e.stopPropagation();
+            const prevIndex = currentIndex >= 0 ? (currentIndex - 1 + buttons.length) % buttons.length : buttons.length - 1;
+            buttons[prevIndex].focus();
+        } else if (e.key === "Home") {
+            e.preventDefault();
+            e.stopPropagation();
+            buttons[0].focus();
+        } else if (e.key === "End") {
+            e.preventDefault();
+            e.stopPropagation();
+            buttons[buttons.length - 1].focus();
+        } else if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopPropagation();
+            removeMenu();
+            editor.view.focus();
+        }
+    });
 
     // Position the menu
     menu.style.left = `${x}px`;
@@ -212,6 +337,12 @@ function showContextMenu(editor: any, event: MouseEvent) {
     container.appendChild(menu);
     activeMenu = menu;
 
+    // Focus the first item for immediate keyboard operability
+    const firstButton = menu.querySelector<HTMLButtonElement>("button.table-ctx-item");
+    if (firstButton) {
+        firstButton.focus();
+    }
+
     // Adjust position if menu overflows container (clamp to 0 to prevent off-screen)
     requestAnimationFrame(() => {
         if (!activeMenu) return;
@@ -235,10 +366,12 @@ export const TableContextMenu = Extension.create({
     name: "tableContextMenu",
 
     onCreate() {
-        // Close menu on Escape key
+        const editor = this.editor;
+        // Close menu on Escape key and return focus to editor
         _onKeyDown = (e: KeyboardEvent) => {
             if (activeMenu && e.key === "Escape") {
                 removeMenu();
+                editor.view.focus();
             }
         };
         document.addEventListener("keydown", _onKeyDown);
