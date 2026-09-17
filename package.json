@@ -173,7 +173,7 @@
       },
       {
         "command": "tuiMarkdown.useAsDefaultEditor",
-        "title": "Use TUI Markdown as Default Editor for this Workspace"
+        "title": "Choose Default Editor for Markdown in this Workspace"
       }
     ],
     "menus": {
