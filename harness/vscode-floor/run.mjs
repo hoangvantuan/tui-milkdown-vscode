@@ -779,7 +779,12 @@ async function driveSurfaces(evaluate, session) {
       const sized = imgs.find((el) => el.style.width);
       return {
         total: imgs.length,
-        srcs: imgs.map((el) => (el.getAttribute('src') ?? '').split('/').pop()).join(','),
+        // Each entry is parentTag:file, because a bare count of img elements
+        // cannot tell a second image from a second element rendered for the
+        // same image. Backticks are banned in here: this whole expression is a
+        // template literal, and one in a comment ends it. That has now cost two
+        // syntax errors.
+        srcs: imgs.map((el) => (el.parentElement?.tagName?.toLowerCase() ?? '?') + ':' + ((el.getAttribute('src') || '(empty)').split('/').pop())).join(' '),
         sizedWidth: sized?.style.width ?? null,
         // An inline image sits inside a paragraph. A direct child of .tiptap
         // would be the invalid document that stopped the editor mounting.
