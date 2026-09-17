@@ -1,0 +1,3 @@
+# img-width-seam.ts — no cases yet
+
+This seam is a skeleton. W3 replaces this body with real cases.

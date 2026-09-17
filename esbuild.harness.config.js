@@ -4,6 +4,7 @@
 // marked external so the bundler does not try to inline it.
 const esbuild = require('esbuild');
 const path = require('path');
+const fs = require('fs');
 
 const DOM_SHIM = `
 const { JSDOM } = require("jsdom");
@@ -81,11 +82,17 @@ const vscodeTestPlugin = {
   },
 };
 
+// Discovered rather than listed. A hand-written list is a file every worker
+// adding a unit test has to edit at the same time; the glob removes that
+// collision. `npm test` then runs out/test/**/*.test.js, so the two globs agree.
+const testEntryPoints = fs
+  .readdirSync(path.join(__dirname, 'test'))
+  .filter((f) => f.endsWith('.test.ts'))
+  .sort()
+  .map((f) => path.join('test', f));
+
 const testsConfig = {
-  entryPoints: [
-    'test/frontmatter-parser.test.ts',
-    'test/image-rename-handler.test.ts',
-  ],
+  entryPoints: testEntryPoints,
   outdir: 'out/test',
   bundle: true,
   format: 'cjs',

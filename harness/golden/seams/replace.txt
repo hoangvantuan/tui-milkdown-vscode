@@ -1,0 +1,3 @@
+# replace-seam.ts — no cases yet
+
+This seam is a skeleton. W1 replaces this body with real cases.
