@@ -2574,3 +2574,48 @@ body.theme-midnight { --overlay-bg: #c9d1d9; --overlay-fg: #0d1117; }
 }
 
 
+
+/* Heading anchor copy button (#84).
+   Hidden until the heading is hovered or the button itself has keyboard focus,
+   so it never sits in the reading flow. It is a widget decoration inside the
+   zoomed `.tiptap`, which is fine here: a click maps through CSS zoom natively,
+   and this button does no JS coordinate maths. */
+.heading-anchor-btn {
+  opacity: 0;
+  margin-left: 0.35em;
+  padding: 0 0.25em;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--crepe-color-outline, #888);
+  font: inherit;
+  font-size: 0.8em;
+  line-height: 1;
+  cursor: pointer;
+  vertical-align: middle;
+  transition: opacity 0.12s ease, color 0.12s ease;
+}
+
+.tiptap h1:hover .heading-anchor-btn,
+.tiptap h2:hover .heading-anchor-btn,
+.tiptap h3:hover .heading-anchor-btn,
+.tiptap h4:hover .heading-anchor-btn,
+.tiptap h5:hover .heading-anchor-btn,
+.tiptap h6:hover .heading-anchor-btn,
+.heading-anchor-btn:focus-visible {
+  opacity: 1;
+}
+
+.heading-anchor-btn:hover {
+  color: var(--crepe-color-primary, #0b6cff);
+}
+
+.heading-anchor-btn.is-copied {
+  opacity: 1;
+  color: var(--crepe-color-primary, #0b6cff);
+}
+
+.heading-anchor-btn.is-copied::after {
+  content: " copied";
+  font-size: 0.85em;
+}

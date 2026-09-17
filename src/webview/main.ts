@@ -62,7 +62,7 @@ import {
   type FrontmatterFormat,
 } from "./frontmatter";
 import { LineHighlight } from "./line-highlight-plugin";
-import { HeadingLevel } from "./heading-level-plugin";
+import { HeadingLevel, headingSlug } from "./heading-level-plugin";
 import { setupImageEditOverlay, handleUrlEditResponse, handleImageRenameResponse, setImageMap } from "./image-edit-plugin";
 import { renderTableToMarkdown } from "./table-markdown-serializer";
 import { transformTableCellsAfterParse } from "./table-cell-content-parser";
@@ -1774,7 +1774,12 @@ function updateWordCount(ed: Editor): void {
     if (!el) return;
     const text = ed.state.doc.textContent;
     const words = text.trim() ? text.trim().split(/\s+/).length : 0;
-    el.textContent = `${words.toLocaleString()} words`;
+    // 200 words per minute, the figure most reading-time widgets use, and
+    // rounded UP so a short document reads "1 min" rather than "0 min".
+    const minutes = Math.max(1, Math.ceil(words / 200));
+    el.textContent = words
+      ? `${words.toLocaleString()} words · ${minutes} min read`
+      : "0 words";
   }, 500);
 }
 
@@ -1992,13 +1997,10 @@ function scrollToHeading(slug: string): void {
   const { doc } = editor.state;
   doc.descendants((node, pos) => {
     if (node.type.name !== "heading") return;
-    const text = node.textContent;
-    // GitHub-style slug: lowercase, keep Unicode letters/digits, each space→one hyphen (no collapse)
-    const nodeSlug = text
-      .toLowerCase()
-      .replace(/[^\p{L}\p{N}\s-]/gu, "")
-      .replace(/\s/g, "-");
-    if (nodeSlug === slug) {
+    // The slug rule lives in heading-level-plugin.ts, next to the anchor button
+    // that writes these strings. Two copies of it is how a copied anchor and the
+    // heading it points at stop matching.
+    if (headingSlug(node.textContent) === slug) {
       editor!.commands.setTextSelection(pos + 1);
       const dom = editor!.view.nodeDOM(pos);
       if (dom instanceof HTMLElement) {
