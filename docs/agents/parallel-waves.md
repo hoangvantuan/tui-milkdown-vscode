@@ -563,6 +563,10 @@ trong CommonMark ảnh là inline. Thứ chứng minh nó an toàn không phải
 là 40 fixture KHÔNG đổi. Nếu chạy kiểm chỉ trên từng nhánh rồi merge mù, dòng này đã
 vào repo mà không ai phân loại.
 
+Bản `COMMON.md` sóng 7 phát cho mỗi worker nằm ở `docs/agents/wave-worker-brief.md`,
+đã bỏ phần riêng của sóng. Copy nó vào worktree thay vì viết lại: bản gốc từng chỉ tồn
+tại trong bốn worktree và suýt mất khi dọn.
+
 ## Còn treo sau sóng 7
 
 Mục này gắn với một thời điểm, không phải quy trình. Kiểm lại trước khi tin.
@@ -652,9 +656,6 @@ cái đã trả lẫn cái vừa lộ ra.
   `run_81e972296c40` (sóng 3), `run_7c86994cae6d` (sóng 4), `run_03c8c7760738`
   (sóng 5), `run_2f8d1bbc233e` (sóng 7). CỐ Ý KHÔNG chạy `orca orchestration reset`
   vì lệnh đó không có cờ `--run`, nó xoá state TOÀN CỤC và sẽ đụng các dự án khác.
-- Bốn worktree của sóng 7 (`w7-slash`, `w7-selection`, `w7-interaction`, `w7-host`)
-  đã merge hết vào `develop`. Xoá được bằng `orca worktree rm`, cùng với bốn mục
-  tương ứng trong `trustedWorkspaces` của `~/.gemini/antigravity-cli/settings.json`.
 - `develop` CHƯA push.
 
 ## Sóng 8 nên làm gì
@@ -677,6 +678,7 @@ Giữ lại làm ví dụ về mức độ chi tiết một bàn giao nên có. 
 ngay khi có commit tiếp theo; kiểm lại bằng git và `gh issue list`.
 
 ```
+worktree sóng 7    đã xoá cả bốn (1.7 GB), cùng bốn mục trong `trustedWorkspaces`
 develop            xem `git log`, CHƯA push
 lint, build        xanh
 npm test           54 passed, 0 failed          <- 35 trước sóng

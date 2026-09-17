@@ -14,7 +14,7 @@ The five canonical triage roles, using the default label strings. See `docs/agen
 
 ### Sóng worker song song
 
-Công thức phóng worker `agy` dưới Orca, các bẫy đã dính, ranh giới sở hữu khi nhiều nhánh cùng sửa `main.ts`, và quy trình merge. See `docs/agents/parallel-waves.md`.
+Công thức phóng worker `agy` dưới Orca, các bẫy đã dính, ranh giới sở hữu khi nhiều nhánh cùng sửa `main.ts`, và quy trình merge. See `docs/agents/parallel-waves.md`. Bản giao việc chung đem copy thẳng vào worktree: `docs/agents/wave-worker-brief.md`.
 
 ### Domain docs
 
