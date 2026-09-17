@@ -221,8 +221,11 @@ vô hình.
 tự mâu thuẫn (đòi sửa bug nhưng cấm golden đang chụp bug đó thay đổi), `#96` sai
 nguyên nhân gốc, `#95` sót một nguyên nhân thứ hai. Cộng với `#93` và `#94` của
 sóng 2 là 5 trên 13 ticket. Sóng 4 thêm hai, thành 7 trên 24. Sóng 5 thêm ba,
-thành 8 trên 26. Sóng 6 thêm hai, thành 10 trên 28, và cả hai lần thân issue
-sai ở CƠ CHẾ chứ không ở triệu chứng: `#111` trỏ vào cái guard (`isUpdatingFromExtension`) trong khi nguyên nhân là `trailingNode` của StarterKit, `#112`
+thành 8 trên 26. Sóng 6 thêm hai, thành 10 trên 28. Sóng 7 là một ca khác hẳn về
+hình dạng: một thân issue MẸ (`#84`) sai cơ chế ở BẢY chỗ cùng lúc, nhưng cả bảy đều
+bị điều phối viên đo ra và sửa TRƯỚC khi viết ticket con, nên không worker nào gặp.
+Tỉ lệ luỹ kế giữ ở 10 trên 28 ticket giao đi, và con số đáng nhớ hơn là bảy. Sóng 6
+thì cả hai lần thân issue sai ở CƠ CHẾ chứ không ở triệu chứng: `#111` trỏ vào cái guard (`isUpdatingFromExtension`) trong khi nguyên nhân là `trailingNode` của StarterKit, `#112`
 trỏ vào ngân sách 40 giây trong khi nhiều khả năng là `requestAnimationFrame`
 không chạy cho cửa sổ bị che. Đọc issue xong VẪN phải tự kiểm bằng code.
 
@@ -449,99 +452,175 @@ Sau khi điều phối viên sửa `CHANGELOG.md` hoặc `AGENTS.md`, hai golden
 `harness/golden/repo/` tương ứng sẽ ĐỎ. Chạy `npm run roundtrip:update`, rồi
 kiểm là CHỈ hai file đó đổi. Tiền lệ `ad2b67b`.
 
-## Còn treo sau sóng 6
+## DỰNG SẴN SEAM RỖNG TRƯỚC KHI CẮT WORKTREE, bài học lớn nhất của sóng 7
+
+Ràng buộc 4 cấm worker thêm seam, vì `harness/roundtrip.ts` là một file mà bốn nhánh
+sẽ cùng sửa. Nhưng sóng 7 có bốn tính năng đều cần seam, nên lệnh cấm đó sẽ giết luôn
+việc đo. Cách gỡ: điều phối viên commit sẵn NĂM file seam RỖNG kèm dòng đăng ký trong
+`harness/roundtrip.ts`, TRƯỚC khi cắt worktree.
+
+```
+harness/slash-seam.ts        -> W1
+harness/replace-seam.ts      -> W1
+harness/link-edit-seam.ts    -> W2
+harness/table-align-seam.ts  -> W3
+harness/img-width-seam.ts    -> W3
+```
+
+Mỗi seam rỗng trả một dòng placeholder và có golden của nó, nên nền vẫn xanh
+(51/0 thay cho 46/0). Worker chỉ thay ruột file của mình và golden của mình.
+
+Kết quả: bốn nhánh, không một xung đột nào ở `harness/`, không ai chạm `roundtrip.ts`.
+
+Làm cùng lúc một việc thứ hai cùng loại: `esbuild.harness.config.js` từng LIỆT KÊ
+entry point của unit test, nên mỗi worker thêm test là một lần sửa file dùng chung.
+Nay nó tự quét `test/*.test.ts`. Cùng một bệnh, cùng một cách chữa: bỏ danh sách viết
+tay, để máy tự tìm.
+
+Lưu ý ranh giới của bài học này: lưới của sóng 5 là đo RĂNG TRƯỚC trên mã chưa refactor.
+Cách đó KHÔNG chuyển sang sóng 7 được, vì hành vi chưa tồn tại thì không có gì để đo
+trước. Thứ chuyển được là dọn chỗ ĐỤNG NHAU, không phải dựng mốc.
+
+## SÓNG 7: TỰ ĐO TRƯỚC KHI GIAO, VÀ NÓ TÌM RA MỘT BUG KHÔNG AI BÁO
+
+Trước khi mở mười ticket con, điều phối viên dựng một probe nhỏ (một entry esbuild
+dùng lại `roundtripMarkdown` của `harness/editor.ts`, để trong scratchpad) và chạy
+thẳng các hình dạng markdown mà `#84` nói tới. Nó trả về ba thứ, theo thứ tự giá trị
+tăng dần:
+
+1. Xác nhận `#84` sai chiều về `<img width>`: giữ được, nhưng đi qua `rawHtmlInline`
+   và render ra `<pre><code>` kèm badge. Làm theo lời issue là biến ảnh thành mã nguồn.
+2. Dự đoán chính xác golden nào sẽ đổi vì `#120`, để sau đó có cái đối chiếu với worker.
+3. **Một lỗi MẤT DỮ LIỆU chưa ai báo**: `[<img src="a.png" width="200">](https://x)`
+   roundtrip ra `<img src="a.png" width="200">`, link biến mất hẳn. Mở thành `#124`,
+   giao kèm `#120` như một ca răng CÓ ĐÁP ÁN BIẾT TRƯỚC, và nó xanh sau bản vá.
+
+Mục 3 là thứ đáng nhân rộng. Một ca răng do worker tự nghĩ ra thì đáp án cũng do nó
+đặt; một ca răng do điều phối viên đo được trước thì đáp án đến từ thực tế. Sóng sau
+nên dành ra ba mươi phút dựng probe trước khi viết ticket.
+
+## LỖI CỦA ĐIỀU PHỐI VIÊN SÓNG 7, đừng lặp lại
+
+**Hai lần liên tiếp tôi tự làm cùn phép thử răng của mình, trên cùng một worker.**
+
+Lần một, đo seam `table-align`: tôi `git checkout ac7ed69 -- table-context-menu.ts`,
+tức HOÀN NGUYÊN NGUYÊN FILE. Export biến mất, seam không biên dịch được,
+`roundtrip:update` chết trước khi ghi, `git diff` báo 0 dòng đổi. Tôi suýt kết luận
+seam không có răng. Đo lại bằng cách giữ chữ ký và làm rỗng ruột hàm: 16 trên 63 dòng.
+**Phép thử răng phải LÀM SAI một hàm, không phải LÀM BIẾN MẤT nó.**
+
+Lần hai, đo fixture `image-resize.md` của `#120`: tôi chỉ hoàn nguyên `raw-html.ts`,
+và fixture vẫn XANH, nên tôi suýt gọi nó là fixture rỗng ruột. Bản vá nằm ở HAI file;
+phần chữa link sống trong `markdown-destination.ts`. Hoàn nguyên cả ba file thì đúng
+một dòng đỏ, và nó là ca `#124`. **Hoàn nguyên một nửa một bản vá là một phép thử răng
+cùn mà trông vẫn sắc**, đúng họ với bài học "ép đúng điều kiện, và ép cho đúng lúc"
+của sóng 6.
+
+**Dự đoán golden của tôi sai ở KẾT LUẬN dù đúng ở CƠ CHẾ.** Tôi đo trước và nói
+`golden/synthetic/raw-html.md` SẼ đổi vì dòng `<img src="a.png" width="200">` chuyển
+từ `rawHtmlInline` sang node Image. Nó không đổi. Golden ghi lại CHUỖI, mà
+`MarkdownImage.renderMarkdown` mới viết ra đúng chuỗi cũ. Node đổi, byte không đổi.
+Worker đúng, tôi sai. Hai dự đoán kia thì đúng, và chúng cứu thời gian thật.
+
+Bài học: khi dự đoán một golden, hỏi "thứ file này GHI LẠI có đổi không", đừng hỏi
+"thứ tôi vừa sửa có đổi không".
+
+**Suýt quên `npm install` sau khi merge nhánh có dependency mới.** `node_modules` của
+mỗi worktree là bản clone APFS từ repo gốc, nên repo GỐC không tự có gói mới. Fast-forward
+`develop` qua nhánh W2 rồi chạy `npm run build` ngay là đỏ, và `tsc` chưa chắc bắt.
+Đưa bước này vào sổ tay merge từ lúc chia việc, không phải lúc gặp.
+
+## Cái ĐÃ CHẠY của sóng 7, giữ lại
+
+**Đọc hộp thư ngay sau khi phóng, và nó cứu đúng cái sóng 5 đã mất.** W4 gửi một câu
+`ask` thật về `#122` lúc 13:52Z. Tôi đang ở trong `check --wait` nên đọc được ngay, trả
+lời, và commit của W4 lúc 13:59Z làm đúng theo phương án đã trả lời. Sóng 5 mất trọn một
+vòng vì chuyện ngược lại.
+
+**Sửa thân issue TRƯỚC khi giao, thay vì để worker phát hiện.** `#84` sai cơ chế ở bảy
+chỗ: không có node `pageBreak`; `aria-expanded` đã được set từ `d314324`; `setState`
+sai kho vì không có `retainContextWhenHidden`; wiki link không "does nothing" mà có
+toast; tiền đề `<img width>` ngược chiều; việc giữ alignment đã ship ở 2.16; và hai
+phần ba mục toolbar active state đã có sẵn. Cả bảy đều được đo lại và viết thẳng vào
+thân ticket con, nên không worker nào mất một vòng nào vì chúng. Sóng 4 chép nguyên câu
+sai vào spec hai lần và phải trả giá; sóng 7 thì không.
+
+**Xung đột merge lại chỉ là một khối import.** Lần thứ tư liên tiếp. Giải bằng hợp cả
+hai. Ranh giới sở hữu theo HÀM, không theo file, tiếp tục đúng: W1, W2, W4 cùng sửa
+`src/webview/main.ts` và `src/markdownEditorProvider.ts` mà ba lần merge đầu không đụng
+nhau một dòng nào.
+
+**Một worker vi phạm ranh giới và nó ĐÚNG.** W2 bị cấm chạm `harness/editor.ts` (chỉ W3
+được), nhưng nó đổi `MarkdownImage` sang `inline: true` ở CẢ `main.ts` LẪN
+`harness/editor.ts`. Vi phạm chữ, giữ đúng nghĩa: lệnh cấm sinh ra để tránh đụng nhau,
+còn ràng buộc 6 thì bắt sửa hai bên cùng lúc. Sóng sau nên viết rõ trong spec rằng ràng
+buộc 6 THẮNG lệnh cấm file, thay vì bắt worker tự đoán.
+
+**Tương tác giữa hai nhánh chỉ lộ ra ở bước merge, và quy trình bắt được nó.**
+`inline: true` của W2 gặp slash command của W1 lần đầu lúc merge nhánh cuối, làm đỏ
+`seams/slash.txt`: `node=image` thành `node=paragraph`. Phân loại accepted change, vì
+trong CommonMark ảnh là inline. Thứ chứng minh nó an toàn không phải dòng golden đó mà
+là 40 fixture KHÔNG đổi. Nếu chạy kiểm chỉ trên từng nhánh rồi merge mù, dòng này đã
+vào repo mà không ai phân loại.
+
+## Còn treo sau sóng 7
 
 Mục này gắn với một thời điểm, không phải quy trình. Kiểm lại trước khi tin.
 
-- **`#112` đã đóng, nhưng đọc lại nó để thấy một thân issue sai tới mức nào.**
-  Tiêu đề nói "cửa sổ dò 40 giây quá ngắn dưới tải". Thực tế không liên quan tới
-  tải lẫn ngân sách: `mermaid-plugin.ts` lên lịch render lần đầu trong một
-  `requestAnimationFrame`, cửa sổ ẩn thì rAF không chạy, nên không có lịch nào.
-  Nay lịch do rAF hoặc một timer 50ms, cái nào tới trước thì thắng.
-- **Một tài nguyên dùng chung mà `#110` không phủ**: mỗi lượt
-  `verify:vscode-floor` chạy `npm run build` ghi vào `out/` của chính repo, và
-  VS Code nạp extension từ đường dẫn repo. Hai lượt song song ghi đè bundle của
-  nhau. Artifact cụt cho `errors=1` chứ không phải `errors=0 stuck=1` nên nó
-  không phải `#112`, nhưng câu "hai lượt chạy cùng lúc được" chỉ đúng vì một
-  checkout build ra cùng bytes. Đã ghi vào header `run.mjs`, chưa sửa.
-- **Sáu tiêu chí kiểm tay của `#88` chưa ai kiểm**, đều cần một cửa sổ VS Code
-  sống: dán ảnh, đổi tên ảnh, xoá ảnh, export DOCX, export PDF, `@` mention và
-  `[[` wiki link. Ghi ở `docs/reports/w5-provider.md` mục 10.
-- **Bốn tiêu chí kiểm tay của sóng 4 vẫn chưa ai kiểm**: ép lỗi clipboard
-  (`#105`), gõ rồi Ctrl+W mười lần (`#104`), ảnh chụp trước/sau hai theme
-  (`#86`), Keyboard Shortcuts liệt kê hai lệnh (`#108`). Nên làm một lượt bằng
-  tay trước khi phát hành.
-- `#102` vẫn còn bước kiểm TAY từ sóng 3: đổi `editor.tabSize` rồi xem lần sửa
-  sau có ghi ra thụt lề mới không. Quy trình ở `docs/reports/w4-indent.md` mục 7.
+- **Mười bốn tiêu chí kiểm TAY chưa ai làm, và chúng dồn lại qua bốn sóng.** Sóng 7
+  thêm sáu: bàn phím trên menu bảng (`#118`), bàn phím và focus trên lightbox (`#119`),
+  kéo tay cầm resize ảnh (`#120`), popup slash command bằng chuột và phím (`#114`),
+  bubble menu ở mức zoom khác 100% (`#116`), và cuộn tay rồi đóng mở lại tab (`#121`).
+  Cộng với sáu của `#88` (dán ảnh, đổi tên ảnh, xoá ảnh, export DOCX, export PDF,
+  `@` và `[[`), bốn của sóng 4 (`#105`, `#104`, `#86`, `#108`) và một của `#102`.
+  Nên làm MỘT lượt bằng tay trước khi phát hành 2.17, và đó là việc lớn nhất còn lại.
+- **`#122` chưa được chứng minh là chữa được `#48`.** `workbench.editorAssociations`
+  áp cho việc MỞ file; diff editor của Git Graph là một đường khác trong VS Code.
+  Chưa ai cài Git Graph, bấm vào một commit và xem kết quả. Có thể còn một việc nữa.
+- **`#124` mới đóng một nửa.** Ca `<img>` đã xanh. Hai ca thẻ đôi `<kbd>` và `<sub>`
+  vẫn đưa link CHUI VÀO TRONG thẻ thay vì bọc ngoài. Lossless nên không gấp, nhưng
+  vẫn sai. Bảng đo nằm trong thân `#124`, đừng đo lại.
+- **Điều phối viên chưa thêm check floor nào cho sóng 7.** Worker bị cấm thêm check
+  vào `harness/vscode-floor/extension-tests.ts` để bốn nhánh không đụng nhau, và
+  điều phối viên nhận phần đó sau merge nhưng chưa làm. Floor vẫn 20/20, tức là nó
+  chưa chạm slash command, bubble menu, link popover, lightbox focus hay lệnh
+  default-editor. Đây là món nợ lưới rõ ràng nhất của sóng này.
 - `#96` còn hai tiêu chí hành vi editor chưa kiểm được bằng harness.
-- `src/host/messageHandlers.ts` 301 dòng là file lớn nhất dưới `src/host/`.
-  Sóng sau thêm message thì nên tách theo nhóm.
-- Năm run orchestration cũ còn trong Orca: `run_c607755eea03` (sóng 2),
+- `src/webview/main.ts` nay là file lớn nhất của repo. Sóng sau thêm tính năng
+  webview thì nên tách theo nhóm, y như `#88` đã làm với provider.
+- Sáu run orchestration cũ còn trong Orca: `run_c607755eea03` (sóng 2),
   `run_81e972296c40` (sóng 3), `run_7c86994cae6d` (sóng 4), `run_03c8c7760738`
-  (sóng 5). Sóng 6 không tạo run nào. CỐ Ý KHÔNG chạy
-  `orca orchestration reset` vì lệnh đó không có cờ `--run`, nó xoá state TOÀN
-  CỤC và sẽ đụng các dự án khác của người dùng.
-- Hai worktree của sóng 5 (`w5-unittests`, `w5-provider`) đã merge hết vào
-  `develop`. Xoá được bằng `orca worktree rm`, cùng với mục `w5-unittests` trong
-  `trustedWorkspaces` của `~/.gemini/antigravity-cli/settings.json`.
-- Ba nhánh local của sóng 6 đã fast-forward vào `develop` và đã xoá. `develop`
-  CHƯA push, và lịch sử của nó ĐÃ ĐƯỢC VIẾT LẠI một lần bằng `git filter-branch`
-  để bỏ gạch dài khỏi ba commit message, nên mọi SHA của sóng này khác với SHA
-  từng xuất hiện ở đâu đó trước lúc viết lại.
+  (sóng 5), `run_2f8d1bbc233e` (sóng 7). CỐ Ý KHÔNG chạy `orca orchestration reset`
+  vì lệnh đó không có cờ `--run`, nó xoá state TOÀN CỤC và sẽ đụng các dự án khác.
+- Bốn worktree của sóng 7 (`w7-slash`, `w7-selection`, `w7-interaction`, `w7-host`)
+  đã merge hết vào `develop`. Xoá được bằng `orca worktree rm`, cùng với bốn mục
+  tương ứng trong `trustedWorkspaces` của `~/.gemini/antigravity-cli/settings.json`.
+- `develop` CHƯA push.
 
-## Sóng 7 nên làm gì
+## Sóng 8 nên làm gì
 
-Release 2.16 (`#83`) đã đóng hết issue con. Việc còn lại của nó là mười tiêu
-chí kiểm tay ở trên, không phải code. `#111` hoá ra đúng là bug sản phẩm chứ
-không chỉ bug harness, đúng như dự đoán của sóng 5.
+Không phải code. Việc lớn nhất là **một lượt kiểm tay mười bốn tiêu chí ở trên**, và
+nó cần một con người ngồi trước cửa sổ VS Code chứ không cần một sóng worker. Sau đó
+mới tới hai món nợ lưới: thêm check floor cho các bề mặt của 2.17, và hai ca thẻ đôi
+của `#124`.
 
-Sau đó là `#84` (Release 2.17), mà thân issue nói rõ mỗi mục chỉ thành issue khi
-2.16 xong. Giờ nó xong rồi. Nền đã sẵn: `#90` cho slash command, `#87` cho
-giao thức message, và nay `#88` cho bảng dispatch, nên mỗi tính năng mới của
-2.17 là thêm một entry vào một bảng được `tsc` khoá chứ không phải thêm một
-nhánh vào một `switch` 780 dòng.
+`#85` (Release 3.0: Beyond GFM) là việc tiếp theo có thể phóng worker.
 
-## Sóng 6 không phóng worker nào, và đó là quyết định đúng
-
-Đáng ghi vì playbook này viết ra để phóng worker, và lần này luật của chính nó
-bảo đừng.
-
-Kế hoạch ban đầu: điều phối viên tự làm `#112` (nó và `#111` cùng sửa
-`run.mjs`, và nghiệm thu `#112` cần ba cửa sổ VS Code cùng lúc, sẽ làm worker
-`#111` đỏ giả), rồi phóng một worker cho `#111`. Đo xong `#112` thì tình hình
-đổi: nó không tái hiện được, phần giao được chỉ còn là thước đo, và toàn bộ
-mạch suy luận về `#111` (cơ chế, hình dạng lời giải, lưới đã đỏ) đã nằm trong
-đầu điều phối viên. Chuyển giao qua spec là chép lại gần hết những gì vừa đo,
-để nhận về một vòng hỏi đáp. Đúng điều kiện "spawn cost outweighs benefit".
-
-Cái KHÔNG bỏ là kỷ luật: vẫn dựng lưới trước khi sửa, vẫn commit một check ĐỎ
-có chủ đích trước khi viết bản vá, vẫn đo răng từng nửa của lời giải riêng rẽ,
-vẫn đóng issue bằng bằng chứng của mình. Quy trình sóng không phải là số worker.
-
-Một lưu ý cho sóng sau: commit một check đỏ vào `develop` chỉ an toàn vì CI
-KHÔNG chạy `verify:vscode-floor` (nó cần một màn hình). Kiểm lại `ci.yml` trước
-khi làm thế với một loại kiểm khác.
-
-## Ảnh chụp trạng thái cuối sóng 6, 2026-09-16
+## Ảnh chụp trạng thái cuối sóng 7, 2026-09-17
 
 Giữ lại làm ví dụ về mức độ chi tiết một bàn giao nên có. Số liệu bên dưới ĐÃ CŨ
 ngay khi có commit tiếp theo; kiểm lại bằng git và `gh issue list`.
 
 ```
-develop            xem `git log`, lịch sử đã viết lại một lần, CHƯA push
-lint, build, build:dev  xanh
-roundtrip          39 fixtures + 7 seams: 46 passed, 0 failed
-vòng hai           46 passed, 0 failed
-npm test           35 passed, 0 failed
-verify:vscode-floor 20/20                     <- 19/19 trước sóng này
-issue mở           3: #83 #84 #85, cả ba là issue mẹ
+develop            xem `git log`, CHƯA push
+lint, build        xanh
+npm test           54 passed, 0 failed          <- 35 trước sóng
+roundtrip          40 fixtures + 12 seams: 52 passed, 0 failed   <- 39 + 7 = 46 trước sóng
+vòng hai           52 passed, 0 failed
+verify:vscode-floor 20/20                       <- không đổi, và đó là món nợ, xem trên
+issue mở           1: #85
 ```
 
-Sóng 6 đóng `#111` và `#112`, không worker nào, mười commit. Cả hai ticket đều
-sai CƠ CHẾ trong thân issue, và cả hai lần thứ tìm ra nguyên nhân là một phép
-đo chứ không phải một lần đọc mã: `#111` lộ ra khi log chỗ gửi edit
-(`len 378->379`, đúng một ký tự xuống dòng), `#112` lộ ra khi thêm `scheduled=`
-vào dòng detail rồi đợi lần đỏ kế tiếp.
-
-Hai trên hai ticket của sóng này sai CƠ CHẾ trong thân issue. Tỉ lệ luỹ kế:
-10 trên 28.
+Sóng 7 đóng `#114` tới `#124` cộng `#84`, bốn worker `agy`, bốn worktree, một xung đột
+merge duy nhất và nó là khối import. Bug tìm thêm được trong lúc đo: một, `#124`, mất
+dữ liệu thật, không ai báo.
