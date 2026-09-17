@@ -1,3 +1,72 @@
-# table-align-seam.ts — no cases yet
+# table alignment seam
 
-This seam is a skeleton. W3 replaces this body with real cases.
+Records the separator row produced after setTableColumnAlignment
+for left / center / right / none, on header-row and body-row tables.
+
+[header-table-left] set column 0 to left alignment on a table with a header row
+  alignment: left
+  separator: | :--- | ---- |
+  markdown:
+    | Col1 | Col2 |
+    | :--- | ---- |
+    | Val1 | Val2 |
+
+[header-table-center] set column 0 to center alignment on a table with a header row
+  alignment: center
+  separator: | :--: | ---- |
+  markdown:
+    | Col1 | Col2 |
+    | :--: | ---- |
+    | Val1 | Val2 |
+
+[header-table-right] set column 0 to right alignment on a table with a header row
+  alignment: right
+  separator: | ---: | ---- |
+  markdown:
+    | Col1 | Col2 |
+    | ---: | ---- |
+    | Val1 | Val2 |
+
+[header-table-none] clear alignment (none) on column 0 from an aligned header row
+  alignment: none
+  separator: | ---- | :--- |
+  markdown:
+    | Col1 | Col2 |
+    | ---- | :--- |
+    | Val1 | Val2 |
+
+[body-table-left] set column 0 to left alignment on a table whose alignment sits on a body row
+  alignment: left
+  separator: | :---- | ----- |
+  markdown:
+    |       |       |
+    | :---- | ----- |
+    | Body1 | Body2 |
+    | Val1  | Val2  |
+
+[body-table-center] set column 0 to center alignment on a table whose alignment sits on a body row
+  alignment: center
+  separator: | :---: | ----- |
+  markdown:
+    |       |       |
+    | :---: | ----- |
+    | Body1 | Body2 |
+    | Val1  | Val2  |
+
+[body-table-right] set column 0 to right alignment on a table whose alignment sits on a body row
+  alignment: right
+  separator: | ----: | ----- |
+  markdown:
+    |       |       |
+    | ----: | ----- |
+    | Body1 | Body2 |
+    | Val1  | Val2  |
+
+[body-table-none] clear alignment (none) on column 0 from a table with pre-existing body-row alignment
+  alignment: none
+  separator: | ----- | :---: |
+  markdown:
+    |       |       |
+    | ----- | :---: |
+    | Body1 | Body2 |
+    | Val1  | Val2  |
