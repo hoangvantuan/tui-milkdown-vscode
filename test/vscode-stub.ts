@@ -38,6 +38,12 @@ const warningCalls: WarningCall[] = [];
 let warningChoiceHandler: WarningChoiceHandler = undefined;
 const deletedUris: Uri[] = [];
 
+export interface ExecutedCommand {
+  command: string;
+  args: any[];
+}
+const executedCommands: ExecutedCommand[] = [];
+
 export function setWorkspaceRoot(dir: string | null): void {
   currentWorkspaceRoot = dir ? path.resolve(dir) : null;
 }
@@ -54,11 +60,16 @@ export function getDeletedUris(): readonly Uri[] {
   return [...deletedUris];
 }
 
+export function getExecutedCommands(): readonly ExecutedCommand[] {
+  return [...executedCommands];
+}
+
 export function resetStub(): void {
   currentWorkspaceRoot = null;
   warningCalls.length = 0;
   warningChoiceHandler = undefined;
   deletedUris.length = 0;
+  executedCommands.length = 0;
 }
 
 async function walkDir(dir: string): Promise<string[]> {
@@ -86,6 +97,13 @@ export const window = {
     if (typeof warningChoiceHandler === "string") {
       return warningChoiceHandler;
     }
+    return items.length > 0 ? items[0] : undefined;
+  },
+
+  async showQuickPick<T extends { label: string }>(
+    items: T[],
+    _options?: any,
+  ): Promise<T | undefined> {
     return items.length > 0 ? items[0] : undefined;
   },
 };
@@ -140,13 +158,27 @@ export const workspace = {
       return [];
     }
     const allFiles = await walkDir(currentWorkspaceRoot);
-    // When include is "**/*.md", filter for .md files
-    if (include === "**/*.md" || include.endsWith(".md")) {
+    if (include === "**/*.md") {
       return allFiles
         .filter((file) => file.endsWith(".md"))
         .map((file) => Uri.file(file));
     }
-    return allFiles.map((file) => Uri.file(file));
+    if (include.startsWith("**/")) {
+      const suffix = include.slice(3);
+      return allFiles
+        .filter((file) => {
+          const rel = path.relative(currentWorkspaceRoot!, file).split(path.sep).join("/");
+          return rel === suffix || rel.endsWith("/" + suffix);
+        })
+        .map((file) => Uri.file(file));
+    }
+    const target = include;
+    return allFiles
+      .filter((file) => {
+        const rel = path.relative(currentWorkspaceRoot!, file).split(path.sep).join("/");
+        return rel === target;
+      })
+      .map((file) => Uri.file(file));
   },
 };
 
@@ -154,4 +186,9 @@ export const EndOfLine = { LF: 1, CRLF: 2 };
 export class Range {}
 export class Position {}
 export class WorkspaceEdit {}
-export const commands = {};
+export const commands = {
+  async executeCommand(command: string, ...args: any[]): Promise<any> {
+    executedCommands.push({ command, args });
+    return undefined;
+  },
+};

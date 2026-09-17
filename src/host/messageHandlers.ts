@@ -268,8 +268,8 @@ const handlers: HandlerTable = {
     });
   },
 
-  openWikiLink: async (msg) => {
-    await openWikiLink(msg.filename);
+  openWikiLink: async (msg, ctx) => {
+    await openWikiLink(msg.filename, ctx.document.uri);
   },
 
   export: (msg, ctx) => {
