@@ -56,7 +56,9 @@ src/
 │   ├── saveImage.ts          # saveImage: filename + folder validation, write, reply
 │   ├── readClipboardImage.ts # Native clipboard read (osascript / PowerShell / xclip)
 │   ├── requestImageRename.ts # Rename on disk + rewrite this document + workspace references
-│   ├── openWikiLink.ts       # [[name]] resolution and open
+│   ├── openWikiLink.ts       # [[name]] resolution and open; creates the file when nothing resolves (#123)
+│   ├── editorPosition.ts     # Cursor/scroll position per document URI in workspaceState (#121)
+│   ├── defaultEditor.ts      # QuickPick writing workbench.editorAssociations for the workspace (#122)
 │   └── exportDocument.ts     # export: busy lock, synchronous read, lazy require of the renderers
 ├── constants.ts              # Shared constants (MAX_FILE_SIZE)
 ├── shared/
@@ -96,7 +98,10 @@ src/
     ├── table-markdown-serializer.ts # Custom GFM table serializer (multi-line cells)
     ├── table-cell-content-parser.ts # Post-parse transformer for table cell lists/breaks
     ├── table-context-menu.ts # Right-click context menu for table operations
-    ├── search-plugin.ts      # Cmd+F search via @tiptap/extension-find-and-replace (highlight, next/prev, match count)
+    ├── search-plugin.ts      # Cmd+F search and replace via @tiptap/extension-find-and-replace (highlight, next/prev, match count, replace/replaceAll, case toggle)
+    ├── slash-command-plugin.ts # `/` block insertion menu via @tiptap/suggestion, third consumer of suggestion-popup.ts (#114)
+    ├── bubble-menu.ts        # Selection bubble menu via @tiptap/extension-bubble-menu (#116)
+    ├── link-popover.ts       # Inline link editor at the caret; replaced the requestLinkEdit round trip (#117)
     ├── file-search-utils.ts  # Shared: fuzzy search (fuzzysort), proximity scoring, file type icons, highlight helpers
     ├── suggestion-popup.ts   # Shared suggestion popup (DOM ownership, positioning, selection, key handling)
     ├── file-mention-plugin.ts # @-mention file autocomplete via @tiptap/suggestion (popup, fuzzy filter, link insert)
@@ -129,6 +134,11 @@ harness/                            # Dependency-verification harness (see harne
 ├── placeholder-seam.ts             # Placeholder DOM writes per keystroke (the flicker measurement)
 ├── crlf-seam.ts                    # Line-ending normalization on save (normalizeLineEndings, CRLF/LF/mixed)
 ├── list-keys-seam.ts               # Tab/Shift-Tab list keymap and typed markers (#107)
+├── slash-seam.ts                   # What each slash menu entry inserts, as markdown (#114)
+├── replace-seam.ts                 # Document text after replace / replaceAll, per case (#115)
+├── link-edit-seam.ts               # The markdown an inline link edit writes back (#117)
+├── table-align-seam.ts             # The separator row a set-alignment command produces (#118)
+├── img-width-seam.ts               # How an image with width/height parses and serializes (#120, #124)
 ├── vscode-floor/                   # VS Code floor check: run.mjs (driver) + extension-tests.ts (in-host checks)
 ├── fixtures/synthetic/*.md         # One feature per fixture
 └── golden/                         # Committed baselines (corpus + seams), captured on the pre-upgrade dependency tree
@@ -148,11 +158,16 @@ Extension provides these settings via `tuiMarkdown.*` namespace:
 - `chromiumPath` (string, default: empty) - Explicit Chrome/Edge/Chromium/Brave executable for PDF export; empty means auto-discovery (`chromium-discovery.ts`)
 - `exportPageSize` (string, default: `A4`) - Page size for PDF export
 
+The command **Choose Default Editor for Markdown in this Workspace**
+(`tuiMarkdown.useAsDefaultEditor`, `src/host/defaultEditor.ts`) writes
+`workbench.editorAssociations` at workspace scope. It is a command rather than a
+`tuiMarkdown.*` setting because the setting it drives is VS Code's own.
+
 ## Tiptap Integration
 
 Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for markdown roundtrip.
 
-**Extensions:** StarterKit (includes Link with `autolink: true, linkOnPaste: true`), Image, Highlight, Table (resizable + custom `renderMarkdown` hook), CodeBlockLowlight (syntax highlighting via lowlight/highlight.js), TaskList + TaskItem, Placeholder, Markdown (GFM + configurable indentation), AlertNode (GitHub-style alerts), MermaidDiagram (SVG preview), TableContextMenu (right-click menu), CodeBlockEnhancement (language badge + copy button), SearchPlugin (Cmd+F via @tiptap/extension-find-and-replace), FileMention (@-mention file autocomplete via @tiptap/suggestion), WikiLink (wiki links), WikiLinkSuggestion ([[...]] autocomplete via @tiptap/suggestion), RawHtmlBlock + RawHtmlInline (verbatim raw HTML), CustomUnderline (replaces StarterKit's Underline; parses `ins`/`u`/`text-decoration`, serializes `<ins>`, #106), CustomOrderedList (replaces StarterKit's OrderedList; tokenizer override for continuation indent, #109), ListKeymapExtension (Tab/Shift-Tab list behaviour, registered after StarterKit and Table, #107).
+**Extensions:** StarterKit (includes Link with `autolink: true, linkOnPaste: true`), Image, Highlight, Table (resizable + custom `renderMarkdown` hook), CodeBlockLowlight (syntax highlighting via lowlight/highlight.js), TaskList + TaskItem, Placeholder, Markdown (GFM + configurable indentation), AlertNode (GitHub-style alerts), MermaidDiagram (SVG preview), TableContextMenu (right-click menu), CodeBlockEnhancement (language badge + copy button), SearchPlugin (Cmd+F find and replace via @tiptap/extension-find-and-replace), SlashCommand (`/` block insertion menu), BubbleMenu (selection formatting), FileMention (@-mention file autocomplete via @tiptap/suggestion), WikiLink (wiki links), WikiLinkSuggestion ([[...]] autocomplete via @tiptap/suggestion), RawHtmlBlock + RawHtmlInline (verbatim raw HTML), CustomUnderline (replaces StarterKit's Underline; parses `ins`/`u`/`text-decoration`, serializes `<ins>`, #106), CustomOrderedList (replaces StarterKit's OrderedList; tokenizer override for continuation indent, #109), ListKeymapExtension (Tab/Shift-Tab list behaviour, registered after StarterKit and Table, #107).
 
 **Markdown API:**
 
@@ -184,6 +199,10 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 - `normalizeLineEndings` lives in `src/host/lineEndings.ts` but the provider re-exports it, because `harness/crlf-seam.ts` imports it from `src/markdownEditorProvider.ts` and a worker may not edit the harness
 - The editor stylesheet is `src/webview/editor.css`, imported by `main.ts` before `themes/index.css`. That import order is the cascade order, and the provider must stay free of `<style>` blocks
 - DOCX export runs in the Node extension host, so any mdast2docx plugin that touches `document` crashes it. `@m2d/html` did, which is why raw HTML is skipped rather than rendered there; PDF export renders it through `remark-rehype` with `allowDangerousHtml`
+- `MarkdownImage` is configured `inline: true` in BOTH `src/webview/main.ts` and `harness/editor.ts`. A link mark cannot be applied to a block-level image node without violating ProseMirror's paragraph content schema, which the inline link editor needs. It moved exactly one golden, the slash seam's image entry, from `node=image` to `node=paragraph`; no markdown fixture moved, which is the evidence that it is safe
+- `hasUnmodeledImageAttributes` in `raw-html.ts` now matches `align` only. `width` and `height` are node attributes on `MarkdownImage`, so an `<img width>` is a real image you can resize, not a raw-HTML source badge. Before #120 it was the badge, and a link wrapped around such an image was silently dropped on save (#124): a self-closing tag encloses no text for the link mark to attach to. The paired-tag cases (`<kbd>`, `<sub>`) still migrate the link inside the tag and are still wrong
+- The GitHub-style heading slug has ONE definition, `headingSlug()` in `heading-level-plugin.ts`. The anchor-copy button writes those strings and `scrollToHeading` in `main.ts` looks them up; two copies drift, and the symptom is a copied anchor that scrolls nowhere
+- Seam files are registered in `harness/roundtrip.ts` by the coordinator BEFORE a parallel wave's worktrees are cut, so each worker owns one seam file and none of them edits the shared list. `esbuild.harness.config.js` reads `test/*.test.ts` from disk for the same reason
 - Security trade-offs are documented where they are made: mermaid `securityLevel: "loose"` and nonce exposure in `mermaid-plugin.ts` / `mermaid-bridge.ts`, PDF export invariants in `export-pdf.ts`
 
 ## Development Guidelines
