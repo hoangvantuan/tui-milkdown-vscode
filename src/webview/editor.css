@@ -2354,3 +2354,113 @@ body.theme-midnight { --overlay-bg: #c9d1d9; --overlay-fg: #0d1117; }
   #toolbar.toolbar-hidden { transform: none; }
 }
 
+/* Selection Bubble Menu */
+.bubble-menu {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--vscode-editorWidget-background, #252526);
+  border: 1px solid var(--vscode-editorWidget-border, #454545);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  border-radius: 6px;
+  padding: 3px;
+  z-index: 40;
+}
+.bubble-menu-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--vscode-foreground, #cccccc);
+  cursor: pointer;
+  border-radius: 4px;
+  opacity: 0.75;
+  transition: background 0.1s ease, opacity 0.1s ease, transform 0.08s ease;
+}
+.bubble-menu-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+  opacity: 1;
+}
+.bubble-menu-btn:active {
+  transform: scale(0.95);
+}
+.bubble-menu-btn.is-active {
+  background: rgba(var(--accent-rgb, 59, 130, 246), 0.15);
+  color: var(--accent-primary, var(--vscode-list-activeSelectionForeground));
+  opacity: 1;
+}
+.bubble-menu-btn svg {
+  width: 15px;
+  height: 15px;
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Inline Link Editor Popover */
+.link-popover {
+  position: absolute;
+  z-index: 50;
+  background: var(--vscode-editorWidget-background, #252526);
+  border: 1px solid var(--vscode-editorWidget-border, #454545);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  border-radius: 6px;
+  padding: 4px;
+}
+.link-popover.hidden {
+  display: none !important;
+}
+.link-popover-content {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.link-popover-input {
+  background: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, #cccccc);
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 13px;
+  min-width: 220px;
+  outline: none;
+}
+.link-popover-input:focus {
+  border-color: var(--vscode-focusBorder, #007fd4);
+}
+.link-popover-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--vscode-foreground, #cccccc);
+  cursor: pointer;
+  border-radius: 4px;
+  opacity: 0.8;
+  transition: opacity 0.1s ease, background 0.1s ease;
+}
+.link-popover-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+  opacity: 1;
+}
+.link-popover-btn svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+

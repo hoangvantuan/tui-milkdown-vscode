@@ -317,7 +317,7 @@ function buildMarkdownExtensions(
       },
     }),
     MarkdownImage.configure({
-      inline: false,
+      inline: true,
       allowBase64: true,
     }),
     Highlight,

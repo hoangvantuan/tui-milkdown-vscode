@@ -415,6 +415,20 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             </div>
             <div id="editor"></div>
             <div id="word-count"></div>
+            <div id="link-popover" class="link-popover hidden" role="dialog" aria-label="Edit link">
+              <div class="link-popover-content">
+                <input id="link-url-input" class="link-popover-input" type="text" placeholder="Enter URL or file path..." spellcheck="false" autocomplete="off" />
+                <button id="link-apply-btn" class="link-popover-btn" title="Apply (Enter)" aria-label="Apply link">
+                  <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                </button>
+                <button id="link-unlink-btn" class="link-popover-btn" title="Remove link" aria-label="Remove link">
+                  <svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
+                </button>
+                <button id="link-close-btn" class="link-popover-btn" title="Close (Escape)" aria-label="Close">
+                  <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
         <div id="lightbox-overlay">

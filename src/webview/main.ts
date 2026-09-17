@@ -84,6 +84,8 @@ import { installMarkdownTextEscape } from "./markdown-text-escape";
 import { CustomOrderedList } from "./ordered-list-extension";
 import { ListKeymapExtension } from "./list-keymap-extension";
 import { escapeHtml } from "./file-search-utils";
+import { createBubbleMenuExtension } from "./bubble-menu";
+import { initLinkPopover, type LinkPopoverController } from "./link-popover";
 
 // Install unified text escape overrides on MarkdownManager (#97, #99, #100, #101).
 installMarkdownTextEscape();
@@ -305,6 +307,7 @@ lowlight.register({
 });
 
 let editor: Editor | null = null;
+let linkPopover: LinkPopoverController | null = null;
 let isUpdatingFromExtension = false;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let globalThemeReceived: ThemeName | null = null;
@@ -1228,7 +1231,7 @@ function initEditor(initialContent: string = ""): Editor | null {
           },
         }),
         MarkdownImage.configure({
-          inline: false,
+          inline: true,
           allowBase64: true,
         }),
         Highlight,
@@ -1291,6 +1294,7 @@ function initEditor(initialContent: string = ""): Editor | null {
         WikiLinkSuggestion,
         RawHtmlBlock,
         RawHtmlInline,
+        createBubbleMenuExtension({ onOpenLink: () => linkPopover?.open() }),
         ...conditionalExtensions,
       ],
       content: initialContent,
@@ -1430,20 +1434,6 @@ function updateEditorContent(content: string): void {
   }
 }
 
-// Pending link edit requests (webview → extension → webview async flow)
-const pendingLinkEdits = new Map<string, Editor>();
-
-function handleLinkEditResponse(editId: string, newUrl: string | null): void {
-  const ed = pendingLinkEdits.get(editId);
-  pendingLinkEdits.delete(editId);
-  if (!ed || newUrl === null) return;
-  if (newUrl === '') {
-    ed.chain().focus().extendMarkRange('link').unsetLink().run();
-  } else {
-    ed.chain().focus().extendMarkRange('link').setLink({ href: newUrl }).run();
-  }
-}
-
 function applyTheme(theme: "dark" | "light"): void {
   document.body.classList.remove("dark-theme", "light-theme");
   document.body.classList.add(`${theme}-theme`);
@@ -1473,17 +1463,8 @@ const TOOLBAR_COMMANDS: Record<string, (ed: Editor) => void> = {
   deleteColumn: (ed) => ed.chain().focus().deleteColumn().run(),
   deleteRow: (ed) => ed.chain().focus().deleteRow().run(),
   deleteTable: (ed) => ed.chain().focus().deleteTable().run(),
-  link: (ed) => {
-    const previousUrl = ed.getAttributes('link').href as string || '';
-    const editId = `link-${Date.now()}`;
-    pendingLinkEdits.set(editId, ed);
-    // Fix 4: cleanup stale pending entry after 60s (matches image-edit-plugin pattern)
-    setTimeout(() => pendingLinkEdits.delete(editId), 60_000);
-    vscode.postMessage({
-      type: 'requestLinkEdit',
-      editId,
-      currentUrl: previousUrl,
-    });
+  link: () => {
+    linkPopover?.open();
   },
 };
 
@@ -1505,7 +1486,8 @@ function updateToolbarActiveState(ed: Editor): void {
                       cmd === 'taskList' ? ed.isActive('taskList') :
                         cmd === 'blockquote' ? ed.isActive('blockquote') :
                           cmd === 'codeBlock' ? ed.isActive('codeBlock') :
-                            false;
+                            cmd === 'link' ? ed.isActive('link') :
+                              false;
     btn.classList.toggle('is-active', isActive);
   }
 
@@ -1992,6 +1974,7 @@ window.addEventListener("message", async (event) => {
           if (!editor) {
             editor = initEditor(displayBody);
             if (editor) {
+              linkPopover = initLinkPopover(editor);
               initTocSidebar();
               justInitialized = true;
               // Re-apply font after .tiptap element is created
@@ -2181,11 +2164,6 @@ window.addEventListener("message", async (event) => {
           message.newPath || "",
           message.webviewUri
         );
-      }
-      break;
-    case "linkEditResponse":
-      if (typeof message.editId === "string") {
-        handleLinkEditResponse(message.editId, message.newUrl ?? null);
       }
       break;
     case "fileSearchResults":
