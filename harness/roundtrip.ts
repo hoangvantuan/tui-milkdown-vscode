@@ -78,11 +78,18 @@ function runFixture(
   const oldLines = golden.split("\n");
   const newLines = output.split("\n");
   const diff = formatUnifiedDiff(`golden/${entry.name}`, `current/${entry.name}`, oldLines, newLines);
-  const additions = newLines.length - oldLines.length;
+  // Counted from the diff, not from the line totals. This used to be
+  // `newLines.length - oldLines.length` and its negation, which reads as
+  // "added / removed" and is neither: a one-line replacement printed
+  // `(+0 -0 lines)` on a real failure, and a three-line addition printed
+  // `(+3 --3 lines)`. Both were misread during the 2.17 wave.
+  const diffLines = (diff ?? "").split("\n");
+  const additions = diffLines.filter((l) => l.startsWith("+") && !l.startsWith("+++")).length;
+  const deletions = diffLines.filter((l) => l.startsWith("-") && !l.startsWith("---")).length;
   return {
     kind: "fail",
     additions,
-    deletions: -additions,
+    deletions,
     diff,
   };
 }

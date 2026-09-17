@@ -499,6 +499,14 @@ Two qualifications, both learned by trying:
   `npm run verify:vscode-floor` (see the next section) exercises several of
   these items in a real VS Code, including mermaid preview rendering.
 
+### Reading a FAIL line
+
+`FAIL  repo/CLAUDE.md (+1 -1 lines)` counts lines in the unified diff below it.
+It used to count `newLines.length - oldLines.length` and its negation, which is
+neither addition nor deletion: a one-line replacement printed `(+0 -0 lines)` on a
+real failure, and a three-line addition printed `(+3 --3 lines)`. Both were misread
+during the 2.17 wave, the first as "the golden did not really move".
+
 ## Running the extension on the VS Code floor
 
 `npm run verify:vscode-floor` answers a question no amount of type checking
