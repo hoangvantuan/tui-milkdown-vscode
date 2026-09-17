@@ -180,6 +180,65 @@ export const workspace = {
       })
       .map((file) => Uri.file(file));
   },
+
+  get workspaceFolders() {
+    if (!currentWorkspaceRoot) return undefined;
+    return [{ uri: Uri.file(currentWorkspaceRoot), name: "root", index: 0 }];
+  },
+
+  getConfiguration(section?: string) {
+    const settingsPath = currentWorkspaceRoot
+      ? path.join(currentWorkspaceRoot, ".vscode", "settings.json")
+      : null;
+
+    function readSettings(): Record<string, any> {
+      if (settingsPath && fs.existsSync(settingsPath)) {
+        try {
+          return JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+        } catch {
+          return {};
+        }
+      }
+      return {};
+    }
+
+    return {
+      get<T>(key: string, defaultValue?: T): T {
+        const fullKey = section ? `${section}.${key}` : key;
+        const settings = readSettings();
+        return (settings[fullKey] !== undefined ? settings[fullKey] : defaultValue) as T;
+      },
+      inspect<T>(key: string) {
+        const fullKey = section ? `${section}.${key}` : key;
+        const settings = readSettings();
+        return {
+          key: fullKey,
+          defaultValue: undefined,
+          globalValue: undefined,
+          workspaceValue: settings[fullKey],
+          workspaceFolderValue: undefined,
+        };
+      },
+      async update(key: string, value: any, _target?: number): Promise<void> {
+        if (!currentWorkspaceRoot || !settingsPath) return;
+        const fullKey = section ? `${section}.${key}` : key;
+        const settings = readSettings();
+        if (value === undefined) {
+          delete settings[fullKey];
+        } else {
+          settings[fullKey] = value;
+        }
+        await fs.promises.mkdir(path.dirname(settingsPath), { recursive: true });
+        await fs.promises.writeFile(settingsPath, JSON.stringify(settings, null, 2), "utf8");
+      },
+    };
+  },
+};
+
+export const ConfigurationTarget = {
+  Global: 1,
+  Workspace: 2,
+  WorkspaceFolder: 3,
 };
 
 export const EndOfLine = { LF: 1, CRLF: 2 };
