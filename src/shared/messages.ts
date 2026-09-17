@@ -72,12 +72,6 @@ export interface OpenImageInTabMessage {
   path: string;
 }
 
-export interface RequestLinkEditMessage {
-  type: "requestLinkEdit";
-  editId: string;
-  currentUrl?: string;
-}
-
 export interface RequestImageRenameMessage {
   type: "requestImageRename";
   renameId: string;
@@ -118,7 +112,6 @@ export type WebviewToHostMessage =
   | RequestImageUrlEditMessage
   | OpenLinkMessage
   | OpenImageInTabMessage
-  | RequestLinkEditMessage
   | RequestImageRenameMessage
   | FileSearchMessage
   | WikiLinkSearchMessage
@@ -189,12 +182,6 @@ export interface ImageUrlEditResponseMessage {
   newUrl: string | null;
 }
 
-export interface LinkEditResponseMessage {
-  type: "linkEditResponse";
-  editId: string;
-  newUrl: string | null;
-}
-
 export interface ImageRenameResponseMessage {
   type: "imageRenameResponse";
   renameId: string;
@@ -232,7 +219,6 @@ export type HostToWebviewMessage =
   | ImageSavedMessage
   | ClipboardImageMessage
   | ImageUrlEditResponseMessage
-  | LinkEditResponseMessage
   | ImageRenameResponseMessage
   | FileSearchResultsMessage
   | WikiLinkSearchResultsMessage

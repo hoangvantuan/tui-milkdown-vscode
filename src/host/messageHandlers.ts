@@ -195,24 +195,6 @@ const handlers: HandlerTable = {
     openLocalFileInEditor(imgPath, ctx.document);
   },
 
-  requestLinkEdit: (msg, ctx) => {
-    const linkMsg = msg;
-    if (!linkMsg.editId) return;
-    vscode.window
-      .showInputBox({
-        prompt: "Enter URL",
-        value: linkMsg.currentUrl || "",
-        placeHolder: "https://example.com",
-      })
-      .then((newUrl) => {
-        ctx.webview.postMessage({
-          type: "linkEditResponse",
-          editId: linkMsg.editId,
-          newUrl: newUrl ?? null,
-        });
-      });
-  },
-
   requestImageRename: (msg, ctx) => {
     handleRequestImageRename(
       msg,
