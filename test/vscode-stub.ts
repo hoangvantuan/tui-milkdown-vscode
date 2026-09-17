@@ -38,6 +38,12 @@ const warningCalls: WarningCall[] = [];
 let warningChoiceHandler: WarningChoiceHandler = undefined;
 const deletedUris: Uri[] = [];
 
+export interface ExecutedCommand {
+  command: string;
+  args: any[];
+}
+const executedCommands: ExecutedCommand[] = [];
+
 export function setWorkspaceRoot(dir: string | null): void {
   currentWorkspaceRoot = dir ? path.resolve(dir) : null;
 }
@@ -54,11 +60,16 @@ export function getDeletedUris(): readonly Uri[] {
   return [...deletedUris];
 }
 
+export function getExecutedCommands(): readonly ExecutedCommand[] {
+  return [...executedCommands];
+}
+
 export function resetStub(): void {
   currentWorkspaceRoot = null;
   warningCalls.length = 0;
   warningChoiceHandler = undefined;
   deletedUris.length = 0;
+  executedCommands.length = 0;
 }
 
 async function walkDir(dir: string): Promise<string[]> {
@@ -86,6 +97,13 @@ export const window = {
     if (typeof warningChoiceHandler === "string") {
       return warningChoiceHandler;
     }
+    return items.length > 0 ? items[0] : undefined;
+  },
+
+  async showQuickPick<T extends { label: string }>(
+    items: T[],
+    _options?: any,
+  ): Promise<T | undefined> {
     return items.length > 0 ? items[0] : undefined;
   },
 };
@@ -140,18 +158,96 @@ export const workspace = {
       return [];
     }
     const allFiles = await walkDir(currentWorkspaceRoot);
-    // When include is "**/*.md", filter for .md files
-    if (include === "**/*.md" || include.endsWith(".md")) {
+    if (include === "**/*.md") {
       return allFiles
         .filter((file) => file.endsWith(".md"))
         .map((file) => Uri.file(file));
     }
-    return allFiles.map((file) => Uri.file(file));
+    if (include.startsWith("**/")) {
+      const suffix = include.slice(3);
+      return allFiles
+        .filter((file) => {
+          const rel = path.relative(currentWorkspaceRoot!, file).split(path.sep).join("/");
+          return rel === suffix || rel.endsWith("/" + suffix);
+        })
+        .map((file) => Uri.file(file));
+    }
+    const target = include;
+    return allFiles
+      .filter((file) => {
+        const rel = path.relative(currentWorkspaceRoot!, file).split(path.sep).join("/");
+        return rel === target;
+      })
+      .map((file) => Uri.file(file));
   },
+
+  get workspaceFolders() {
+    if (!currentWorkspaceRoot) return undefined;
+    return [{ uri: Uri.file(currentWorkspaceRoot), name: "root", index: 0 }];
+  },
+
+  getConfiguration(section?: string) {
+    const settingsPath = currentWorkspaceRoot
+      ? path.join(currentWorkspaceRoot, ".vscode", "settings.json")
+      : null;
+
+    function readSettings(): Record<string, any> {
+      if (settingsPath && fs.existsSync(settingsPath)) {
+        try {
+          return JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+        } catch {
+          return {};
+        }
+      }
+      return {};
+    }
+
+    return {
+      get<T>(key: string, defaultValue?: T): T {
+        const fullKey = section ? `${section}.${key}` : key;
+        const settings = readSettings();
+        return (settings[fullKey] !== undefined ? settings[fullKey] : defaultValue) as T;
+      },
+      inspect<T>(key: string) {
+        const fullKey = section ? `${section}.${key}` : key;
+        const settings = readSettings();
+        return {
+          key: fullKey,
+          defaultValue: undefined,
+          globalValue: undefined,
+          workspaceValue: settings[fullKey],
+          workspaceFolderValue: undefined,
+        };
+      },
+      async update(key: string, value: any, _target?: number): Promise<void> {
+        if (!currentWorkspaceRoot || !settingsPath) return;
+        const fullKey = section ? `${section}.${key}` : key;
+        const settings = readSettings();
+        if (value === undefined) {
+          delete settings[fullKey];
+        } else {
+          settings[fullKey] = value;
+        }
+        await fs.promises.mkdir(path.dirname(settingsPath), { recursive: true });
+        await fs.promises.writeFile(settingsPath, JSON.stringify(settings, null, 2), "utf8");
+      },
+    };
+  },
+};
+
+export const ConfigurationTarget = {
+  Global: 1,
+  Workspace: 2,
+  WorkspaceFolder: 3,
 };
 
 export const EndOfLine = { LF: 1, CRLF: 2 };
 export class Range {}
 export class Position {}
 export class WorkspaceEdit {}
-export const commands = {};
+export const commands = {
+  async executeCommand(command: string, ...args: any[]): Promise<any> {
+    executedCommands.push({ command, args });
+    return undefined;
+  },
+};

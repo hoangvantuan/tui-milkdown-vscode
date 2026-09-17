@@ -1,11 +1,13 @@
 /**
  * Extension host entry point. Registers the `.md` custom editor
- * (MarkdownEditorProvider) and the two title-bar commands that switch a tab
- * between the rich editor and VS Code's text editor (viewSource /
- * viewRichText). Everything else lives in markdownEditorProvider.ts.
+ * (MarkdownEditorProvider) and workspace/title-bar commands:
+ * - viewSource / viewRichText: switch a tab between rich and raw editors.
+ * - useAsDefaultEditor: configure default editor for markdown in this workspace.
+ * Everything else lives in markdownEditorProvider.ts and host modules.
  */
 import * as vscode from 'vscode';
 import { MarkdownEditorProvider } from './markdownEditorProvider';
+import { useAsDefaultEditor } from './host/defaultEditor';
 
 export function activate(context: vscode.ExtensionContext) {
   const provider = new MarkdownEditorProvider(context);
@@ -31,6 +33,9 @@ export function activate(context: vscode.ExtensionContext) {
       if (uri) {
         vscode.commands.executeCommand("vscode.openWith", uri, "tuiMarkdown.editor");
       }
+    }),
+    vscode.commands.registerCommand("tuiMarkdown.useAsDefaultEditor", () => {
+      return useAsDefaultEditor();
     })
   );
 }
