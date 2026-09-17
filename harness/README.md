@@ -2,6 +2,7 @@
 
 A golden-baseline harness that verifies markdown fidelity and the non-editor
 seams (frontmatter parsing, file search ranking, table column widths, list keymap,
+slash insertion, find/replace, link editing, table alignment, image width,
 placeholder rendering, @-mention insertion) across dependency changes. It exists so a maintainer can run one command before and after any
 dependency bump and attribute a fidelity regression to one specific version
 change instead of a vague suspicion. Introduced for the upgrade sweep in
@@ -89,6 +90,18 @@ Besides the corpus, `npm run roundtrip` runs one golden per seam:
 | `filemention-seam.ts` | `seams/file-mention.txt` | `insertFileMention()`: the @-mention insert stays inline, and escaping happens on save |
 | `crlf-seam.ts` | `seams/crlf.txt` | `normalizeLineEndings()`: the document's own line endings survive a save |
 | `list-keys-seam.ts` | `seams/list-keys.txt` | `ListKeymapExtension`: Tab/Shift-Tab on list items, sub-list type, typed-marker absorption, table-cell fallthrough. Five of its eight cases change if the extension is removed; the other three are regression guards over upstream behaviour |
+| `slash-seam.ts` | `seams/slash.txt` | `executeSlashCommand()`: the node and markdown each of the 17 menu entries produces on an empty document. All 17 lines change if the insert command is broken (#114) |
+| `replace-seam.ts` | `seams/replace.txt` | `replaceCurrent()` / `replaceAllMatches()` / `setCaseSensitivity()`: document text after each. Breaking replace moves 16 lines; breaking only the case toggle still moves one, so the toggle is pinned in its own right (#115) |
+| `link-edit-seam.ts` | `seams/link-edit.txt` | `applyLinkEdit()`: the markdown the inline link editor writes back, including a path with spaces wrapped in `<...>`, an empty href unlinking, and a linked image. 14 of 51 lines on a broken `applyLinkEdit` (#117) |
+| `table-align-seam.ts` | `seams/table-align.txt` | `setTableColumnAlignment()`: the separator row produced for left / center / right / none, on a header table and on a body-row-aligned table. 16 of 63 lines when the function is neutered (#118) |
+| `img-width-seam.ts` | `seams/img-width.txt` | How an `<img>` with `width`/`height` parses and serializes now that `MarkdownImage` owns those attributes, and how `align` still does not. Includes the #124 case, a link wrapped around such an image, which was silently dropped before #120 (#120, #124) |
+
+These five were committed as SKELETONS, with their registration lines in
+`roundtrip.ts`, before the wave-7 worktrees were cut. That is the pattern to
+repeat: a parallel wave that needs several seams should have them registered up
+front, one owner each, so that no branch has to edit the shared seam list. The
+same reason is why `esbuild.harness.config.js` reads `test/*.test.ts` from disk
+rather than listing entry points.
 
 The file-mention seam is the one seam whose lines are verdicts rather than
 measurements: every `yes` in its golden is an assertion, so a `NO` appearing
