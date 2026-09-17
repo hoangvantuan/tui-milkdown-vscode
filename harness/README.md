@@ -540,13 +540,46 @@ What it does:
    writes `phase-driven`, the host asserts — and step 4 sits between the probe
    loop and the exit race that SIGKILLs the host.
 
-   Measured teeth: stubbing out `case "edit"` in the provider turns the
-   typed-character check red, and stubbing out `case "viewSource"` turns the
-   view-source check red. The no-bounce check is weaker and should be read as
+   Measured teeth for step 4: stubbing out `case "edit"` in the provider turns
+   the typed-character check red, and stubbing out `case "viewSource"` turns
+   the view-source check red. The no-bounce check is weaker and should be read as
    such: it is an invariant over four layered guards (`!pendingEdit` in
    `onDidChangeTextDocument`, `pendingEdit || isDisposed` in `updateWebview`,
    the `queueMicrotask` reset in `applyEdit`, and `lastSentState` in the
    webview), and removing any ONE of them does not turn it red.
+
+5. Drives each 2.17 editing surface and reads back a fact about the result:
+   the slash menu after typing `/`, find-and-replace replacing a word, the
+   bubble menu over a selection, an image resized by its drag handle, the
+   lightbox opening and closing on Escape, the copy-anchor button appearing on
+   heading hover, and the reading time next to the word count. These exist
+   because that release closed ten issues against fourteen hand-test criteria.
+   Teeth were measured in two batches, exactly 3 and exactly 4 red against the
+   corresponding code removed.
+
+   Three of these probes reported working code as broken before they were
+   right, and the corrections are worth more than the probes: an image NodeView
+   writes `style.width`, not a `width` attribute; a hover overlay needs a
+   `mousemove` whose coordinates fall inside the target's rect, not a
+   `mouseover` on the element; and `defaultPrevented` on a `contextmenu` is not
+   evidence, because the VS Code webview cancels that event itself. A scripted
+   selection range does not reach ProseMirror either, so anything that reads
+   the editor selection has to be driven through the editor.
+
+   Two criteria are named rather than automated: Git Graph's diff view (#48: a different path in VS Code, and the
+   extension is not in the floor workspace) and how the menus look.
+
+6. Asserts that `workbench.editorAssociations` decides which editor opens
+   `.md`, which is what #122 shipped a command for and what its unit tests
+   could not show: they prove the command writes the right JSON, not that VS
+   Code honours it. The sample is opened the ordinary way, with no viewType,
+   under three states of the setting. Teeth: `contributes.customEditors` at
+   `priority: "option"` turns it red on exactly the first state. This runs last
+   because it changes workspace settings and reopens the document.
+
+   Backticks are banned inside the `Runtime.evaluate` template literals in
+   `run.mjs`; that has cost two syntax errors. Use string concatenation.
+
 
 ```bash
 npm run verify:vscode-floor                  # the floor from engines.vscode

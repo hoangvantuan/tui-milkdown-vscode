@@ -567,34 +567,76 @@ vào repo mà không ai phân loại.
 
 Mục này gắn với một thời điểm, không phải quy trình. Kiểm lại trước khi tin.
 
-- **Mười bốn tiêu chí kiểm TAY chưa ai làm, và chúng dồn lại qua bốn sóng.** Sóng 7
-  thêm sáu: bàn phím trên menu bảng (`#118`), bàn phím và focus trên lightbox (`#119`),
-  kéo tay cầm resize ảnh (`#120`), popup slash command bằng chuột và phím (`#114`),
-  bubble menu ở mức zoom khác 100% (`#116`), và cuộn tay rồi đóng mở lại tab (`#121`).
-  Cộng với sáu của `#88` (dán ảnh, đổi tên ảnh, xoá ảnh, export DOCX, export PDF,
-  `@` và `[[`), bốn của sóng 4 (`#105`, `#104`, `#86`, `#108`) và một của `#102`.
-  Nên làm MỘT lượt bằng tay trước khi phát hành 2.17, và đó là việc lớn nhất còn lại.
-- **Một ca trong danh sách đó không worker nào từng thấy: kéo tay cầm resize trên một
-  ảnh INLINE.** W3 dựng NodeView resize khi `MarkdownImage` còn là `inline: false`;
-  W2 lật nó sang `inline: true`; hai bên chỉ gặp nhau ở bước merge cuối. Và
-  `harness/vscode-floor/sample.md` không đếm ảnh, nên chưa có check tự động nào dựng
-  một tấm ảnh trong webview sống kể từ lúc lật, chứ chưa nói tới kéo nó. Đây là ca
-  đáng kiểm tay trước nhất trong mười bốn ca.
-- **Hai tính năng nhỏ điều phối viên tự làm cũng chưa ai kiểm tay**: nút copy anchor
-  trên heading (nó ghi clipboard từ bên trong contenteditable và bắt `mousedown` chứ
-  không phải `click`, nên đường đi qua ProseMirror là thứ chỉ cửa sổ thật trả lời
-  được), và dòng reading time cạnh word count.
-- **`#122` chưa được chứng minh là chữa được `#48`.** `workbench.editorAssociations`
-  áp cho việc MỞ file; diff editor của Git Graph là một đường khác trong VS Code.
-  Chưa ai cài Git Graph, bấm vào một commit và xem kết quả. Có thể còn một việc nữa.
+Bản đầu của mục này liệt kê sáu món nợ. Điều phối viên đã xử một lượt ngay sau đó,
+và lượt xử ấy tìm ra một lỗi nặng hơn tất cả sáu món cộng lại, nên phần dưới ghi cả
+cái đã trả lẫn cái vừa lộ ra.
+
+### Đã trả
+
+- **Bảy tiêu chí kiểm TAY đã thành check floor tự động.** `driveSurfaces`
+  trong `harness/vscode-floor/run.mjs` nay gõ `/` và đọc menu slash, mở find-and-replace
+  và thay một từ, bôi đen rồi đọc bubble menu, kéo tay cầm resize ảnh rồi đọc lại
+  chiều rộng đã ghi, mở lightbox và đóng bằng Escape, rê chuột lên heading để lấy nút
+  copy anchor, và đọc dòng reading time. Răng đo theo hai mẻ, đúng 3 và đúng 4 dòng đỏ
+  khi gỡ đúng phần code tương ứng. Floor đi từ 20 lên 29 check. (Con số "mười bốn" của
+  bản trước là cộng nhẩm sai: liệt kê ra thì nó là 17. Danh sách dưới đây đếm lại.)
+- **Ba trong bảy probe đó TỐ OAN code đang chạy đúng trước khi chúng đúng.** Ghi lại vì
+  phần sửa đáng giá hơn phần probe: NodeView của ảnh ghi `style.width` chứ không ghi
+  thuộc tính `width`; overlay hiện khi hover cần một `mousemove` mang toạ độ NẰM TRONG
+  rect của đích, không phải `mouseover` lên phần tử; và `defaultPrevented` trên một
+  `contextmenu` không chứng minh gì cả, vì webview của VS Code tự huỷ sự kiện đó. Một
+  range selection đặt bằng script cũng không tới được ProseMirror, nên thứ gì đọc
+  selection của editor thì phải lái QUA editor.
+- **`#122` nay đã chứng minh được một nửa.** Check floor mở sample theo đường thường,
+  không viewType, dưới ba trạng thái của `workbench.editorAssociations` và đọc lại
+  editor nào thắng. Răng: đặt `contributes.customEditors` về `priority: "option"` làm
+  nó đỏ đúng ở trạng thái đầu.
+- **Ca resize ảnh inline mà không worker nào từng thấy: đã có check.** Nó nằm trong mẻ
+  bảy probe trên, và chính việc thêm ảnh vào `sample.md` để dựng probe ấy là thứ làm
+  lộ lỗi mount dưới đây.
+
+### Vừa lộ ra khi trả nợ
+
+- **Lỗi nặng nhất của sóng 7 không phải do worker nào gây ra, và không có lưới nào bắt
+  được nó ngoài floor.** `MarkdownImage` lật sang `inline: true` (`#117` cần thế để đặt
+  link mark). Nhưng `parseMarkdown` của `@tiptap/extension-paragraph` trả về CHÍNH cái
+  ảnh cho một paragraph chỉ chứa ảnh, bỏ luôn paragraph: đúng với ảnh block, sai với ảnh
+  inline, và dựng ra `doc > image` mà schema không cho phép. Tiptap ném
+  `Called contentMatchAt on a node with invalid content` ngay lúc construct: editor
+  không mount, UI không báo gì, panel trắng cho BẤT KỲ file nào có một `![](...)` đứng
+  riêng dòng. Đây là lập luận mạnh nhất cho việc giữ check floor: với lỗi đang có,
+  `npm run roundtrip` báo **52 passed 0 failed**, vì nó đo một chuỗi qua một editor nó
+  tự dựng sai y hệt; `verify:vscode-floor` báo **6 fail**.
+- **Hai bản sửa GIẢ đã bị đo và loại trên đường tới bản thật**, cả hai đều xanh khi
+  test răng nếu không cẩn thận. Một, đọc cờ từ `this.editor`: `this.editor` là
+  `undefined` trong lần parse ĐẦU, nên `?? true` mặc định sai và luật không bao giờ
+  chạy ở chỗ cần. Hai, `return null` ở nhánh fallback: nó rơi xuống
+  `parseFallbackToken` của chính manager, cái này lại bọc paragraph ĐÚNG, nên override
+  trông như có tác dụng trong khi nó không làm gì. Bản thật bắt và gọi lại
+  `Paragraph.config.parseMarkdown` đã chụp từ trước, và cờ là hằng số module
+  `IMAGE_IS_INLINE`.
+- **`#125` mới: mỗi ảnh render kèm một `<img>` rỗng thứ hai.** Tìm ra từ dòng detail của
+  một check floor (`images=4` khi sample chỉ có 2 ảnh), không phải từ báo cáo người dùng.
+  Chưa sửa.
+
+### Còn treo
+
+- **Mười bốn tiêu chí kiểm tay còn lại.** Của sóng 7: bàn phím trên menu bảng (`#118`),
+  bubble menu ở mức zoom khác 100% (`#116`), cuộn tay rồi đóng mở lại tab (`#121`).
+  Của `#88`: dán ảnh, đổi tên ảnh, xoá ảnh, export DOCX, export PDF, `@` và `[[`. Của
+  sóng 4: `#105`, `#104`, `#86`, `#108`. Và một của `#102`. Cộng thêm hai thứ floor cố
+  ý KHÔNG nhận: diff view của Git Graph (`#48`, một đường khác trong VS Code, và floor
+  workspace không cài extension đó) và việc các menu TRÔNG như thế nào.
+- **Menu chuột phải trên bảng là ca floor chịu thua rõ nhất.** Ba lần thử: range
+  selection đặt bằng script không sync vào ProseMirror; click qua CDP dùng toạ độ
+  trang chứ không phải toạ độ iframe; và `defaultPrevented` không phải bằng chứng vì
+  webview của VS Code tự huỷ `contextmenu`. Ghi lại để sóng sau không đo lại ba lần.
+- **`#48` vẫn mở về bản chất.** `#122` chữa việc MỞ file, và điều đó nay có bằng chứng.
+  Diff editor của Git Graph thì chưa ai cài, bấm vào một commit và xem kết quả.
 - **`#124` mới đóng một nửa.** Ca `<img>` đã xanh. Hai ca thẻ đôi `<kbd>` và `<sub>`
   vẫn đưa link CHUI VÀO TRONG thẻ thay vì bọc ngoài. Lossless nên không gấp, nhưng
   vẫn sai. Bảng đo nằm trong thân `#124`, đừng đo lại.
-- **Điều phối viên chưa thêm check floor nào cho sóng 7.** Worker bị cấm thêm check
-  vào `harness/vscode-floor/extension-tests.ts` để bốn nhánh không đụng nhau, và
-  điều phối viên nhận phần đó sau merge nhưng chưa làm. Floor vẫn 20/20, tức là nó
-  chưa chạm slash command, bubble menu, link popover, lightbox focus hay lệnh
-  default-editor. Đây là món nợ lưới rõ ràng nhất của sóng này.
+- **`#125` chưa sửa.**
 - `#96` còn hai tiêu chí hành vi editor chưa kiểm được bằng harness.
 - `src/webview/main.ts` nay là file lớn nhất của repo. Sóng sau thêm tính năng
   webview thì nên tách theo nhóm, y như `#88` đã làm với provider.
@@ -605,14 +647,19 @@ Mục này gắn với một thời điểm, không phải quy trình. Kiểm l�
 - Bốn worktree của sóng 7 (`w7-slash`, `w7-selection`, `w7-interaction`, `w7-host`)
   đã merge hết vào `develop`. Xoá được bằng `orca worktree rm`, cùng với bốn mục
   tương ứng trong `trustedWorkspaces` của `~/.gemini/antigravity-cli/settings.json`.
+- `package.json` vẫn ở `2.16.0` trong khi CHANGELOG đã có mục `2.17.0`.
 - `develop` CHƯA push.
 
 ## Sóng 8 nên làm gì
 
-Không phải code. Việc lớn nhất là **một lượt kiểm tay mười bốn tiêu chí ở trên**, và
-nó cần một con người ngồi trước cửa sổ VS Code chứ không cần một sóng worker. Sau đó
-mới tới hai món nợ lưới: thêm check floor cho các bề mặt của 2.17, và hai ca thẻ đôi
-của `#124`.
+Không phải code trước. Việc lớn nhất là **một lượt kiểm tay mười bốn tiêu chí còn lại**,
+và nó cần một con người ngồi trước cửa sổ VS Code chứ không cần một sóng worker. Sau
+đó tới `#125`, rồi hai ca thẻ đôi của `#124`.
+
+Và một bài học của sóng này đáng đem sang sóng sau: **món nợ lưới là món trả trước, không
+phải trả sau.** Sáu món nợ ghi ở trên trả hết trong một lượt, nhưng cái lượt ấy tìm ra một
+lỗi làm editor không mount cho mọi file có ảnh, tức là nếu 2.17 phát hành đúng lúc kết sóng
+thì nó đã phát hành kèm lỗi đó. Lưới không bắt được lỗi mình chưa dựng.
 
 `#85` (Release 3.0: Beyond GFM) là việc tiếp theo có thể phóng worker.
 
@@ -627,10 +674,12 @@ lint, build        xanh
 npm test           54 passed, 0 failed          <- 35 trước sóng
 roundtrip          40 fixtures + 12 seams: 52 passed, 0 failed   <- 39 + 7 = 46 trước sóng
 vòng hai           52 passed, 0 failed
-verify:vscode-floor 20/20                       <- không đổi, và đó là món nợ, xem trên
-issue mở           1: #85
+verify:vscode-floor 29/29                       <- 20 lúc kết sóng, 9 check trả nợ thêm sau
+issue mở           3: #85, #124, #125
 ```
 
 Sóng 7 đóng `#114` tới `#124` cộng `#84`, bốn worker `agy`, bốn worktree, một xung đột
-merge duy nhất và nó là khối import. Bug tìm thêm được trong lúc đo: một, `#124`, mất
-dữ liệu thật, không ai báo.
+merge duy nhất và nó là khối import. Bug tìm thêm được trong lúc đo: ba, và không cái nào
+do người dùng báo. `#124` mất dữ liệu thật, tìm ra lúc đo bán kính ảnh hưởng của `#120`.
+Lỗi mount, nặng nhất, tìm ra lúc trả nợ lưới. `#125` tìm ra từ một dòng detail của check
+vừa thêm. Cả ba đều tới từ việc ĐO, không từ việc đọc báo cáo worker.
