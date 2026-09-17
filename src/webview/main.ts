@@ -22,7 +22,12 @@ import type {
   HostToWebviewMessage,
 } from "../shared/messages";
 import StarterKit from "@tiptap/starter-kit";
-import { MarkdownLink, MarkdownImage } from "./markdown-destination";
+import {
+  MarkdownLink,
+  MarkdownImage,
+  MarkdownParagraph,
+  IMAGE_IS_INLINE,
+} from "./markdown-destination";
 import { Highlight } from "@tiptap/extension-highlight";
 import { Underline } from "@tiptap/extension-underline";
 import { Table, TableRow, TableCell, TableHeader } from "@tiptap/extension-table";
@@ -1223,16 +1228,9 @@ function initEditor(initialContent: string = ""): Editor | null {
             return result;
           },
         }),
-        Paragraph.extend({
-          renderMarkdown(node: any, h: any) {
-            if (!node) return '';
-            const content = Array.isArray(node.content) ? node.content : [];
-            if (content.length === 0) return '';
-            return h.renderChildren(content);
-          },
-        }),
+        MarkdownParagraph,
         MarkdownImage.configure({
-          inline: true,
+          inline: IMAGE_IS_INLINE,
           allowBase64: true,
         }),
         Highlight,

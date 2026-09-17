@@ -371,7 +371,18 @@ async function probeWebview(session) {
     visibility: document.visibilityState,
     metadataPanel: !!document.querySelector('#metadata-panel'),
     toolbar: !!document.querySelector('.editor-toolbar, #toolbar'),
-    bodyClass: document.body.className.slice(0, 80)
+    bodyClass: document.body.className.slice(0, 80),
+    // --- 2.17 surfaces. Structure only; the drive phase below operates them.
+    // An image with a width is an Image NODE since #120, not a raw-HTML badge,
+    // so an img[width] selector finding it is the whole claim of that issue.
+    // A raw-html-block counting it instead would be the regression.
+    images: document.querySelectorAll('.tiptap img').length,
+    sizedImages: document.querySelectorAll('.tiptap img[width]').length,
+    rawHtmlBadges: document.querySelectorAll('.tiptap .raw-html-block').length,
+    headingAnchors: document.querySelectorAll('.tiptap .heading-anchor-btn').length,
+    wordCountText: document.getElementById('word-count')?.textContent ?? null,
+    searchReplaceToggle: !!document.getElementById('search-toggle-replace'),
+    lightboxOverlay: !!document.getElementById('lightbox-overlay')
   })`;
   for (const context of session.contexts) {
     try {
@@ -502,6 +513,390 @@ async function driveTransientKeystroke(base, session, contextId) {
 }
 
 /**
+ * Operate each 2.17 editing surface in the live webview and report one result
+ * per surface (#84).
+ *
+ * These exist because the wave that built those surfaces could add none of
+ * them: four branches editing this file at once is the collision the wave was
+ * organised to avoid, so the coordinator took the checks. Until they landed,
+ * nothing automated touched the slash menu, the bubble menu, the link popover,
+ * the lightbox's focus handling or the table menu's keyboard path, and the
+ * acceptance for all of them read "verify by hand", which nobody had done.
+ *
+ * Every probe here drives the REAL element, through a real event, and asserts
+ * on what the page then looks like. None of them reaches into module state:
+ * the webview deliberately does not publish its internals on `window`, and
+ * adding a hook to the shipped bundle to make testing easier would put test
+ * scaffolding in production.
+ *
+ * The document is a per-run temp copy, so these are free to modify it. They
+ * run AFTER the read-only phase has recorded its checks, for the same reason
+ * the typing probe does.
+ */
+async function driveSurfaces(evaluate, session) {
+  const results = [];
+  const add = (name, ok, detail) => results.push({ name, ok, detail });
+
+  const sleepShort = () => sleep(400);
+
+  // --- Table context menu, keyboard path (#118) -----------------------------
+  // Runs FIRST among the surfaces, because it is the only one that needs the
+  // editor to still hold real focus: the plugin bails unless the ProseMirror
+  // SELECTION is in a table, and ProseMirror only syncs its selection from the
+  // DOM while its view has focus. Every later probe moves focus somewhere else.
+  //
+  // Three earlier versions of this probe failed for three different reasons and
+  // all three reported a working menu as broken. Scripted range without a
+  // selectionchange: never synced. A DevTools click at the cell's coordinates:
+  // those are the webview IFRAME's viewport coordinates, and Input events are
+  // dispatched in the top-level page's, so the click landed elsewhere. And
+  // reading `defaultPrevented` as proof the plugin ran: the VS Code webview
+  // cancels contextmenu itself, so that bit is true either way. Hence the
+  // explicit `selectionInCell` precondition below; if it is false the detail
+  // says so instead of blaming the menu.
+  try {
+    const placed = await evaluate(`(() => {
+      const root = document.querySelector('.tiptap');
+      const cell = root?.querySelector('table td, table th');
+      if (!cell) return 'no table cell';
+      root.focus();
+      const range = document.createRange();
+      range.selectNodeContents(cell);
+      range.collapse(false);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      document.dispatchEvent(new Event('selectionchange'));
+      return 'ok';
+    })()`);
+    if (placed !== "ok") throw new Error(placed);
+    await sleep(600);
+
+    const fired = await evaluate(`(() => {
+      const root = document.querySelector('.tiptap');
+      const cell = root?.querySelector('table td, table th');
+      const sel = window.getSelection();
+      const anchor = sel?.anchorNode;
+      const anchorEl = anchor?.nodeType === 1 ? anchor : anchor?.parentElement;
+      const selectionInCell = !!anchorEl?.closest?.('td, th');
+      const rect = cell.getBoundingClientRect();
+      cell.dispatchEvent(new MouseEvent('contextmenu', {
+        bubbles: true, cancelable: true,
+        clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2,
+      }));
+      return {
+        selectionInCell,
+        focusInEditor: !!document.activeElement?.closest?.('.tiptap'),
+        // Read in the same turn: showContextMenu appends synchronously.
+        openedImmediately: !!document.querySelector('.table-context-menu'),
+      };
+    })()`);
+    await sleep(300);
+
+    const menu = await evaluate(`(() => {
+      const el = document.querySelector('.table-context-menu');
+      if (!el) return { open: false };
+      const items = el.querySelectorAll('button.table-ctx-item');
+      return {
+        open: true,
+        items: items.length,
+        alignEntries: Array.from(items).filter((b) => /align/i.test(b.textContent ?? '')).length,
+        focusInside: !!(document.activeElement && el.contains(document.activeElement)),
+        focusLabel: document.activeElement?.textContent?.trim()?.slice(0, 24) ?? null,
+      };
+    })()`);
+    for (const type of ["keyDown", "keyUp"]) {
+      await session.send("Input.dispatchKeyEvent", {
+        type, key: "ArrowDown", code: "ArrowDown", windowsVirtualKeyCode: 40, nativeVirtualKeyCode: 40,
+      });
+    }
+    await sleep(300);
+    const moved = await evaluate(
+      `document.activeElement?.textContent?.trim()?.slice(0, 24) ?? null`,
+    );
+    for (const type of ["keyDown", "keyUp"]) {
+      await session.send("Input.dispatchKeyEvent", {
+        type, key: "Escape", code: "Escape", windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27,
+      });
+    }
+    await sleep(400);
+    const closed = await evaluate(`!document.querySelector('.table-context-menu')`);
+    add(
+      "table context menu is operable from the keyboard and offers alignment",
+      fired.selectionInCell && menu.open && menu.alignEntries >= 3 && menu.focusInside &&
+        moved !== menu.focusLabel && closed,
+      `selectionInCell=${fired.selectionInCell} focusInEditor=${fired.focusInEditor} ` +
+        `openedImmediately=${fired.openedImmediately} open=${menu.open} items=${menu.items ?? 0} ` +
+        `alignEntries=${menu.alignEntries ?? 0} focusInside=${menu.focusInside} ` +
+        `focus=${JSON.stringify(menu.focusLabel ?? null)} afterArrowDown=${JSON.stringify(moved)} ` +
+        `closedOnEscape=${closed}`,
+    );
+  } catch (err) {
+    add("table context menu is operable from the keyboard and offers alignment", false, `threw: ${err.message}`);
+  }
+
+  // --- Slash command (#114) -------------------------------------------------
+  // Typed into a NEW empty paragraph at the end, because the plugin only fires
+  // at the start of an empty one. `Input.insertText` rather than a DOM write:
+  // the suggestion plugin watches ProseMirror transactions, not the DOM.
+  try {
+    const placed = await evaluate(`(() => {
+      const root = document.querySelector('.tiptap');
+      if (!root) return 'no .tiptap';
+      const last = root.lastElementChild;
+      if (!last) return 'empty doc';
+      root.focus();
+      const range = document.createRange();
+      range.selectNodeContents(last);
+      range.collapse(false);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      return 'ok';
+    })()`);
+    if (placed !== "ok") throw new Error(`caret: ${placed}`);
+    for (const type of ["keyDown", "keyUp"]) {
+      await session.send("Input.dispatchKeyEvent", {
+        type, key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13,
+      });
+    }
+    await sleepShort();
+    await session.send("Input.insertText", { text: "/" });
+    await sleepShort();
+    const menu = await evaluate(`(() => {
+      const popup = document.querySelector('.slash-command-popup');
+      if (!popup) return { open: false, items: 0, inContainer: false };
+      return {
+        open: true,
+        items: popup.querySelectorAll('.slash-command-item').length,
+        // AGENTS.md: popups attach to #editor-container, never .tiptap, because
+        // CSS zoom on .tiptap is transparent to the JS coordinate APIs.
+        inContainer: !!popup.closest('#editor-container') && !popup.closest('.tiptap'),
+      };
+    })()`);
+    add(
+      "slash command opens a filtered block menu",
+      menu.open && menu.items >= 10 && menu.inContainer,
+      `open=${menu.open} items=${menu.items} attachedToEditorContainer=${menu.inContainer}`,
+    );
+    for (const type of ["keyDown", "keyUp"]) {
+      await session.send("Input.dispatchKeyEvent", {
+        type, key: "Escape", code: "Escape", windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27,
+      });
+    }
+    await sleepShort();
+  } catch (err) {
+    add("slash command opens a filtered block menu", false, `threw: ${err.message}`);
+  }
+
+  // --- Bubble menu (#116) ---------------------------------------------------
+  try {
+    const selected = await evaluate(`(() => {
+      const root = document.querySelector('.tiptap');
+      const strong = root?.querySelector('strong');
+      if (!strong) return 'no bold text to select';
+      root.focus();
+      const range = document.createRange();
+      range.selectNodeContents(strong);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      document.dispatchEvent(new Event('selectionchange'));
+      return 'ok';
+    })()`);
+    if (selected !== "ok") throw new Error(selected);
+    await sleep(900);
+    const bubble = await evaluate(`(() => {
+      const menu = document.querySelector('.bubble-menu');
+      if (!menu) return { present: false };
+      const style = getComputedStyle(menu);
+      return {
+        present: true,
+        visible: style.display !== 'none' && style.visibility !== 'hidden',
+        buttons: menu.querySelectorAll('.bubble-menu-btn').length,
+        commands: Array.from(menu.querySelectorAll('.bubble-menu-btn')).map((b) => b.dataset.command).join(','),
+        inContainer: !!menu.closest('#editor-container') && !menu.closest('.tiptap'),
+      };
+    })()`);
+    add(
+      "bubble menu appears on a text selection",
+      bubble.present && bubble.visible && bubble.buttons === 5 && bubble.inContainer,
+      `present=${bubble.present} visible=${bubble.visible} buttons=${bubble.buttons} [${bubble.commands ?? ""}] attachedToEditorContainer=${bubble.inContainer}`,
+    );
+  } catch (err) {
+    add("bubble menu appears on a text selection", false, `threw: ${err.message}`);
+  }
+
+  // --- Inline link popover (#117) ------------------------------------------
+  // Opened from the TOOLBAR button, not the bubble menu one, so this probe
+  // does not fail merely because the bubble menu did.
+  try {
+    const opened = await evaluate(`(() => {
+      const btn = document.querySelector('.toolbar-btn[data-command="link"]');
+      if (!btn) return 'no toolbar link button';
+      btn.click();
+      return 'ok';
+    })()`);
+    if (opened !== "ok") throw new Error(opened);
+    await sleep(600);
+    const popover = await evaluate(`(() => {
+      const el = document.getElementById('link-popover');
+      if (!el) return { present: false };
+      return {
+        present: true,
+        open: !el.classList.contains('hidden'),
+        hasInput: !!document.getElementById('link-url-input'),
+        focusInside: !!(document.activeElement && el.contains(document.activeElement)),
+      };
+    })()`);
+    add(
+      "link editor opens as a popover at the caret",
+      popover.present && popover.open && popover.hasInput,
+      `present=${popover.present} open=${popover.open} input=${popover.hasInput} focusInside=${popover.focusInside}`,
+    );
+    for (const type of ["keyDown", "keyUp"]) {
+      await session.send("Input.dispatchKeyEvent", {
+        type, key: "Escape", code: "Escape", windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27,
+      });
+    }
+    await sleepShort();
+  } catch (err) {
+    add("link editor opens as a popover at the caret", false, `threw: ${err.message}`);
+  }
+
+  // --- Image is an Image node, not a raw-HTML badge (#120) ------------------
+  // The one combination no single worker ever saw: the resize NodeView was
+  // built while MarkdownImage was `inline: false`, and the link editor flipped
+  // it to `inline: true` on another branch. They met only at the merge.
+  try {
+    // The NodeView writes the width as a CSS width on the element, not as an
+    // `width=` attribute, so that is what this reads. The first version of this
+    // probe looked for `img[width]`, found nothing and reported a passing
+    // feature as broken.
+    const img = await evaluate(`(() => {
+      const root = document.querySelector('.tiptap');
+      const imgs = Array.from(root?.querySelectorAll('img') ?? []);
+      const sized = imgs.find((el) => el.style.width);
+      return {
+        total: imgs.length,
+        srcs: imgs.map((el) => (el.getAttribute('src') ?? '').split('/').pop()).join(','),
+        sizedWidth: sized?.style.width ?? null,
+        // An inline image sits inside a paragraph. A direct child of .tiptap
+        // would be the invalid document that stopped the editor mounting.
+        sizedParent: sized?.parentElement?.tagName?.toLowerCase() ?? null,
+        handles: document.querySelectorAll('.image-resize-handle').length,
+        badges: root?.querySelectorAll('.raw-html-block').length ?? 0,
+      };
+    })()`);
+    add(
+      "an image with a width is an image node, not a raw-HTML badge",
+      img.sizedWidth === "96px" && img.badges === 0 && img.sizedParent === "p" && img.handles >= 1,
+      `sizedImgCssWidth=${img.sizedWidth ?? "-"} parent=<${img.sizedParent ?? "-"}> imgs=${img.total} [${img.srcs}] rawHtmlBadges=${img.badges} resizeHandles=${img.handles}`,
+    );
+  } catch (err) {
+    add("an image with a width is an image node, not a raw-HTML badge", false, `threw: ${err.message}`);
+  }
+
+  // --- Lightbox focus trap and restore (#119) -------------------------------
+  try {
+    // The expand button reads a module-level `currentHoveredImg`, which the
+    // hover overlay sets. Clicking the button without the overlay having become
+    // visible clicks a button that has no image to show, which is what the
+    // first version of this probe did.
+    // The overlay is driven by a `mousemove` on the EDITOR element whose
+    // clientX/clientY fall inside an image's bounding rect, not by a mouseover
+    // on the image. A synthetic event with no coordinates lands at 0,0 and
+    // matches nothing, which is what the first version of this probe sent.
+    const hovered = await evaluate(`(() => {
+      const editorEl = document.querySelector('.tiptap');
+      const img = editorEl?.querySelector('img');
+      if (!img) return 'no image';
+      const r = img.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) return 'image has no layout box';
+      const at = { bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 };
+      editorEl.dispatchEvent(new MouseEvent('mousemove', at));
+      return 'ok';
+    })()`);
+    if (hovered !== "ok") throw new Error(hovered);
+    await sleep(500);
+    const opened = await evaluate(`(() => {
+      const overlay = document.querySelector('.image-edit-overlay');
+      if (!overlay) return 'no hover overlay';
+      if (!overlay.classList.contains('visible')) return 'hover overlay never became visible';
+      const btn = overlay.querySelector('.image-expand-btn');
+      if (!btn) return 'no expand button in the overlay';
+      btn.click();
+      return 'ok';
+    })()`);
+    if (opened !== "ok") throw new Error(opened);
+    await sleep(700);
+    const inside = await evaluate(`(() => {
+      const overlay = document.getElementById('lightbox-overlay');
+      if (!overlay) return { open: false };
+      return {
+        open: overlay.classList.contains('active'),
+        focusInside: !!(document.activeElement && overlay.contains(document.activeElement)),
+        focusTag: document.activeElement?.tagName ?? null,
+        role: overlay.getAttribute('role'),
+      };
+    })()`);
+    for (const type of ["keyDown", "keyUp"]) {
+      await session.send("Input.dispatchKeyEvent", {
+        type, key: "Escape", code: "Escape", windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27,
+      });
+    }
+    await sleep(600);
+    const after = await evaluate(`(() => {
+      const overlay = document.getElementById('lightbox-overlay');
+      return {
+        closed: !overlay?.classList.contains('active'),
+        focusLeftOverlay: !(document.activeElement && overlay?.contains(document.activeElement)),
+        focusTag: document.activeElement?.tagName ?? null,
+      };
+    })()`);
+    add(
+      "lightbox takes focus on open and gives it back on Escape",
+      inside.open && inside.focusInside && after.closed && after.focusLeftOverlay,
+      `opened=${inside.open} focusInside=${inside.focusInside} (${inside.focusTag ?? "-"}) role=${inside.role ?? "-"}; ` +
+        `afterEscape closed=${after.closed} focusLeftOverlay=${after.focusLeftOverlay} (${after.focusTag ?? "-"})`,
+    );
+  } catch (err) {
+    add("lightbox takes focus on open and gives it back on Escape", false, `threw: ${err.message}`);
+  }
+
+  // --- Heading anchor button (#84) ------------------------------------------
+  // The risk this pins is not the clipboard, which a webview may refuse; it is
+  // that a button living INSIDE contenteditable corrupts the document when
+  // pressed. So the assertion is on the heading's text, before and after.
+  try {
+    const result = await evaluate(`(async () => {
+      const heading = document.querySelector('.tiptap h1');
+      const btn = heading?.querySelector('.heading-anchor-btn');
+      if (!btn) return { present: false };
+      const before = heading.textContent;
+      btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      await new Promise((r) => setTimeout(r, 400));
+      return {
+        present: true,
+        textUnchanged: heading.textContent === before,
+        copiedClass: btn.classList.contains('is-copied'),
+        title: btn.getAttribute('title'),
+      };
+    })()`);
+    add(
+      "heading anchor button does not disturb the document it lives in",
+      result.present && result.textUnchanged,
+      `present=${result.present} headingTextUnchanged=${result.textUnchanged} ` +
+        `clipboardAccepted=${result.copiedClass} title=${JSON.stringify(result.title ?? null)}`,
+    );
+  } catch (err) {
+    add("heading anchor button does not disturb the document it lives in", false, `threw: ${err.message}`);
+  }
+
+  return results;
+}
+
+/**
  * Drive the webview through its own UI, so the extension host's message
  * dispatch is exercised end to end.
  *
@@ -526,6 +921,8 @@ async function driveInteractions(base, session, contextId) {
   const interactMarker = path.join(base, "phase-interact");
   const drivenMarker = path.join(base, "phase-driven");
   const steps = [];
+  /** One entry per 2.17 surface; surfaced as its own check by main(). */
+  const surfaces = [];
 
   // Release the host on every path out of here, including the two early ones.
   // Without it the host waits out its own 60 s timeout while the exit race is
@@ -541,7 +938,7 @@ async function driveInteractions(base, session, contextId) {
 
   if (!session || contextId == null) {
     release();
-    return { ok: false, detail: "no webview context to drive; earlier checks say why" };
+    return { ok: false, detail: "no webview context to drive; earlier checks say why", surfaces };
   }
 
   const evaluate = async (expression) => {
@@ -560,7 +957,7 @@ async function driveInteractions(base, session, contextId) {
   if (!fs.existsSync(interactMarker)) {
     // Nothing to release here: the host never reached the rendezvous, so it is
     // not waiting on `phase-driven`.
-    return { ok: false, detail: "extension host never signalled phase-interact" };
+    return { ok: false, detail: "extension host never signalled phase-interact", surfaces };
   }
 
   try {
@@ -581,7 +978,7 @@ async function driveInteractions(base, session, contextId) {
       selection.addRange(range);
       return 'ok';
     })()`);
-    if (focused !== "ok") return { ok: false, detail: `could not place the caret: ${focused}` };
+    if (focused !== "ok") return { ok: false, detail: `could not place the caret: ${focused}`, surfaces };
 
     await session.send("Input.insertText", { text: EDIT_SENTINEL });
     steps.push(`typed ${EDIT_SENTINEL}`);
@@ -594,21 +991,26 @@ async function driveInteractions(base, session, contextId) {
     const typed = await evaluate(
       `document.querySelector('.tiptap')?.textContent?.includes(${JSON.stringify(EDIT_SENTINEL)}) ?? false`,
     );
-    if (!typed) return { ok: false, detail: "the sentinel never appeared in the editor DOM" };
+    if (!typed) return { ok: false, detail: "the sentinel never appeared in the editor DOM", surfaces };
     steps.push("sentinel present in the editor DOM");
 
-    // 2. Click the view-source button, the cheapest host dispatch there is.
+    // 2. Operate each 2.17 surface. These report as their own checks rather
+    //    than folding into this one, so a broken lightbox does not read as a
+    //    broken slash menu.
+    surfaces.push(...(await driveSurfaces(evaluate, session)));
+
+    // 3. Click the view-source button, the cheapest host dispatch there is.
     const clicked = await evaluate(`(() => {
       const button = document.getElementById('btn-source');
       if (!button) return 'no #btn-source';
       button.click();
       return 'ok';
     })()`);
-    if (clicked !== "ok") return { ok: false, detail: `could not click view source: ${clicked}` };
+    if (clicked !== "ok") return { ok: false, detail: `could not click view source: ${clicked}`, surfaces };
     steps.push("clicked #btn-source");
     await sleep(1500);
   } catch (err) {
-    return { ok: false, detail: `${steps.join("; ")}${steps.length ? "; " : ""}threw: ${err.message}` };
+    return { ok: false, detail: `${steps.join("; ")}${steps.length ? "; " : ""}threw: ${err.message}`, surfaces };
   } finally {
     // Always release the host, even on failure: without this it waits out its
     // own timeout and the run takes a minute longer to report the same thing.
@@ -619,7 +1021,7 @@ async function driveInteractions(base, session, contextId) {
     }
   }
 
-  return { ok: true, detail: steps.join("; ") };
+  return { ok: true, detail: steps.join("; "), surfaces };
 }
 
 /** Attach to every page/iframe target the browser endpoint reports. */
@@ -670,6 +1072,11 @@ async function main() {
   fs.mkdirSync(extensions, { recursive: true });
   const sample = path.join(workspace, "sample.md");
   fs.copyFileSync(SAMPLE, sample);
+  // sample.md references media/icon.png twice, once with a width and once
+  // without, so the image checks have a file that actually resolves through
+  // the webview's localResourceRoots rather than a broken <img>.
+  fs.mkdirSync(path.join(workspace, "media"), { recursive: true });
+  fs.copyFileSync(path.join(REPO, "media", "icon.png"), path.join(workspace, "media", "icon.png"));
 
   const child = spawn(
     executable,
@@ -792,7 +1199,14 @@ async function main() {
     ok: !!webview,
     detail: webview
       ? `${webview.href}, mounted ${mountedAt - probeStart}ms into the probe`
-      : `no frame reported a .tiptap element within ${MOUNT_TIMEOUT_MS}ms`,
+      : // "no .tiptap appeared" on its own says nothing about WHY, and a
+        // failure that says nothing costs a wave the time it takes to guess.
+        // The console is where an exception thrown while the editor is being
+        // built ends up, so print it here rather than only for CSP.
+        `no frame reported a .tiptap element within ${MOUNT_TIMEOUT_MS}ms; ` +
+        (consoleEntries.length
+          ? `console: ${consoleEntries.slice(-6).map((e) => e.slice(0, 220)).join(" | ")}`
+          : "the console said nothing either"),
   });
   if (webview) {
     checks.push({
@@ -843,6 +1257,17 @@ async function main() {
     ok: driven.ok,
     detail: driven.detail,
   });
+  // One check per 2.17 surface. If the drive phase died before reaching them,
+  // say so once rather than reporting seven silent passes.
+  if (driven.surfaces?.length) {
+    checks.push(...driven.surfaces);
+  } else {
+    checks.push({
+      name: "2.17 editing surfaces were driven",
+      ok: false,
+      detail: "the drive phase never reached them; the check above says why",
+    });
+  }
   checks.push({
     name: "no CSP violation in the console",
     ok: violations.length === 0,

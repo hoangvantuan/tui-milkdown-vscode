@@ -40,7 +40,13 @@ import * as vscode from "vscode";
 
 const EXTENSION_ID = "tuanhv.tui-milkdown-vscode";
 const VIEW_TYPE = "tuiMarkdown.editor";
-const EXPECTED_COMMANDS = ["tuiMarkdown.viewSource", "tuiMarkdown.viewRichText"];
+const EXPECTED_COMMANDS = [
+  "tuiMarkdown.viewSource",
+  "tuiMarkdown.viewRichText",
+  // #122. Registered in src/extension.ts; a command contributed in
+  // package.json but never registered is invisible here and in the palette.
+  "tuiMarkdown.useAsDefaultEditor",
+];
 /** How long the custom editor stays open for the runner's DOM inspection. */
 const HOLD_MS = Number(process.env.TUI_FLOOR_HOLD_MS ?? 25000);
 /** The text the runner types in. Spelled once, in run.mjs, and passed here. */

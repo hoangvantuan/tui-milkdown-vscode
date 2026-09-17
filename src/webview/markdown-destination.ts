@@ -29,6 +29,7 @@
  */
 import { Link } from "@tiptap/extension-link";
 import { Image } from "@tiptap/extension-image";
+import { Paragraph } from "@tiptap/extension-paragraph";
 import {
   wrapMarkdownDestination,
   escapeMarkdownTitle,
@@ -324,5 +325,117 @@ export const MarkdownImage = Image.extend({
         : `[${imageContent}](${href})`;
     }
     return imageContent;
+  },
+});
+
+/**
+ * `Paragraph` with the markdown serializer both editors need, and with one
+ * upstream parse rule corrected.
+ *
+ * The serializer half is the old behaviour, moved here from two identical
+ * copies in src/webview/main.ts and harness/editor.ts.
+ *
+ * The parse half fixes a real defect. `@tiptap/extension-paragraph@3.30.1`
+ * lifts a lone image out of its paragraph unconditionally:
+ *
+ *     if (tokens.length === 1 && tokens[0].type === "image") {
+ *       return helpers.parseChildren([tokens[0]]);
+ *     }
+ *
+ * That is right for upstream's default, where `Image` is configured
+ * `inline: false` and so cannot sit inside a paragraph. This editor configures
+ * it `inline: true`, because a link mark cannot be applied to a block-level
+ * image without violating the paragraph content schema, and then the same rule
+ * produces a document with an INLINE image as a direct child of `doc`.
+ * `doc.check()` rejects it, and the editor does not merely render it wrong: the
+ * view throws `Called contentMatchAt on a node with invalid content` while it is
+ * being built, and NOTHING mounts. Every markdown file with an image on its own
+ * line, which is most of them, opened to a blank editor.
+ *
+ * The condition upstream is missing is whether the image node is actually a
+ * block node, so that is what this checks, rather than hard-coding the answer
+ * for this repo's configuration. Written up in docs/upstream/tiptap-paragraph-image.md.
+ *
+ * The roundtrip harness could not have caught this: it serializes a document
+ * back to a string and never mounts a view or calls `doc.check()`, so the
+ * invalid document round-trips to the right text. The VS Code floor check
+ * caught it on its first run, because it mounts a real editor.
+ */
+/**
+ * Whether `MarkdownImage` is configured as an inline node.
+ *
+ * ONE definition, consumed by `MarkdownParagraph` below and passed to
+ * `MarkdownImage.configure()` by both `src/webview/main.ts` and
+ * `harness/editor.ts`. The paragraph parse rule below is only correct for one
+ * value of this flag, so the flag and the configuration must not be able to
+ * disagree; a boolean spelled in three places can.
+ *
+ * It is `true` because a link mark cannot be applied to a block-level image
+ * without violating ProseMirror's paragraph content schema, which the inline
+ * link editor needs (#117).
+ */
+export const IMAGE_IS_INLINE = true;
+
+/**
+ * Upstream's own paragraph parser, captured before the override below replaces
+ * it. Returning `null` from a `parseMarkdown` hook does NOT fall through to it:
+ * it falls through to the manager's generic `parseFallbackToken`, which has
+ * none of upstream's empty-paragraph-marker handling. So the non-image path has
+ * to call this explicitly, or overriding one case silently downgrades the rest.
+ */
+const baseParagraphParseMarkdown = (Paragraph as any).config?.parseMarkdown;
+
+/**
+ * `Paragraph` with the markdown serializer both editors need, and with one
+ * upstream parse rule corrected.
+ *
+ * The serializer half is the old behaviour, moved here from two identical
+ * copies in src/webview/main.ts and harness/editor.ts.
+ *
+ * The parse half fixes a real defect. `@tiptap/extension-paragraph@3.30.1`
+ * lifts a lone image out of its paragraph unconditionally:
+ *
+ *     if (tokens.length === 1 && tokens[0].type === "image") {
+ *       return helpers.parseChildren([tokens[0]]);
+ *     }
+ *
+ * That is right for upstream's default, where `Image` is `inline: false` and so
+ * cannot sit inside a paragraph. This editor configures it inline, and then the
+ * same rule produces a document with an INLINE image as a direct child of
+ * `doc`. The editor does not merely render that wrong: the view throws
+ * `Called contentMatchAt on a node with invalid content` while it is being
+ * built, and NOTHING mounts. Every markdown file with an image on its own line,
+ * which is most of them, opened to a blank editor. Written up in
+ * docs/upstream/tiptap-paragraph-image.md.
+ *
+ * The condition is read from `IMAGE_IS_INLINE` and NOT from
+ * `this.editor.schema`. `this.editor` is undefined while the initial content is
+ * parsed, so a schema lookup silently took its default and the rule never ran
+ * on the path that matters. That version passed the floor check anyway, because
+ * a later `setContent` does have an editor; it was the teeth test, removing the
+ * rule and expecting red, that exposed it.
+ *
+ * The roundtrip harness could not have caught the original defect: it
+ * serializes a document back to a string and never mounts a view or calls
+ * `doc.check()`, so the invalid document round-trips to the right text. The VS
+ * Code floor check caught it on its first run, because it mounts a real editor.
+ */
+export const MarkdownParagraph = Paragraph.extend({
+  parseMarkdown(token: any, helpers: any) {
+    const tokens = token?.tokens ?? [];
+    const isLoneImage = tokens.length === 1 && tokens[0]?.type === "image";
+    if (isLoneImage && IMAGE_IS_INLINE) {
+      return helpers.createNode("paragraph", undefined, helpers.parseInline(tokens));
+    }
+    return baseParagraphParseMarkdown
+      ? baseParagraphParseMarkdown.call(this, token, helpers)
+      : null;
+  },
+
+  renderMarkdown(node: any, h: any) {
+    if (!node) return "";
+    const content = Array.isArray(node.content) ? node.content : [];
+    if (content.length === 0) return "";
+    return h.renderChildren(content);
   },
 });
