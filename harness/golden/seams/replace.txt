@@ -1,3 +1,43 @@
-# replace-seam.ts — no cases yet
+find-and-replace seam — document text after replace / replaceAll
+observes the markdown string after replacement operations
 
-This seam is a skeleton. W1 replaces this body with real cases.
+[no-match-replace] search="cat" replace="tiger" action=replace caseSensitive=false ok=false
+  initial: "The quick brown fox jumps over the lazy dog."
+  actual:  "The quick brown fox jumps over the lazy dog."
+
+[no-match-replace-all] search="cat" replace="tiger" action=replaceAll caseSensitive=false ok=false
+  initial: "The quick brown fox jumps over the lazy dog."
+  actual:  "The quick brown fox jumps over the lazy dog."
+
+[one-match-replace] search="world" replace="friend" action=replace caseSensitive=false ok=true
+  initial: "Hello world from VS Code."
+  actual:  "Hello friend from VS Code."
+
+[one-match-replace-all] search="world" replace="friend" action=replaceAll caseSensitive=false ok=true
+  initial: "Hello world from VS Code."
+  actual:  "Hello friend from VS Code."
+
+[several-matches-replace-one] search="foo" replace="qux" action=replace caseSensitive=false ok=true
+  initial: "foo bar foo baz foo"
+  actual:  "qux bar foo baz foo"
+
+[several-matches-replace-all] search="foo" replace="qux" action=replaceAll caseSensitive=false ok=true
+  initial: "foo bar foo baz foo"
+  actual:  "qux bar qux baz qux"
+
+[case-toggle-off] search="foo" replace="bar" action=replaceAll caseSensitive=false ok=true
+  initial: "Case test: Foo foo FOO."
+  actual:  "Case test: bar bar bar."
+
+[case-toggle-on] search="foo" replace="bar" action=replaceAll caseSensitive=true ok=true
+  initial: "Case test: Foo foo FOO."
+  actual:  "Case test: Foo bar FOO."
+
+[markdown-syntax-in-replacement] search="replaced" replace="**bold** and [link](<url>) and # h1" action=replace caseSensitive=false ok=true
+  initial: "Normal text to be replaced here."
+  actual:  "Normal text to be \\*\\*bold\\*\\* and \\[link\\](&lt;url&gt;) and # h1 here."
+
+[markdown-syntax-in-replacement-all] search="alpha" replace="*italic* and `code`" action=replaceAll caseSensitive=false ok=true
+  initial: "Alpha beta alpha gamma."
+  actual:  "\\*italic\\* and \\`code\\` beta \\*italic\\* and \\`code\\` gamma."
+

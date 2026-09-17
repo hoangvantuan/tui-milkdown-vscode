@@ -37,6 +37,7 @@ import { openWikiLink } from "./openWikiLink";
 import { handleExport } from "./exportDocument";
 import { openLocalFileInEditor } from "./openLocalFile";
 import { buildExcludePattern, getDocFolder } from "./workspaceFiles";
+import { saveEditorPosition, sendSavedEditorPosition } from "./editorPosition";
 
 /** What every handler is given: the session, and the provider-level things it cannot own. */
 export interface HandlerContext {
@@ -45,6 +46,8 @@ export interface HandlerContext {
   webview: TypedWebview;
   /** Extension-global memento: the remembered theme, font and zoom live here. */
   globalState: vscode.Memento;
+  /** Extension workspace memento: per-document cursor and scroll positions live here. */
+  workspaceState: vscode.Memento;
   /** The PROVIDER's map, passed whole with `session.docKey`, never as the inner map. */
   originalImagePaths: Map<string, Map<string, string>>;
   /** The provider's clipboard reporter — it de-duplicates the warning per reason. */
@@ -70,6 +73,7 @@ const handlers: HandlerTable = {
     ctx.session.sendTheme();
     ctx.session.sendConfig();
     ctx.session.updateWebview();
+    sendSavedEditorPosition(ctx.webview, ctx.workspaceState, ctx.document.uri);
     // Send system fonts asynchronously (non-blocking)
     getSystemFonts().then((fonts) => {
       try {
@@ -268,8 +272,8 @@ const handlers: HandlerTable = {
     });
   },
 
-  openWikiLink: async (msg) => {
-    await openWikiLink(msg.filename);
+  openWikiLink: async (msg, ctx) => {
+    await openWikiLink(msg.filename, ctx.document.uri);
   },
 
   export: (msg, ctx) => {
@@ -282,6 +286,13 @@ const handlers: HandlerTable = {
         ctx.session.exportInProgress = value;
       },
     );
+  },
+
+  saveEditorPosition: (msg, ctx) => {
+    saveEditorPosition(ctx.workspaceState, ctx.document.uri, {
+      cursor: typeof msg.cursor === "number" ? msg.cursor : undefined,
+      scrollTop: typeof msg.scrollTop === "number" ? msg.scrollTop : undefined,
+    });
   },
 };
 

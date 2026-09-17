@@ -109,6 +109,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       document,
       webview: session.webview,
       globalState: this.context.globalState,
+      workspaceState: this.context.workspaceState,
       originalImagePaths: this.originalImagePaths,
       notifyClipboardError: (target, reason, warningMessage) =>
         this.notifyClipboardError(target, reason, warningMessage),
@@ -366,18 +367,36 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           </div>
         </div>
         <div id="search-bar" class="hidden">
-          <svg class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input id="search-input" type="text" placeholder="Search..." spellcheck="false" autocomplete="off" maxlength="500" />
-          <span id="search-count"></span>
-          <button id="search-prev" class="search-btn" title="Previous (Shift+Enter)" aria-label="Previous match">
-            <svg viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>
-          </button>
-          <button id="search-next" class="search-btn" title="Next (Enter)" aria-label="Next match">
-            <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
-          </button>
-          <button id="search-close" class="search-btn" title="Close (Escape)" aria-label="Close search">
-            <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
+          <div class="search-row">
+            <button id="search-toggle-replace" class="search-btn" title="Toggle Replace" aria-label="Toggle replace">
+              <svg class="chevron-icon" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+            <svg class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input id="search-input" type="text" placeholder="Search..." spellcheck="false" autocomplete="off" maxlength="500" />
+            <button id="search-case" class="search-btn search-toggle-btn" title="Match Case" aria-label="Match case">
+              <span class="case-label">Aa</span>
+            </button>
+            <span id="search-count"></span>
+            <button id="search-prev" class="search-btn" title="Previous (Shift+Enter)" aria-label="Previous match">
+              <svg viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>
+            </button>
+            <button id="search-next" class="search-btn" title="Next (Enter)" aria-label="Next match">
+              <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <button id="search-close" class="search-btn" title="Close (Escape)" aria-label="Close search">
+              <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <div id="replace-row" class="search-row hidden">
+            <div class="search-row-indent"></div>
+            <input id="replace-input" type="text" placeholder="Replace..." spellcheck="false" autocomplete="off" maxlength="500" />
+            <button id="replace-btn" class="search-btn" title="Replace (Enter)" aria-label="Replace match">
+              <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+            <button id="replace-all-btn" class="search-btn" title="Replace All (Alt+Enter)" aria-label="Replace all matches">
+              <svg viewBox="0 0 24 24"><path d="M14 4h7v7"/><path d="M21 4l-9 9"/><path d="M3 10v10a2 2 0 0 0 2 2h10"/></svg>
+            </button>
+          </div>
         </div>
         <div id="metadata-panel">
           <details id="metadata-details" class="hidden">
