@@ -1938,6 +1938,85 @@ body.dark-theme .tiptap table th {
   opacity: 0.5;
 }
 
+/* Slash command popup */
+.slash-command-popup {
+  position: absolute;
+  z-index: 1000;
+  width: 280px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: rgba(var(--toolbar-bg-rgb), 0.85);
+  color: var(--toolbar-fg);
+  border: 1px solid rgba(var(--border-rgb), 0.2);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 4px;
+}
+@supports (backdrop-filter: blur(12px)) {
+  .slash-command-popup {
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    background: rgba(var(--toolbar-bg-rgb), 0.7);
+  }
+}
+.slash-command-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+.slash-command-item:hover,
+.slash-command-item.is-selected {
+  background: rgba(var(--accent-rgb), 0.1);
+}
+.slash-command-item.is-selected {
+  background: rgba(var(--accent-rgb), 0.15);
+}
+.slash-command-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  background: rgba(var(--border-rgb), 0.1);
+  color: var(--toolbar-fg);
+}
+.slash-command-icon svg {
+  display: block;
+}
+.slash-command-content {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+.slash-command-title {
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.slash-command-desc {
+  font-size: 11px;
+  opacity: 0.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.slash-command-empty {
+  padding: 12px 8px;
+  text-align: center;
+  font-size: 12px;
+  opacity: 0.5;
+}
+
 /* Search bar */
 #search-bar {
   display: flex;

@@ -84,6 +84,7 @@ import { installMarkdownTextEscape } from "./markdown-text-escape";
 import { CustomOrderedList } from "./ordered-list-extension";
 import { ListKeymapExtension } from "./list-keymap-extension";
 import { escapeHtml } from "./file-search-utils";
+import { SlashCommand } from "./slash-command-plugin";
 
 // Install unified text escape overrides on MarkdownManager (#97, #99, #100, #101).
 installMarkdownTextEscape();
@@ -1289,6 +1290,7 @@ function initEditor(initialContent: string = ""): Editor | null {
         FileMention,
         WikiLink,
         WikiLinkSuggestion,
+        SlashCommand,
         RawHtmlBlock,
         RawHtmlInline,
         ...conditionalExtensions,

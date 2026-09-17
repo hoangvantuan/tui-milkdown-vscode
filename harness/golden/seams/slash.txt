@@ -1,3 +1,20 @@
-# slash-seam.ts — no cases yet
+slash command seam — markdown output per menu entry on empty document
+one line per entry: [id] ok=... node=... md=...
 
-This seam is a skeleton. W1 replaces this body with real cases.
+[heading-1] ok=true node=heading(h1) md=""
+[heading-2] ok=true node=heading(h2) md=""
+[heading-3] ok=true node=heading(h3) md=""
+[bullet-list] ok=true node=bulletList md="- \n"
+[numbered-list] ok=true node=orderedList md="1. \n"
+[task-list] ok=true node=taskList md="- [ ] \n"
+[table] ok=true node=table md="|     |     |     |\n| --- | --- | --- |\n|     |     |     |\n|     |     |     |\n\n"
+[code-block] ok=true node=codeBlock md="```\n\n```\n"
+[mermaid] ok=true node=codeBlock(mermaid) md="```mermaid\n\n```\n"
+[alert-note] ok=true node=alert(NOTE) md="> [!NOTE]\n>\n>\n"
+[alert-tip] ok=true node=alert(TIP) md="> [!TIP]\n>\n>\n"
+[alert-important] ok=true node=alert(IMPORTANT) md="> [!IMPORTANT]\n>\n>\n"
+[alert-warning] ok=true node=alert(WARNING) md="> [!WARNING]\n>\n>\n"
+[alert-caution] ok=true node=alert(CAUTION) md="> [!CAUTION]\n>\n>\n"
+[image] ok=true node=image md="![]()\n"
+[quote] ok=true node=blockquote md=">\n"
+[horizontal-rule] ok=true node=horizontalRule md="---\n"
