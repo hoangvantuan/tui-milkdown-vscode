@@ -639,16 +639,15 @@ cái đã trả lẫn cái vừa lộ ra.
   selection đặt bằng script không sync vào ProseMirror; click qua CDP dùng toạ độ
   trang chứ không phải toạ độ iframe; và `defaultPrevented` không phải bằng chứng vì
   webview của VS Code tự huỷ `contextmenu`. Ghi lại để sóng sau không đo lại ba lần.
+- **`#124` đã đóng hẳn, nửa thẻ đôi đóng dạng `wontfix`.** Ghi lại ở đây vì đây là
+  kiểu quyết định dễ bị sóng sau mở lại: nguyên nhân nằm ở UPSTREAM, serializer của
+  `@tiptap/markdown` đóng mọi mark trước một node không phải text rồi mở lại sau nó,
+  nên một mark không bao giờ bọc được một atom. Đầu ra hiện tại lossless, và cả ba cách
+  vá đã đo đều đánh đổi tính lossless hoặc đánh đổi cú pháp của chính người dùng. Đo
+  nằm trong `docs/upstream/tiptap-markdown-mark-around-atom.md`. Muốn sửa thì mở issue
+  MỚI nói rõ nhận đánh đổi nào, đừng mở lại `#124` như một bug thường.
 - **`#48` vẫn mở về bản chất.** `#122` chữa việc MỞ file, và điều đó nay có bằng chứng.
   Diff editor của Git Graph thì chưa ai cài, bấm vào một commit và xem kết quả.
-- **`#124` vẫn đóng một nửa, và nửa còn lại nay có cơ chế chứ không chỉ có triệu
-  chứng.** Serializer của `@tiptap/markdown` ĐÓNG mọi mark đang mở TRƯỚC một node
-  không phải text rồi mở lại SAU nó, nên một mark không bao giờ bọc được một atom;
-  `<kbd>` là hai atom với đoạn text mang mark nằm giữa. Thêm `rawHtmlInline` vào
-  `applyMarkToNodes` làm nó TỆ HƠN: sinh ra một `[` không đóng. Ba cách vá đã cân và
-  loại cả ba, mỗi cách đánh đổi tính lossless hoặc đánh đổi cú pháp của chính người
-  dùng. Đo nằm trong `docs/upstream/tiptap-markdown-mark-around-atom.md` và trong
-  thân `#124`, đừng đo lại.
 - `#96` còn hai tiêu chí hành vi editor chưa kiểm được bằng harness.
 - `src/webview/main.ts` nay là file lớn nhất của repo. Sóng sau thêm tính năng
   webview thì nên tách theo nhóm, y như `#88` đã làm với provider.
@@ -686,7 +685,7 @@ roundtrip          40 fixtures + 12 seams: 52 passed, 0 failed   <- 39 + 7 = 46 
 vòng hai           52 passed, 0 failed
 verify:vscode-floor 29/29                       <- 20 lúc kết sóng, 9 check trả nợ thêm sau
 package.json       2.17.0
-issue mở           2: #85, #124 (còn nửa thẻ đôi)
+issue mở           1: #85
 ```
 
 Sóng 7 đóng `#114` tới `#124` cộng `#84`, bốn worker `agy`, bốn worktree, một xung đột
