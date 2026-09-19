@@ -97,6 +97,8 @@ import { EmojiSuggestion } from "./emoji-plugin";
 import { setupDragHandle } from "./drag-handle-plugin";
 import { setupBacklinksPanel, updateBacklinks, refreshBacklinksIfVisible } from "./backlinks-panel";
 import { setupFocusMode, handleFocusModeTransaction } from "./focus-mode";
+import { htmlMarkExtensions } from "./html-marks";
+import { detailsExtensions } from "./details-extension";
 
 // Install unified text escape overrides on MarkdownManager (#97, #99, #100, #101).
 installMarkdownTextEscape();
@@ -1316,6 +1318,9 @@ function initEditor(initialContent: string = ""): Editor | null {
         // Two 3.0 workers add markdown-relevant extensions at the same time, and
         // this list plus harness/editor.ts must stay mirror images of each other.
         // Each worker appends INSIDE its own block and touches no other line, so
+        // the two branches merge without a conflict. The import line a block needs
+        // goes at the top of the file as usual; wave 8 forgot to say so and one
+        // worker reached for require() to obey the rule literally.
         // the two branches merge without a conflict. Delete the markers once 3.0
         // has shipped and the mirror is stable again.
         // --- W1: math + footnotes ---
@@ -1323,8 +1328,8 @@ function initEditor(initialContent: string = ""): Editor | null {
         ...require("./footnote-extension").footnoteExtensions,
         // --- end W1 ---
         // --- W2: html whitelist (details / kbd / sub / sup) ---
-        ...require("./html-marks").htmlMarkExtensions,
-        ...require("./details-extension").detailsExtensions,
+        ...htmlMarkExtensions,
+        ...detailsExtensions,
         // --- end W2 ---
         ...conditionalExtensions,
       ],
