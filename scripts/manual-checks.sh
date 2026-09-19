@@ -186,7 +186,7 @@ finish() {
 # docs/manual-checks.md. Keep the two in step.
 # ──────────────────────────────────────────────────────────────────────────
 
-TOTAL_STAGES=13
+TOTAL_STAGES=12
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WS="${TUI_CHECK_WS:-${TMPDIR:-/tmp/}}"
@@ -393,28 +393,17 @@ say "của nó ở lần lưu thứ hai."
 verdict F1 "F1"
 
 # ── 11 ────────────────────────────────────────────────────────────────────
-stage "G1: Ảnh chụp trước và sau ở hai theme (#86)"
-note "#86 dời 2356 dòng CSS ra editor.css và tuyên bố KHÔNG đổi một declaration nào."
-note "Không lưới tự động nào kiểm được tuyên bố đó. Chỉ có mắt."
-open_doc "test.md"
-step "Mở panel Appearance, chọn theme SÁNG (Frame), chụp màn hình."
-step "Đổi sang theme TỐI tương ứng (Frame Dark), chụp màn hình."
-step "Soát: heading, bảng, code block, alert, task list, ảnh, mục lục, thanh công cụ."
-step "Đổi qua đủ 12 theme một lượt."
-say "ĐẠT nếu: không theme nào vỡ layout hoặc mất màu chữ."
-verdict G1 "G1"
-
-# ── 12 ────────────────────────────────────────────────────────────────────
-stage "X1: Git Graph mở diff .md (#48)"
-note "#122 chữa việc MỞ file và điều đó ĐÃ có bằng chứng tự động."
-note "Diff editor là một đường KHÁC trong VS Code, floor workspace không cài Git Graph."
+stage "X1b: Git Graph mở diff .md (#48)"
+note "Cơ chế chung ĐÃ tự động: floor mở vscode.diff dưới cả hai trạng thái của"
+note "workbench.editorAssociations và cả hai lần đều ra diff editor, không phải"
+note "custom editor này. Còn lại đúng một câu hỏi: Git Graph có đi đường khác không."
 step "Cài Git Graph, bấm vào một commit có sửa file .md, xem diff."
 say "ĐẠT nếu: diff mở bằng text editor thường."
 warn "Nếu diff vẫn mở bằng WYSIWYG: đó là defect KHÁC #122. Mở issue MỚI,"
 warn "đừng mở lại #48."
-verdict X1 "X1"
+verdict X1B "X1b"
 
-# ── 13 ────────────────────────────────────────────────────────────────────
+# ── 12 ────────────────────────────────────────────────────────────────────
 stage "X2: Các menu TRÔNG như thế nào"
 note "Floor khẳng định menu hiện ra và đúng số mục. Nó không nói gì về đẹp xấu."
 open_doc "test.md"
@@ -436,7 +425,7 @@ _clear
   printf 'Sinh bởi `scripts/manual-checks.sh`. Tiêu chí và lý do từng mục nằm ở\n'
   printf '`docs/manual-checks.md`.\n\n'
   printf '| Mục | Kết quả | Ghi chú |\n| --- | --- | --- |\n'
-  for k in A1B A2 A3B B1 C1 C2 C3 C4B E1B F1 G1 X1 X2; do
+  for k in A1B A2 A3B B1 C1 C2 C3 C4B E1B F1 X1B X2; do
     v=$(grep -E "^${k}=" "$ENV_FILE" | tail -n1 | cut -d= -f2- || true)
     n=$(grep -E "^${k}_NOTE=" "$ENV_FILE" | tail -n1 | cut -d= -f2- || true)
     printf '| %s | %s | %s |\n' "$k" "${v:-chưa chạy}" "${n:-}"

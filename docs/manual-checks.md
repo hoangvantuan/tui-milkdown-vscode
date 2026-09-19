@@ -4,9 +4,12 @@ File này là **nguồn sự thật duy nhất** cho việc còn bao nhiêu tiê
 tay. Tài liệu khác trỏ về đây thay vì chép lại con số, vì con số đã sai ba lần rồi.
 
 Bản đầu liệt kê 14 mục và nói cả 14 đều cần một con người. Lượt đi kiểm thật cho thấy
-điều đó sai: **năm mục lái được bằng máy và nay đã là check floor**, một mục lái được
-một nửa. Quan trọng hơn, chính lượt đi kiểm ấy tìm ra **hai lỗi đang ship**, cả hai đều
-không thể thấy bằng cách đọc mã:
+điều đó sai: **sáu mục lái được bằng máy và nay đã là check floor**, một mục (G1) trả
+lời được bằng phép đo thay vì bằng mắt, hai mục (B2 vị trí con trỏ, và nút sao chép
+neo ở heading) thì tính năng bị gỡ hẳn nên không còn gì để kiểm. Còn 12.
+
+Quan trọng hơn con số: chính lượt đi kiểm ấy tìm ra **ba lỗi đang ship**, không lỗi nào
+thấy được bằng cách đọc mã.
 
 - **DOCX export CHẾT trên đúng phiên bản VS Code mà `engines.vscode` hứa.**
   `ReferenceError: crypto is not defined`: Web Crypto chỉ thành global từ Node 19, mà
@@ -16,6 +19,12 @@ không thể thấy bằng cách đọc mã:
   `#112`, lần thứ hai: `focusOverlay()` chỉ được hẹn từ `requestAnimationFrame`, mà
   Chromium không chạy rAF cho cửa sổ bị che. Overlay mở ra, tiêu điểm nằm lại dưới
   tài liệu, Tab đi lang thang bên dưới một hộp thoại đang mở. Đã sửa.
+- **Sửa đường dẫn một ảnh vừa dán thì ghi nguyên URL webview vào file.** Mục C3, do
+  chính anh kiểm tay bắt được: file nhận
+  `https://file%2B.vscode-resource.vscode-cdn.net/var/folders/.../image-....png`
+  thay cho `images/image-....png`. Nguyên nhân: tra ngược từ URL webview về đường dẫn
+  gốc so sánh chuỗi thô, mà DOM mã hoá `file+` thành `file%2B` nên không khớp. Đã sửa
+  (`cbf5b5e`), bằng `sameResource()` chuẩn hoá trước khi so.
 
 Lấy đó làm lý do để làm nốt phần dưới.
 
@@ -38,8 +47,9 @@ Lấy đó làm lý do để làm nốt phần dưới.
 | E1 | Popup `@` và `[[` liệt kê file | **floor** `@ mention popup` / `[[ wiki link popup` |
 | E1b | Chèn bằng Enter, và lời mời tạo file | **TAY** |
 | F1 | `editor.tabSize` đổi thụt lề | **TAY** |
-| G1 | Ảnh chụp hai theme | **TAY** |
-| X1 | Git Graph diff (`#48`) | **TAY** |
+| G1 | 12 theme: CSS không đổi, chữ không tàng hình | **ĐO ĐƯỢC**, xem mục G1 |
+| X1 | Diff `.md` không bị custom editor chiếm | **floor** `a diff of two .md files opens as a diff editor` |
+| X1b | Git Graph cụ thể | **TAY** |
 | X2 | Dáng các menu | **TAY** |
 
 **Một quan sát chưa tái hiện được.** Trong một lần chạy floor, check
@@ -54,7 +64,7 @@ lỗi; nếu anh gặp lại, đó là bằng chứng thứ hai.
 ./scripts/manual-checks.sh
 ```
 
-Nó dựng workspace test, mở VS Code với extension, rồi đi qua đúng 14 mục còn lại, mỗi
+Nó dựng workspace test, mở VS Code với extension, rồi đi qua đúng 12 mục còn lại, mỗi
 lần một mục trên màn hình sạch. Mỗi mục hỏi pass / fail / skip cộng một dòng ghi chú,
 ghi vào `.manual-checks.env` nên dừng giữa chừng rồi chạy lại không mất gì, và cuối
 cùng sinh `docs/manual-checks-results.md`.
@@ -317,17 +327,45 @@ Phần chèn bằng Enter và lời mời tạo file thì chưa.
 
 ## G. Giao diện
 
-### G1. Ảnh chụp trước và sau ở hai theme (#86)
+### G1. 12 theme (#86): ĐÃ ĐO, không cần mắt
 
-`#86` dời 2.356 dòng CSS từ `markdownEditorProvider.ts` sang `src/webview/editor.css`,
-và tuyên bố là **không đổi một declaration nào**. Không có lưới tự động nào kiểm được
-tuyên bố đó, chỉ có mắt.
+Bản đầu nói mục này chỉ có mắt người trả lời được. Sai.
 
-- [ ] Mở cùng một tài liệu ở một theme SÁNG (ví dụ Frame), chụp màn hình.
-- [ ] Đổi sang theme TỐI tương ứng (Frame Dark), chụp màn hình.
-- [ ] So với bản trước `#86` nếu còn giữ. Nếu không còn: soát mắt heading, bảng, code
-      block, alert, task list, ảnh, sơ đồ mermaid, sidebar mục lục, thanh công cụ.
-- [ ] Đổi qua đủ 12 theme một lượt: không theme nào vỡ layout hoặc mất màu chữ.
+**Tuyên bố của `#86` kiểm được bằng byte.** Nó dời 2.356 dòng CSS ra khỏi provider và
+tuyên bố không đổi một declaration nào:
+
+```
+git show 09f74f8^:src/markdownEditorProvider.ts   (khối <style>)
+git show 09f74f8:src/webview/editor.css
+
+2309 declaration trước, 2309 sau, 0 dòng khác khi bỏ qua thụt lề.
+```
+
+Mạnh hơn mọi cặp ảnh trước/sau, và mất một phút.
+
+**"Không theme nào mất chữ" cũng đo được.** Tỉ lệ tương phản WCAG tính thẳng từ biến CSS:
+
+| | thấp nhất | cao nhất |
+| --- | --- | --- |
+| chữ thân bài | 7.06 (catppuccin-latte) | 17.22 (frame) |
+| link | 4.79 (catppuccin-latte) | 10.07 (crepe-dark) |
+| inline code | 3.52 (catppuccin-latte) | 10.94 (crepe-dark) |
+
+Cả 12 theme đạt AA cho chữ thân bài. Không có gì tàng hình ở đâu cả.
+
+**Một chỗ lệch tìm được khi đo:** `--crepe-color-highlight` được 9 theme định nghĩa, còn
+`crepe`, `frame`, `nord` thì không. Ba theme đó rơi về giá trị mặc định `#fff3b0` ngay
+tại chỗ dùng duy nhất, là vàng nhạt nên hợp theme sáng, hiện tại không sai gì. Nhưng đổi
+giá trị mặc định đó là âm thầm đổi ba theme.
+
+- [ ] Còn lại cho mắt: mở vài theme và xem nó có ĐẸP không. Đó là thẩm mỹ, không phải
+      tính đúng sai, và không có con số nào thay được.
+
+**Chụp ảnh tự động thì KHÔNG tin được**, đã thử và ghi lại để đừng ai thử lại:
+`TUI_FLOOR_SHOTS=<thư mục> npm run verify:vscode-floor` chụp mỗi theme một ảnh, nhưng
+`Page.captureScreenshot` đợi một surface frame và cửa sổ bị che thì không sinh frame
+nào. Đo được 12/12 một lần và 1/12 bốn lần liên tiếp trên cùng một đoạn mã. Nó là tiện
+ích để ngắm, không phải bằng chứng.
 
 ---
 
@@ -335,16 +373,28 @@ tuyên bố đó, chỉ có mắt.
 
 Không tính vào 14, nhưng nếu đã ngồi xuống thì làm luôn.
 
-### X1. Git Graph mở diff `.md` (#48)
+### X1. Diff `.md` (#48): PHẦN LÕI ĐÃ TỰ ĐỘNG
 
-`#122` chữa việc MỞ file và điều đó nay có bằng chứng tự động: floor check mở sample
-dưới ba trạng thái `workbench.editorAssociations` và đọc lại editor nào thắng. Diff
-editor là một ĐƯỜNG KHÁC trong VS Code, và floor workspace không cài Git Graph.
+`#122` chữa việc MỞ file, và điều đó đã có bằng chứng tự động từ trước. Câu hỏi còn lại
+của `#48` là: `contributes.customEditors` với `priority: "default"` có chiếm luôn một
+DIFF không? Floor check trả lời được mà không cần cài Git Graph, vì `vscode.diff` mở
+đúng loại editor ấy bằng đúng đường mà một extension git đi:
 
-- [ ] Cài Git Graph, bấm vào một commit có sửa file `.md`, xem diff.
-- [ ] Nếu diff vẫn mở bằng editor WYSIWYG: đó là một defect KHÁC `#122`, mở issue mới,
-      đừng mở lại `#48`.
-- [ ] Thử cả với `"workbench.editorAssociations": {"*.md": "default"}` ở workspace.
+```
+noSetting=diff  "*.md":"tuiMarkdown.editor"=diff
+```
+
+Cả khi người dùng đã chạy lệnh `#122` và đặt hẳn `.md` về editor này, diff vẫn là diff.
+
+Răng: đổi `vscode.diff` thành `vscode.open` thì check đỏ với `tuiMarkdown.editor`, nên
+nó đọc editor thật chứ không đọc một hằng số.
+
+Một chi tiết đáng ghi cho ai sửa tiếp: trên VS Code 1.85, **một tab diff báo
+`tab.input === undefined`**. Hai phiên bản trước của probe đọc `tab.input` rồi kết luận
+"no tabs" trong khi một tab tên `floor diff` đang nằm đó. Nhãn tab mới là bằng chứng.
+
+- [ ] **Còn lại cho tay:** cài Git Graph, bấm vào một commit sửa `.md`, xem diff. Nếu nó
+      vẫn mở bằng WYSIWYG thì đó là defect KHÁC, mở issue MỚI, đừng mở lại `#48`.
 
 ### X2. Các menu TRÔNG như thế nào
 
@@ -375,8 +425,7 @@ trả lời, đừng chép tay lại.
 | C4b | Ảnh xoá có vào Thùng rác không (#88) | | |
 | E1b | Chèn bằng Enter, và lời mời tạo file (#123) | | |
 | F1 | `editor.tabSize` đổi thụt lề (#102) | | |
-| G1 | Ảnh chụp hai theme (#86) | | |
-| X1 | Git Graph diff (#48) | | |
+| X1b | Git Graph diff cụ thể (#48) | | |
 | X2 | Dáng các menu | | |
 
 **Luật ghi kết quả**, giống luật áp cho worker: mục nào không chạy được thì ghi "chưa

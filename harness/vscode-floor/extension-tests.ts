@@ -322,6 +322,84 @@ function recordExportResults(docFolder: string): void {
   }
 }
 
+
+/**
+ * Does a DIFF of two `.md` files open as a diff editor, or does this extension
+ * take it over? (#48, the half that does not need Git Graph installed.)
+ *
+ * #48 is about Git Graph's diff view, and the floor workspace has no Git Graph.
+ * But the thing #48 is really asking is whether `contributes.customEditors`
+ * with `priority: "default"` hijacks a DIFF, and `vscode.diff` opens exactly
+ * that editor by exactly the same path a git extension uses. So this answers
+ * the mechanism while leaving Git Graph's own UI to a human.
+ *
+ * Both states are exercised: with no association, and with
+ * `"*.md": "tuiMarkdown.editor"` set, which is what a user who ran #122's
+ * command has. The second is the one that could plausibly capture a diff.
+ */
+async function runDiffEditorCheck(uri: vscode.Uri): Promise<void> {
+  const name = "a diff of two .md files opens as a diff editor, not this custom editor";
+  const other = vscode.Uri.file(path.join(path.dirname(uri.fsPath), "floor-diff-other.md"));
+  const config = vscode.workspace.getConfiguration("workbench");
+  const original = config.inspect<Record<string, string>>("editorAssociations")?.workspaceValue;
+  const DIFF_TITLE = "floor diff";
+
+  const openDiff = async (): Promise<string> => {
+    await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+    await sleep(400);
+    await vscode.commands.executeCommand("vscode.diff", uri, other, DIFF_TITLE);
+    await sleep(2500);
+
+    // Read the TABS, not `tab.input`. On VS Code 1.85, the floor, a diff tab
+    // reports `input === undefined`: two earlier versions of this probe read
+    // `activeTabGroup.activeTab.input` and then every group's inputs, and both
+    // reported "no tabs" while a tab labelled "floor diff" was sitting right
+    // there. The label is the evidence the API will not give: a diff editor
+    // carries the title passed to `vscode.diff`, and this extension's custom
+    // editor would carry the file name and a `viewType`.
+    const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs);
+    if (tabs.length === 0) return "no tabs";
+    const hijacked = tabs.find(
+      (t) => t.input && typeof (t.input as any).viewType === "string",
+    );
+    if (hijacked) return String((hijacked.input as any).viewType);
+    return tabs.some((t) => t.label === DIFF_TITLE) ? "diff" : `other[${tabs.map((t) => t.label).join(",")}]`;
+  };
+
+  try {
+    fs.writeFileSync(other.fsPath, "# Other\n\nA second document to diff against.\n", "utf8");
+
+    const withoutSetting = await openDiff();
+    await config.update(
+      "editorAssociations",
+      { "*.md": VIEW_TYPE },
+      vscode.ConfigurationTarget.Workspace,
+    );
+    await sleep(600);
+    const withCustom = await openDiff();
+
+    record(
+      name,
+      withoutSetting === "diff" && withCustom === "diff",
+      `noSetting=${withoutSetting} "*.md":"${VIEW_TYPE}"=${withCustom}; ` +
+        "Git Graph's own diff view is NOT covered here and stays a hand check",
+    );
+  } catch (err) {
+    record(name, false, err instanceof Error ? `${err.name}: ${err.message}` : String(err));
+  } finally {
+    try {
+      await config.update("editorAssociations", original, vscode.ConfigurationTarget.Workspace);
+    } catch {
+      /* the per-run workspace is thrown away anyway */
+    }
+    try {
+      fs.rmSync(other.fsPath, { force: true });
+    } catch {
+      /* same */
+    }
+  }
+}
+
 export async function run(): Promise<void> {
   const resultPath = process.env.TUI_FLOOR_RESULT;
   const samplePath = process.env.TUI_FLOOR_SAMPLE;
@@ -482,6 +560,8 @@ export async function run(): Promise<void> {
         // Both of these modify the document, so they sit after everything
         // above has been recorded.
         await runImageDeleteOnSaveCheck(uri);
+
+        await runDiffEditorCheck(uri);
 
         await runDefaultEditorAssociationCheck(uri);
       }
