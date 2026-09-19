@@ -93,6 +93,8 @@ import { escapeHtml } from "./file-search-utils";
 import { createBubbleMenuExtension } from "./bubble-menu";
 import { initLinkPopover, type LinkPopoverController } from "./link-popover";
 import { SlashCommand, setImageSrcProvider } from "./slash-command-plugin";
+import { EmojiSuggestion } from "./emoji-plugin";
+import { setupDragHandle } from "./drag-handle-plugin";
 
 // Install unified text escape overrides on MarkdownManager (#97, #99, #100, #101).
 installMarkdownTextEscape();
@@ -1304,6 +1306,7 @@ function initEditor(initialContent: string = ""): Editor | null {
         WikiLink,
         WikiLinkSuggestion,
         SlashCommand,
+        EmojiSuggestion,
         RawHtmlBlock,
         RawHtmlInline,
         createBubbleMenuExtension({ onOpenLink: () => linkPopover?.open() }),
@@ -1414,6 +1417,8 @@ function initEditor(initialContent: string = ""): Editor | null {
     });
 
     hideLoading();
+
+    setupDragHandle(instance);
 
     return instance;
   } catch (error) {
