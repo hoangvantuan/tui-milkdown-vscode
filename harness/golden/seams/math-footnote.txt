@@ -1,3 +1,71 @@
-# math-footnote seam
+# math and footnote parse and serialization seam
 
-(not filled in yet — owner: wave-8 W1)
+Records parse node representation and serialized markdown for
+math formulas (inline and block) and footnotes (references and definitions).
+
+[inline-math-fraction] inline math with fraction and greek letter
+  input: Fraction $\frac{a}{b}$ and $\alpha$.
+  parsed: node=inlineMath attrs={"latex":"\\frac{a}{b}"}
+  parsed: node=inlineMath attrs={"latex":"\\alpha"}
+  serialized: Fraction $\frac{a}{b}$ and $\alpha$.
+
+[inline-math-equation] inline math equation without special characters
+  input: $E = mc^2$
+  parsed: node=inlineMath attrs={"latex":"E = mc^2"}
+  serialized: $E = mc^2$
+
+[block-math-single-line] single-line block math formula
+  input: $$\int_0^1 x^2 dx$$
+  parsed: node=blockMath attrs={"latex":"\\int_0^1 x^2 dx","multiline":false}
+  serialized: $$\int_0^1 x^2 dx$$
+
+[block-math-multi-line] multi-line block math formula
+  input: $$
+\int_0^1 x^2 dx
+$$
+  parsed: node=blockMath attrs={"latex":"\\int_0^1 x^2 dx","multiline":true}
+  serialized: $$
+\int_0^1 x^2 dx
+$$
+
+[currency-not-math] dollar amounts that must remain plain text
+  input: It costs $5 and $10.
+  parsed: (none)
+  serialized: It costs $5 and $10.
+
+[space-delimiter-not-math] dollar signs with whitespace that must remain plain text
+  input: This is $ not math $ here.
+  parsed: (none)
+  serialized: This is $ not math $ here.
+
+[footnote-reference] inline footnote references in paragraph
+  input: Here is note[^first] and [^second].
+  parsed: node=footnoteReference attrs={"label":"first"}
+  parsed: node=footnoteReference attrs={"label":"second"}
+  serialized: Here is note[^first] and [^second].
+
+[footnote-definition] single-line footnote definition
+  input: [^first]: First footnote definition.
+  parsed: node=footnoteDefinition attrs={"label":"first","content":"First footnote definition."}
+  serialized: [^first]: First footnote definition.
+
+[footnote-definition-multiline] multi-line footnote definition
+  input: [^second]: Second footnote definition, which is long and spans
+multiple lines of text in the source.
+  parsed: node=footnoteDefinition attrs={"label":"second","content":"Second footnote definition, which is long and spans\nmultiple lines of text in the source."}
+  serialized: [^second]: Second footnote definition, which is long and spans
+multiple lines of text in the source.
+
+[footnote-in-table] footnote reference inside a table cell
+  input: | Col |
+| --- |
+| Cell[^first] |
+  parsed: node=footnoteReference attrs={"label":"first"}
+  serialized: | Col          |
+| ------------ |
+| Cell[^first] |
+
+[unclosed-footnote-escaped] unclosed footnote marker remains escaped text
+  input: Literal [^abc without closing bracket.
+  parsed: (none)
+  serialized: Literal \[^abc without closing bracket.
