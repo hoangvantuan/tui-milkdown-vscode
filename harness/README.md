@@ -2,6 +2,7 @@
 
 A golden-baseline harness that verifies markdown fidelity and the non-editor
 seams (frontmatter parsing, file search ranking, table column widths, list keymap,
+slash insertion, find/replace, link editing, table alignment, image width,
 placeholder rendering, @-mention insertion) across dependency changes. It exists so a maintainer can run one command before and after any
 dependency bump and attribute a fidelity regression to one specific version
 change instead of a vague suspicion. Introduced for the upgrade sweep in
@@ -89,6 +90,18 @@ Besides the corpus, `npm run roundtrip` runs one golden per seam:
 | `filemention-seam.ts` | `seams/file-mention.txt` | `insertFileMention()`: the @-mention insert stays inline, and escaping happens on save |
 | `crlf-seam.ts` | `seams/crlf.txt` | `normalizeLineEndings()`: the document's own line endings survive a save |
 | `list-keys-seam.ts` | `seams/list-keys.txt` | `ListKeymapExtension`: Tab/Shift-Tab on list items, sub-list type, typed-marker absorption, table-cell fallthrough. Five of its eight cases change if the extension is removed; the other three are regression guards over upstream behaviour |
+| `slash-seam.ts` | `seams/slash.txt` | `executeSlashCommand()`: the node and markdown each of the 17 menu entries produces on an empty document. All 17 lines change if the insert command is broken (#114) |
+| `replace-seam.ts` | `seams/replace.txt` | `replaceCurrent()` / `replaceAllMatches()` / `setCaseSensitivity()`: document text after each. Breaking replace moves 16 lines; breaking only the case toggle still moves one, so the toggle is pinned in its own right (#115) |
+| `link-edit-seam.ts` | `seams/link-edit.txt` | `applyLinkEdit()`: the markdown the inline link editor writes back, including a path with spaces wrapped in `<...>`, an empty href unlinking, and a linked image. 14 of 51 lines on a broken `applyLinkEdit` (#117) |
+| `table-align-seam.ts` | `seams/table-align.txt` | `setTableColumnAlignment()`: the separator row produced for left / center / right / none, on a header table and on a body-row-aligned table. 16 of 63 lines when the function is neutered (#118) |
+| `img-width-seam.ts` | `seams/img-width.txt` | How an `<img>` with `width`/`height` parses and serializes now that `MarkdownImage` owns those attributes, and how `align` still does not. Includes the #124 case, a link wrapped around such an image, which was silently dropped before #120 (#120, #124) |
+
+These five were committed as SKELETONS, with their registration lines in
+`roundtrip.ts`, before the wave-7 worktrees were cut. That is the pattern to
+repeat: a parallel wave that needs several seams should have them registered up
+front, one owner each, so that no branch has to edit the shared seam list. The
+same reason is why `esbuild.harness.config.js` reads `test/*.test.ts` from disk
+rather than listing entry points.
 
 The file-mention seam is the one seam whose lines are verdicts rather than
 measurements: every `yes` in its golden is an assertion, so a `NO` appearing
@@ -486,6 +499,14 @@ Two qualifications, both learned by trying:
   `npm run verify:vscode-floor` (see the next section) exercises several of
   these items in a real VS Code, including mermaid preview rendering.
 
+### Reading a FAIL line
+
+`FAIL  repo/CLAUDE.md (+1 -1 lines)` counts lines in the unified diff below it.
+It used to count `newLines.length - oldLines.length` and its negation, which is
+neither addition nor deletion: a one-line replacement printed `(+0 -0 lines)` on a
+real failure, and a three-line addition printed `(+3 --3 lines)`. Both were misread
+during the 2.17 wave, the first as "the golden did not really move".
+
 ## Running the extension on the VS Code floor
 
 `npm run verify:vscode-floor` answers a question no amount of type checking
@@ -527,13 +548,46 @@ What it does:
    writes `phase-driven`, the host asserts — and step 4 sits between the probe
    loop and the exit race that SIGKILLs the host.
 
-   Measured teeth: stubbing out `case "edit"` in the provider turns the
-   typed-character check red, and stubbing out `case "viewSource"` turns the
-   view-source check red. The no-bounce check is weaker and should be read as
+   Measured teeth for step 4: stubbing out `case "edit"` in the provider turns
+   the typed-character check red, and stubbing out `case "viewSource"` turns
+   the view-source check red. The no-bounce check is weaker and should be read as
    such: it is an invariant over four layered guards (`!pendingEdit` in
    `onDidChangeTextDocument`, `pendingEdit || isDisposed` in `updateWebview`,
    the `queueMicrotask` reset in `applyEdit`, and `lastSentState` in the
    webview), and removing any ONE of them does not turn it red.
+
+5. Drives each 2.17 editing surface and reads back a fact about the result:
+   the slash menu after typing `/`, find-and-replace replacing a word, the
+   bubble menu over a selection, an image resized by its drag handle, the
+   lightbox opening and closing on Escape, the copy-anchor button appearing on
+   heading hover, and the reading time next to the word count. These exist
+   because that release closed ten issues against fourteen hand-test criteria.
+   Teeth were measured in two batches, exactly 3 and exactly 4 red against the
+   corresponding code removed.
+
+   Three of these probes reported working code as broken before they were
+   right, and the corrections are worth more than the probes: an image NodeView
+   writes `style.width`, not a `width` attribute; a hover overlay needs a
+   `mousemove` whose coordinates fall inside the target's rect, not a
+   `mouseover` on the element; and `defaultPrevented` on a `contextmenu` is not
+   evidence, because the VS Code webview cancels that event itself. A scripted
+   selection range does not reach ProseMirror either, so anything that reads
+   the editor selection has to be driven through the editor.
+
+   Two criteria are named rather than automated: Git Graph's diff view (#48: a different path in VS Code, and the
+   extension is not in the floor workspace) and how the menus look.
+
+6. Asserts that `workbench.editorAssociations` decides which editor opens
+   `.md`, which is what #122 shipped a command for and what its unit tests
+   could not show: they prove the command writes the right JSON, not that VS
+   Code honours it. The sample is opened the ordinary way, with no viewType,
+   under three states of the setting. Teeth: `contributes.customEditors` at
+   `priority: "option"` turns it red on exactly the first state. This runs last
+   because it changes workspace settings and reopens the document.
+
+   Backticks are banned inside the `Runtime.evaluate` template literals in
+   `run.mjs`; that has cost two syntax errors. Use string concatenation.
+
 
 ```bash
 npm run verify:vscode-floor                  # the floor from engines.vscode

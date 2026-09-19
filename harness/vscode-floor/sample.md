@@ -27,3 +27,7 @@ flowchart TD
 
 > [!NOTE]
 > An alert block.
+
+<img src="media/icon.png" width="96" alt="A sized image">
+
+![A plain image](media/icon.png)

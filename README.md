@@ -21,6 +21,10 @@
 
 Full WYSIWYG markdown editing with Tiptap + `@tiptap/markdown` (GFM support via MarkedJS). Format text using the glassmorphic toolbar or keyboard shortcuts, including underline with `Ctrl/Cmd+U`, which is saved as `<ins>text</ins>` so it still renders underlined on GitHub and in the VS Code preview. `Ctrl/Cmd+Shift+M` toggles between WYSIWYG and source view in both directions.
 
+- **Slash Commands**: type `/` at the start of an empty line for a filtered list of blocks to insert (headings, lists, table, code block, Mermaid diagram, the five GitHub alerts, image, quote, horizontal rule)
+- **Selection Bubble Menu**: Bold, Italic, Code, Link and Highlight appear where you selected text
+- **Inline Link Editor**: editing a link happens in a popover at the cursor, not in a dialog at the top of the window
+
 ### Code & Diagrams
 
 - **Syntax Highlighting** — 19 languages via lowlight, with language badge dropdown and copy button
@@ -29,7 +33,7 @@ Full WYSIWYG markdown editing with Tiptap + `@tiptap/markdown` (GFM support via 
 
 ### Tables
 
-Resizable tables with multi-line cell content. Right-click context menu for row/column operations. Drag-select cells with visual highlight overlay.
+Resizable tables with multi-line cell content. Right-click context menu for row/column operations, including column alignment (left, center, right), and fully operable from the keyboard with Tab, the arrow keys, Enter and Escape. Drag-select cells with visual highlight overlay.
 
 ### Images
 
@@ -37,15 +41,16 @@ Resizable tables with multi-line cell content. Right-click context menu for row/
 - Double-click to edit URL/path
 - Auto-rename files when path changes in markdown
 - Auto-delete files when removed from markdown (moves to Trash)
-- Fullscreen lightbox with zoom controls (0.5x–4x)
+- Drag a corner handle to resize, saved as `<img src alt width>` so the size survives a roundtrip
+- Fullscreen lightbox with zoom controls (0.5x to 4x), keyboard operable: focus is trapped while it is open and returns to the image when it closes
 - Open local image file in a new VSCode editor tab (hover button; works with Excalidraw plugin for `.svg`)
 
 ### Navigation & Search
 
-- **Search** (`Cmd/Ctrl+F`) — Find with match highlighting, next/prev navigation, match counter
+- **Search and Replace** (`Cmd/Ctrl+F`): find with match highlighting, next/prev navigation and a match counter; the replace row adds replace, replace all and a case-sensitive toggle
 - **Link Navigation** — `Cmd+Click` / `Ctrl+Click` to follow links, scroll to headings, open files, or launch URLs
 - **Table of Contents** — Sidebar with click-to-scroll, active heading tracking, collapse/expand
-- **Wiki Links** — Type `[[` for autocomplete over the workspace's Markdown files; `[[Page]]` links resolve on click
+- **Wiki Links** — Type `[[` for autocomplete over the workspace's Markdown files; `[[Page]]` links resolve on click, and following one that does not exist offers to create it next to the current document
 - **File Mentions** — Type `@` to search any file in the workspace and insert a relative link
 
 ### Writing Experience
@@ -56,7 +61,7 @@ Resizable tables with multi-line cell content. Right-click context menu for row/
 - **Heading Collapse** — Toggle arrows on headings to collapse/expand sections
 - **Metadata Panel** — Collapsible YAML frontmatter editor with validation
 - **Reading Progress Bar** — Fixed top bar tracking scroll position
-- **Word Count** — Subtle indicator in bottom-right corner
+- **Word Count and Reading Time** — Subtle indicator in bottom-right corner
 - **File Mention (@)** — Type `@` to autocomplete workspace filenames, inserts markdown link
 - **Toolbar Auto-hide** — Opt-in, reveals on hover
 
@@ -67,6 +72,22 @@ Resizable tables with multi-line cell content. Right-click context menu for row/
 3. Editor opens automatically in WYSIWYG mode
 4. Use toolbar to format text and insert elements
 5. Changes save automatically to source file
+
+### Choosing which editor opens Markdown
+
+This extension registers itself as the default editor for `.md` and `.markdown`,
+so those files open in WYSIWYG mode everywhere. If you would rather a particular
+workspace opened them as plain text, for instance because a Git tool opens `.md`
+diffs there, run **Choose Default Editor for Markdown in this Workspace** from the
+Command Palette. It offers three choices, and each one is reversible from the same
+entry:
+
+- **TUI Markdown (WYSIWYG)**, the rich editor
+- **Text editor (raw markdown)**, VS Code's built-in editor
+- **Reset to the extension default**, which removes the workspace setting again
+
+The choice is written to `workbench.editorAssociations` in the workspace settings,
+so it travels with the folder and not with your user profile.
 
 ## Export
 

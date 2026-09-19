@@ -42,6 +42,16 @@ skills-lock.json
 # Docs & plans
 docs/**
 plans/**
+# CONTEXT.md is the agent-facing glossary, not user documentation. 2.16 shipped
+# it to the marketplace because this list only named docs/**.
+CONTEXT.md
+
+# The hand-check wizard and the answers it records. `.manual-checks.env` is in
+# .gitignore, which vsce does NOT read once a .vscodeignore exists, so it was
+# packaged: a published .vsix carried one machine's temp paths and one tester's
+# free-text notes. Caught by packaging locally before the release, not by CI.
+scripts/**
+.manual-checks.env
 
 # Build artifacts
 *.vsix

@@ -15,7 +15,7 @@
  *   - <img> without unmodeled attributes -> Image (MarkdownImage)
  *
  * Unrecognized tags (or tags with attributes that markdown cannot express,
- * such as `<img width="96">` or `<a target="_blank">`) are preserved verbatim
+ * such as `<img align="left">` or `<a target="_blank">`) are preserved verbatim
  * as raw HTML nodes:
  *   - `rawHtmlBlock`: block-level HTML tokens (e.g. `<details>`, `<div>`, comments)
  *   - `rawHtmlInline`: inline HTML tokens (e.g. `<kbd>`, `<sub>`, `<a>`), where
@@ -27,10 +27,11 @@ import { Node, mergeAttributes } from "@tiptap/core";
 
 /**
  * Check if an <img> tag contains attributes that MarkdownImage cannot model
- * (specifically width, height, align).
+ * (specifically align). Width and height are modeled as node attributes on
+ * MarkdownImage (#120).
  */
 export function hasUnmodeledImageAttributes(tagOrHtml: string): boolean {
-  return /\b(width|height|align)\s*=/i.test(tagOrHtml);
+  return /\balign\s*=/i.test(tagOrHtml);
 }
 
 /**

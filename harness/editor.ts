@@ -32,6 +32,8 @@ import StarterKit from "@tiptap/starter-kit";
 import {
   MarkdownLink,
   MarkdownImage,
+  MarkdownParagraph,
+  IMAGE_IS_INLINE,
 } from "../src/webview/markdown-destination";
 import { Highlight } from "@tiptap/extension-highlight";
 import { Underline } from "@tiptap/extension-underline";
@@ -307,17 +309,12 @@ function buildMarkdownExtensions(
         return result;
       },
     }),
-    // Mirror of the custom Paragraph serializer in src/webview/main.ts.
-    Paragraph.extend({
-      renderMarkdown(node: any, h: any) {
-        if (!node) return "";
-        const content = Array.isArray(node.content) ? node.content : [];
-        if (content.length === 0) return "";
-        return h.renderChildren(content);
-      },
-    }),
+    // NOT a mirror: imported from src/webview/markdown-destination.ts, the same
+    // module main.ts uses, so the paragraph serializer and the lone-image parse
+    // rule cannot drift between the two editors.
+    MarkdownParagraph,
     MarkdownImage.configure({
-      inline: false,
+      inline: IMAGE_IS_INLINE,
       allowBase64: true,
     }),
     Highlight,

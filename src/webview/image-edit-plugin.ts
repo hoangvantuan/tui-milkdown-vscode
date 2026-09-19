@@ -1,6 +1,7 @@
 import type { EditorView } from "@tiptap/pm/view";
 import type { WebviewToHostMessage } from "../shared/messages";
 import { IMAGE_NODE_TYPES } from "./main";
+import { sameResource } from "../utils/vscode-resource";
 import { cleanImagePath } from "../utils/clean-image-path";
 import { openLightbox } from "./image-lightbox-plugin";
 
@@ -45,9 +46,19 @@ let lastMouseY = 0;
 let cachedImages: HTMLImageElement[] = [];
 let imageCacheValid = false;
 
-/** Refresh image cache from DOM */
+/**
+ * Refresh image cache from DOM.
+ *
+ * `:not(.ProseMirror-separator)` is load-bearing. prosemirror-view inserts its
+ * own srcless `<img class="ProseMirror-separator">` next to a leaf node in a
+ * real browser, so the DOM carries twice as many `img` elements as the document
+ * has images (#125). They are zero-size, so hover never actually matched one,
+ * but every walk over this cache paid for them. jsdom takes a different branch
+ * and emits `<br class="ProseMirror-trailingBreak">` instead, which is why no
+ * harness seam can see this and the floor check's detail line is what found it.
+ */
 function refreshImageCache(editorEl: HTMLElement): void {
-  cachedImages = Array.from(editorEl.querySelectorAll("img"));
+  cachedImages = Array.from(editorEl.querySelectorAll("img:not(.ProseMirror-separator)"));
   imageCacheValid = true;
 }
 
@@ -95,7 +106,11 @@ function createOverlay(editorEl: HTMLElement): HTMLDivElement {
     e.preventDefault();
     e.stopPropagation();
     if (currentHoveredImg) {
-      openLightbox(currentHoveredImg.getAttribute("src") || "", currentHoveredImg.getAttribute("alt") || "");
+      openLightbox(
+        currentHoveredImg.getAttribute("src") || "",
+        currentHoveredImg.getAttribute("alt") || "",
+        currentHoveredImg as HTMLElement,
+      );
     }
   });
 
@@ -460,6 +475,23 @@ function findImageNode(view: EditorView, imgEl: Element): NodeInfo | null {
   return null;
 }
 
+/**
+ * Ask the host for an image path when there is no image node yet.
+ *
+ * The slash menu's Image entry used to insert `setImage({ src: "" })`, and an
+ * `<img>` with no src renders nothing at all: the menu looked like it had done
+ * nothing, and whatever the user typed next landed as plain text next to an
+ * invisible node. Reported by hand against 2.17. This reuses the same input box
+ * that double-clicking an existing image opens, so there is one way to type an
+ * image path, not two.
+ */
+export function promptForImageUrl(onPicked: (src: string) => void): void {
+  if (!storedPostMessage) return;
+  requestUrlEdit("", storedPostMessage, (newUrl) => {
+    if (newUrl) onPicked(newUrl);
+  });
+}
+
 export function setImageMap(imageMap: Record<string, string>): void {
   currentImageMap = imageMap;
 }
@@ -481,9 +513,16 @@ function requestUrlEdit(
   if (isBase64) {
     displayUrl = "";
   } else if (isLocalImage) {
-    // Reverse lookup from imageMap
+    // Reverse lookup from imageMap.
+    //
+    // `sameResource`, not `===`. The host builds these URIs with
+    // `asWebviewUri()` and the DOM hands back a percent-encoded spelling of the
+    // same string, so an exact comparison missed EVERY image: the input box
+    // then offered the whole `https://file%2B.vscode-resource...` URL as the
+    // path to edit, and whatever the user typed went into their markdown as an
+    // absolute webview URL. Found by hand-checking the image rename criterion.
     for (const [originalPath, webviewUri] of Object.entries(currentImageMap)) {
-      if (webviewUri === currentUrl) {
+      if (sameResource(webviewUri, currentUrl)) {
         displayUrl = originalPath;
         break;
       }

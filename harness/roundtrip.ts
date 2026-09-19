@@ -9,7 +9,9 @@
  *   3. the file search ranking seam (see ./filesearch-seam.ts),
  *   4. the table column-width seam (see ./table-colwidth-seam.ts),
  *   5. the placeholder rendering seam (see ./placeholder-seam.ts),
- *   6. the file-mention insert seam (see ./filemention-seam.ts).
+ *   6. the file-mention insert seam (see ./filemention-seam.ts),
+ *   7. the CRLF seam, the list-keys seam, and the wave-7 seams
+ *      (slash, replace, link-edit, table-align, img-width).
  *
  * Exit code 1 on any diff, missing golden or error; 0 when everything
  * matches.
@@ -28,6 +30,11 @@ import { runPlaceholderSeam } from "./placeholder-seam";
 import { runFileMentionSeam } from "./filemention-seam";
 import { runCrlfSeam } from "./crlf-seam";
 import { runListKeysSeam } from "./list-keys-seam";
+import { runSlashSeam } from "./slash-seam";
+import { runReplaceSeam } from "./replace-seam";
+import { runLinkEditSeam } from "./link-edit-seam";
+import { runTableAlignSeam } from "./table-align-seam";
+import { runImgWidthSeam } from "./img-width-seam";
 import { formatUnifiedDiff } from "./diff";
 
 const MAX_DIFF_LINES = 120;
@@ -71,11 +78,18 @@ function runFixture(
   const oldLines = golden.split("\n");
   const newLines = output.split("\n");
   const diff = formatUnifiedDiff(`golden/${entry.name}`, `current/${entry.name}`, oldLines, newLines);
-  const additions = newLines.length - oldLines.length;
+  // Counted from the diff, not from the line totals. This used to be
+  // `newLines.length - oldLines.length` and its negation, which reads as
+  // "added / removed" and is neither: a one-line replacement printed
+  // `(+0 -0 lines)` on a real failure, and a three-line addition printed
+  // `(+3 --3 lines)`. Both were misread during the 2.17 wave.
+  const diffLines = (diff ?? "").split("\n");
+  const additions = diffLines.filter((l) => l.startsWith("+") && !l.startsWith("+++")).length;
+  const deletions = diffLines.filter((l) => l.startsWith("-") && !l.startsWith("---")).length;
   return {
     kind: "fail",
     additions,
-    deletions: -additions,
+    deletions,
     diff,
   };
 }
@@ -168,6 +182,34 @@ function main(): number {
       name: "seams/list-keys.txt",
       goldenPath: path.join(repoRoot, "harness", "golden", "seams", "list-keys.txt"),
       run: runListKeysSeam,
+    },
+    // Wave-7 seams. Registered here by the coordinator BEFORE the worktrees were
+    // cut, so four parallel workers each own one seam file and none of them has
+    // to edit this shared list. Their bodies are skeletons until filled in.
+    {
+      name: "seams/slash.txt",
+      goldenPath: path.join(repoRoot, "harness", "golden", "seams", "slash.txt"),
+      run: runSlashSeam,
+    },
+    {
+      name: "seams/replace.txt",
+      goldenPath: path.join(repoRoot, "harness", "golden", "seams", "replace.txt"),
+      run: runReplaceSeam,
+    },
+    {
+      name: "seams/link-edit.txt",
+      goldenPath: path.join(repoRoot, "harness", "golden", "seams", "link-edit.txt"),
+      run: runLinkEditSeam,
+    },
+    {
+      name: "seams/table-align.txt",
+      goldenPath: path.join(repoRoot, "harness", "golden", "seams", "table-align.txt"),
+      run: runTableAlignSeam,
+    },
+    {
+      name: "seams/img-width.txt",
+      goldenPath: path.join(repoRoot, "harness", "golden", "seams", "img-width.txt"),
+      run: runImgWidthSeam,
     },
   ];
 

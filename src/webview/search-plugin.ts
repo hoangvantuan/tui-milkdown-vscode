@@ -41,13 +41,21 @@ export const SearchPlugin = FindAndReplace.extend({
         document.dispatchEvent(new CustomEvent("toggle-search-bar"));
         return true;
       },
+      "Mod-h": () => {
+        document.dispatchEvent(
+          new CustomEvent("toggle-search-bar", {
+            detail: { showReplace: true },
+          }),
+        );
+        return true;
+      },
     };
   },
 }).configure({
   caseSensitive: false,
   searchDebounceMs: 0,
   injectCSS: false,
-  injectNonce: window.__tuiCspNonce,
+  injectNonce: typeof window !== "undefined" ? window.__tuiCspNonce : undefined,
 });
 
 /**
@@ -62,6 +70,55 @@ export function performSearch(editor: Editor, queryText: string): void {
   if (index !== null) {
     selectResult(editor, index);
   }
+}
+
+/** Set case sensitivity and update search matches. */
+export function setCaseSensitivity(editor: Editor, caseSensitive: boolean): void {
+  editor.commands.setCaseSensitive(caseSensitive);
+  const { results, searchTerm } = editor.storage.findAndReplace;
+  if (!searchTerm) return;
+  const index = findNextIndex(results, editor.state.selection.from);
+  if (index !== null) {
+    selectResult(editor, index);
+  }
+}
+
+/** Get current case sensitivity setting */
+export function getCaseSensitivity(editor: Editor): boolean {
+  return editor.storage.findAndReplace.caseSensitive;
+}
+
+/** Set the replace term in find-and-replace storage */
+export function setReplaceTerm(editor: Editor, term: string): void {
+  editor.commands.setReplaceTerm(term);
+}
+
+/**
+ * Replace the currently selected match and jump to the next match.
+ * If replaceText is provided, sets the replace term first.
+ * Returns true if a replacement occurred.
+ */
+export function replaceCurrent(editor: Editor, replaceText?: string): boolean {
+  if (replaceText !== undefined) {
+    editor.commands.setReplaceTerm(replaceText);
+  }
+  const ok = editor.commands.replace();
+  if (ok) {
+    scrollSearchMatchIntoView(editor);
+  }
+  return ok;
+}
+
+/**
+ * Replace all matches in the document at once.
+ * If replaceText is provided, sets the replace term first.
+ * Returns true if replacements occurred.
+ */
+export function replaceAllMatches(editor: Editor, replaceText?: string): boolean {
+  if (replaceText !== undefined) {
+    editor.commands.setReplaceTerm(replaceText);
+  }
+  return editor.commands.replaceAll();
 }
 
 /** Clear all search highlights */
@@ -102,6 +159,7 @@ function selectResult(editor: Editor, index: number): void {
 }
 
 function scrollSearchMatchIntoView(editor: Editor): void {
+  if (typeof requestAnimationFrame === "undefined") return;
   requestAnimationFrame(() => {
     try {
       const { head } = editor.view.state.selection;

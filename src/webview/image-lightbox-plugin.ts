@@ -1,8 +1,8 @@
 /**
  * Fullscreen lightbox shared by images and mermaid diagrams: dark backdrop,
  * zoom 0.5x to 4x (buttons, wheel, +/-/0 keys), drag / two-finger pan when
- * zoomed, Escape or click-outside to close. `currentTarget` switches between
- * the `<img>` and the SVG wrapper so one transform pipeline serves both.
+ * zoomed, Escape or click-outside to close. Focus trapped when open, and
+ * restored to the opener element on close.
  *
  * `openMermaidLightbox` assigns SVG markup via innerHTML; that input is
  * trusted only because of the trade-off documented in mermaid-plugin.ts.
@@ -18,6 +18,7 @@ let dragStartY = 0;
 let dragStartTX = 0;
 let dragStartTY = 0;
 let currentTarget: HTMLElement | null = null;
+let lastFocusedElement: HTMLElement | null = null;
 
 let isTouchPanning = false;
 let touchStartMidX = 0;
@@ -45,13 +46,25 @@ function getElements() {
   };
 }
 
+function getFocusableControls(): HTMLElement[] {
+  const { overlay } = getElements();
+  if (!overlay) return [];
+  const candidates = Array.from(
+    overlay.querySelectorAll<HTMLElement>(
+      'button:not([disabled]):not(.hidden), [tabindex="0"]'
+    )
+  );
+  return candidates.filter((el) => {
+    return !el.classList.contains('hidden') && !el.closest('.hidden');
+  });
+}
+
 function setCopyButtonVisibility(visible: boolean) {
   const { copy } = getElements();
   if (!copy) return;
   copy.classList.toggle('hidden', !visible);
   copy.classList.remove('is-copied');
 }
-
 
 function applyTransform() {
   const { zoomLevel } = getElements();
@@ -101,6 +114,11 @@ function closeLightbox() {
   currentTarget = null;
   setCopyButtonVisibility(false);
   applyTransform();
+
+  if (lastFocusedElement && typeof lastFocusedElement.focus === 'function') {
+    lastFocusedElement.focus();
+    lastFocusedElement = null;
+  }
 }
 
 function isActive(): boolean {
@@ -118,10 +136,56 @@ function setCaption(text: string) {
   }
 }
 
-export function openLightbox(src: string, alt: string): void {
+function prepareOpenerFocus(triggerEl?: HTMLElement) {
+  lastFocusedElement = triggerEl || (document.activeElement as HTMLElement) || null;
+  if (lastFocusedElement && !lastFocusedElement.hasAttribute('tabindex')) {
+    const tag = lastFocusedElement.tagName.toLowerCase();
+    if (tag !== 'button' && tag !== 'a' && tag !== 'input' && tag !== 'select' && tag !== 'textarea') {
+      lastFocusedElement.setAttribute('tabindex', '-1');
+    }
+  }
+}
+
+function focusOverlay() {
+  const controls = getFocusableControls();
+  if (controls.length > 0) {
+    controls[0].focus();
+  } else {
+    getElements().overlay?.focus();
+  }
+}
+
+/** Fallback delay for a window Chromium considers not visible. Matches `mermaid-plugin.ts`. */
+const HIDDEN_WINDOW_FALLBACK_MS = 50;
+
+/**
+ * Move focus into the overlay once it has been laid out, WITHOUT depending on a
+ * frame ever being painted.
+ *
+ * `requestAnimationFrame` used to be the only scheduler here, and Chromium does
+ * not run rAF callbacks for a window it considers not visible. Opening the
+ * lightbox in a covered or background window therefore trapped nothing: the
+ * overlay went `active`, focus stayed on whatever was behind it, and Tab walked
+ * the document underneath the dialog. Same defect as #112, same fix. The timer
+ * is the floor; whichever of the two arrives first wins, so a visible window
+ * still focuses on the next frame exactly as before.
+ */
+function scheduleFocusOverlay(): void {
+  let ran = false;
+  const once = () => {
+    if (ran) return;
+    ran = true;
+    focusOverlay();
+  };
+  requestAnimationFrame(once);
+  setTimeout(once, HIDDEN_WINDOW_FALLBACK_MS);
+}
+
+export function openLightbox(src: string, alt: string, triggerEl?: HTMLElement): void {
   const { overlay, image, svgWrapper } = getElements();
   if (!overlay || !image) return;
 
+  prepareOpenerFocus(triggerEl);
   resetState();
   svgWrapper?.classList.add('hidden');
   image.classList.remove('hidden');
@@ -132,12 +196,15 @@ export function openLightbox(src: string, alt: string): void {
   setCaption(alt);
   overlay.classList.add('active');
   applyTransform();
+
+  scheduleFocusOverlay();
 }
 
-export function openMermaidLightbox(svgMarkup: string, caption: string): void {
+export function openMermaidLightbox(svgMarkup: string, caption: string, triggerEl?: HTMLElement): void {
   const { overlay, image, svgWrapper } = getElements();
   if (!overlay || !svgWrapper) return;
 
+  prepareOpenerFocus(triggerEl);
   resetState();
   image?.classList.add('hidden');
   svgWrapper.innerHTML = svgMarkup;
@@ -163,6 +230,8 @@ export function openMermaidLightbox(svgMarkup: string, caption: string): void {
   setCaption(caption);
   overlay.classList.add('active');
   applyTransform();
+
+  scheduleFocusOverlay();
 }
 
 let initialized = false;
@@ -198,7 +267,34 @@ export function initLightbox(): void {
 
   document.addEventListener('keydown', (e) => {
     if (!isActive()) return;
-    if (e.key === 'Escape') closeLightbox();
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeLightbox();
+      return;
+    }
+    if (e.key === 'Tab') {
+      const controls = getFocusableControls();
+      if (controls.length === 0) {
+        e.preventDefault();
+        return;
+      }
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      const active = document.activeElement as HTMLElement;
+
+      if (e.shiftKey) {
+        if (active === first || !controls.includes(active)) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else {
+        if (active === last || !controls.includes(active)) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+      return;
+    }
     if (e.key === '+' || e.key === '=') setScale(scale + SCALE_STEP);
     if (e.key === '-') setScale(scale - SCALE_STEP);
     if (e.key === '0') setScale(1);

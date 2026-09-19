@@ -22,7 +22,12 @@ import type {
   HostToWebviewMessage,
 } from "../shared/messages";
 import StarterKit from "@tiptap/starter-kit";
-import { MarkdownLink, MarkdownImage } from "./markdown-destination";
+import {
+  MarkdownLink,
+  MarkdownImage,
+  MarkdownParagraph,
+  IMAGE_IS_INLINE,
+} from "./markdown-destination";
 import { Highlight } from "@tiptap/extension-highlight";
 import { Underline } from "@tiptap/extension-underline";
 import { Table, TableRow, TableCell, TableHeader } from "@tiptap/extension-table";
@@ -62,8 +67,8 @@ import {
   type FrontmatterFormat,
 } from "./frontmatter";
 import { LineHighlight } from "./line-highlight-plugin";
-import { HeadingLevel } from "./heading-level-plugin";
-import { setupImageEditOverlay, handleUrlEditResponse, handleImageRenameResponse, setImageMap } from "./image-edit-plugin";
+import { HeadingLevel, headingSlug } from "./heading-level-plugin";
+import { setupImageEditOverlay, handleUrlEditResponse, handleImageRenameResponse, setImageMap, promptForImageUrl } from "./image-edit-plugin";
 import { renderTableToMarkdown } from "./table-markdown-serializer";
 import { transformTableCellsAfterParse } from "./table-cell-content-parser";
 import { MermaidDiagram, updateMermaidTheme, clearMermaidCache } from "./mermaid-plugin";
@@ -73,7 +78,7 @@ import { Blockquote } from "@tiptap/extension-blockquote";
 import { setupTocSidebar, updateTocFromEditor } from "./toc-sidebar";
 import { HeadingCollapse, collapsePluginKey, getCollapsedHeadings, setCollapsedHeadings } from "./heading-collapse-plugin";
 import { CodeBlockEnhancement } from "./code-block-plugin";
-import { SearchPlugin, performSearch, clearSearch, searchNext, searchPrev, getMatchInfo } from "./search-plugin";
+import { SearchPlugin, performSearch, clearSearch, searchNext, searchPrev, getMatchInfo, setCaseSensitivity, replaceCurrent, replaceAllMatches } from "./search-plugin";
 import { initFontSelector, type FontSelectorAPI, sanitizeFontName } from "./font-selector";
 import { initLightbox } from "./image-lightbox-plugin";
 import { svgToPngBlob } from "./svg-to-png";
@@ -84,9 +89,18 @@ import { installMarkdownTextEscape } from "./markdown-text-escape";
 import { CustomOrderedList } from "./ordered-list-extension";
 import { ListKeymapExtension } from "./list-keymap-extension";
 import { escapeHtml } from "./file-search-utils";
+import { createBubbleMenuExtension } from "./bubble-menu";
+import { initLinkPopover, type LinkPopoverController } from "./link-popover";
+import { SlashCommand, setImageSrcProvider } from "./slash-command-plugin";
 
 // Install unified text escape overrides on MarkdownManager (#97, #99, #100, #101).
 installMarkdownTextEscape();
+
+// The slash menu's Image entry asks the host for a path through the same input
+// box the image URL editor uses. Wired here because the plugin must stay free
+// of any host handle.
+setImageSrcProvider(promptForImageUrl);
+
 
 // Fix: @tiptap/markdown v3.19.0 drops `escape` tokens from marked parser,
 // causing escaped characters like \_ to be silently lost during roundtrip.
@@ -305,6 +319,7 @@ lowlight.register({
 });
 
 let editor: Editor | null = null;
+let linkPopover: LinkPopoverController | null = null;
 let isUpdatingFromExtension = false;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let globalThemeReceived: ThemeName | null = null;
@@ -1219,16 +1234,9 @@ function initEditor(initialContent: string = ""): Editor | null {
             return result;
           },
         }),
-        Paragraph.extend({
-          renderMarkdown(node: any, h: any) {
-            if (!node) return '';
-            const content = Array.isArray(node.content) ? node.content : [];
-            if (content.length === 0) return '';
-            return h.renderChildren(content);
-          },
-        }),
+        MarkdownParagraph,
         MarkdownImage.configure({
-          inline: false,
+          inline: IMAGE_IS_INLINE,
           allowBase64: true,
         }),
         Highlight,
@@ -1289,12 +1297,19 @@ function initEditor(initialContent: string = ""): Editor | null {
         FileMention,
         WikiLink,
         WikiLinkSuggestion,
+        SlashCommand,
         RawHtmlBlock,
         RawHtmlInline,
+        createBubbleMenuExtension({ onOpenLink: () => linkPopover?.open() }),
         ...conditionalExtensions,
       ],
       content: initialContent,
       contentType: 'markdown',
+      // Opening a document used to put no caret anywhere: nothing in this
+      // webview focused the editor, and a ProseMirror selection in an unfocused
+      // view draws nothing at all. Found while chasing a position-restore
+      // report that turned out not to be about positions.
+      autofocus: 'start' as const,
       editorProps: {
         handlePaste(view, event) {
           const file = getImageFromClipboard(event.clipboardData);
@@ -1430,20 +1445,6 @@ function updateEditorContent(content: string): void {
   }
 }
 
-// Pending link edit requests (webview → extension → webview async flow)
-const pendingLinkEdits = new Map<string, Editor>();
-
-function handleLinkEditResponse(editId: string, newUrl: string | null): void {
-  const ed = pendingLinkEdits.get(editId);
-  pendingLinkEdits.delete(editId);
-  if (!ed || newUrl === null) return;
-  if (newUrl === '') {
-    ed.chain().focus().extendMarkRange('link').unsetLink().run();
-  } else {
-    ed.chain().focus().extendMarkRange('link').setLink({ href: newUrl }).run();
-  }
-}
-
 function applyTheme(theme: "dark" | "light"): void {
   document.body.classList.remove("dark-theme", "light-theme");
   document.body.classList.add(`${theme}-theme`);
@@ -1473,17 +1474,8 @@ const TOOLBAR_COMMANDS: Record<string, (ed: Editor) => void> = {
   deleteColumn: (ed) => ed.chain().focus().deleteColumn().run(),
   deleteRow: (ed) => ed.chain().focus().deleteRow().run(),
   deleteTable: (ed) => ed.chain().focus().deleteTable().run(),
-  link: (ed) => {
-    const previousUrl = ed.getAttributes('link').href as string || '';
-    const editId = `link-${Date.now()}`;
-    pendingLinkEdits.set(editId, ed);
-    // Fix 4: cleanup stale pending entry after 60s (matches image-edit-plugin pattern)
-    setTimeout(() => pendingLinkEdits.delete(editId), 60_000);
-    vscode.postMessage({
-      type: 'requestLinkEdit',
-      editId,
-      currentUrl: previousUrl,
-    });
+  link: () => {
+    linkPopover?.open();
   },
 };
 
@@ -1505,7 +1497,8 @@ function updateToolbarActiveState(ed: Editor): void {
                       cmd === 'taskList' ? ed.isActive('taskList') :
                         cmd === 'blockquote' ? ed.isActive('blockquote') :
                           cmd === 'codeBlock' ? ed.isActive('codeBlock') :
-                            false;
+                            cmd === 'link' ? ed.isActive('link') :
+                              false;
     btn.classList.toggle('is-active', isActive);
   }
 
@@ -1545,9 +1538,16 @@ function setupSearchBar(): void {
   const searchPrevBtn = document.getElementById("search-prev");
   const searchNextBtn = document.getElementById("search-next");
   const searchCloseBtn = document.getElementById("search-close");
+  const searchToggleReplaceBtn = document.getElementById("search-toggle-replace");
+  const searchCaseBtn = document.getElementById("search-case");
+  const replaceRow = document.getElementById("replace-row");
+  const replaceInput = document.getElementById("replace-input") as HTMLInputElement | null;
+  const replaceBtn = document.getElementById("replace-btn");
+  const replaceAllBtn = document.getElementById("replace-all-btn");
   if (!searchBar || !searchInput) return;
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let caseSensitive = false;
 
   function updateCount(): void {
     if (!searchCount || !editor) return;
@@ -1564,33 +1564,68 @@ function setupSearchBar(): void {
     }
   }
 
-  function openSearchBar(): void {
+  function setReplaceVisible(visible: boolean): void {
+    if (!replaceRow) return;
+    if (visible) {
+      replaceRow.classList.remove("hidden");
+      searchToggleReplaceBtn?.classList.add("expanded");
+    } else {
+      replaceRow.classList.add("hidden");
+      searchToggleReplaceBtn?.classList.remove("expanded");
+    }
+  }
+
+  function openSearchBar(showReplace = false): void {
     searchBar!.classList.remove("hidden");
-    searchInput!.focus();
-    searchInput!.select();
+    if (showReplace) {
+      setReplaceVisible(true);
+      if (searchInput!.value.length > 0 && replaceInput) {
+        replaceInput.focus();
+        replaceInput.select();
+      } else {
+        searchInput!.focus();
+        searchInput!.select();
+      }
+    } else {
+      searchInput!.focus();
+      searchInput!.select();
+    }
   }
 
   function closeSearchBar(): void {
     if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
     searchBar!.classList.add("hidden");
     searchInput!.value = "";
+    if (replaceInput) replaceInput.value = "";
     searchCount!.textContent = "";
     searchInput!.classList.remove("no-results");
+    setReplaceVisible(false);
     if (editor) {
       clearSearch(editor);
       editor.commands.focus();
     }
   }
 
-  function toggleSearchBar(): void {
+  function toggleSearchBar(e?: Event): void {
+    const custom = e as CustomEvent<{ showReplace?: boolean }> | undefined;
+    const wantReplace = custom?.detail?.showReplace;
     if (searchBar!.classList.contains("hidden")) {
-      openSearchBar();
+      openSearchBar(!!wantReplace);
+    } else if (wantReplace && replaceRow?.classList.contains("hidden")) {
+      setReplaceVisible(true);
+      if (searchInput!.value.length > 0 && replaceInput) {
+        replaceInput.focus();
+        replaceInput.select();
+      } else {
+        searchInput!.focus();
+        searchInput!.select();
+      }
     } else {
       closeSearchBar();
     }
   }
 
-  // Listen for Mod-f from search-plugin.ts
+  // Listen for Mod-f and Mod-h from search-plugin.ts
   document.addEventListener("toggle-search-bar", toggleSearchBar);
 
   // Input → debounced search
@@ -1604,6 +1639,43 @@ function setupSearchBar(): void {
     }, 150);
   });
 
+  // Case sensitive toggle
+  searchCaseBtn?.addEventListener("click", () => {
+    caseSensitive = !caseSensitive;
+    searchCaseBtn.classList.toggle("active", caseSensitive);
+    if (editor) {
+      setCaseSensitivity(editor, caseSensitive);
+      updateCount();
+    }
+  });
+
+  // Toggle replace row button
+  searchToggleReplaceBtn?.addEventListener("click", () => {
+    const isHidden = replaceRow?.classList.contains("hidden") ?? true;
+    setReplaceVisible(isHidden);
+    if (isHidden && replaceInput) {
+      replaceInput.focus();
+      replaceInput.select();
+    }
+  });
+
+  function doReplace(): void {
+    if (!editor) return;
+    const term = replaceInput?.value ?? "";
+    replaceCurrent(editor, term);
+    updateCount();
+  }
+
+  function doReplaceAll(): void {
+    if (!editor) return;
+    const term = replaceInput?.value ?? "";
+    replaceAllMatches(editor, term);
+    updateCount();
+  }
+
+  replaceBtn?.addEventListener("click", doReplace);
+  replaceAllBtn?.addEventListener("click", doReplaceAll);
+
   // Keyboard shortcuts in search input
   searchInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -1612,6 +1684,20 @@ function setupSearchBar(): void {
     } else if (e.key === "Enter" && e.shiftKey) {
       e.preventDefault();
       if (editor) { searchPrev(editor); updateCount(); }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      closeSearchBar();
+    }
+  });
+
+  // Keyboard shortcuts in replace input
+  replaceInput?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey) {
+      e.preventDefault();
+      doReplace();
+    } else if (e.key === "Enter" && (e.altKey || e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      doReplaceAll();
     } else if (e.key === "Escape") {
       e.preventDefault();
       closeSearchBar();
@@ -1697,7 +1783,12 @@ function updateWordCount(ed: Editor): void {
     if (!el) return;
     const text = ed.state.doc.textContent;
     const words = text.trim() ? text.trim().split(/\s+/).length : 0;
-    el.textContent = `${words.toLocaleString()} words`;
+    // 200 words per minute, the figure most reading-time widgets use, and
+    // rounded UP so a short document reads "1 min" rather than "0 min".
+    const minutes = Math.max(1, Math.ceil(words / 200));
+    el.textContent = words
+      ? `${words.toLocaleString()} words · ${minutes} min read`
+      : "0 words";
   }, 500);
 }
 
@@ -1915,13 +2006,10 @@ function scrollToHeading(slug: string): void {
   const { doc } = editor.state;
   doc.descendants((node, pos) => {
     if (node.type.name !== "heading") return;
-    const text = node.textContent;
-    // GitHub-style slug: lowercase, keep Unicode letters/digits, each space→one hyphen (no collapse)
-    const nodeSlug = text
-      .toLowerCase()
-      .replace(/[^\p{L}\p{N}\s-]/gu, "")
-      .replace(/\s/g, "-");
-    if (nodeSlug === slug) {
+    // The slug rule lives in heading-level-plugin.ts, next to the anchor button
+    // that writes these strings. Two copies of it is how a copied anchor and the
+    // heading it points at stop matching.
+    if (headingSlug(node.textContent) === slug) {
       editor!.commands.setTextSelection(pos + 1);
       const dom = editor!.view.nodeDOM(pos);
       if (dom instanceof HTMLElement) {
@@ -1992,6 +2080,7 @@ window.addEventListener("message", async (event) => {
           if (!editor) {
             editor = initEditor(displayBody);
             if (editor) {
+              linkPopover = initLinkPopover(editor);
               initTocSidebar();
               justInitialized = true;
               // Re-apply font after .tiptap element is created
@@ -2183,11 +2272,6 @@ window.addEventListener("message", async (event) => {
         );
       }
       break;
-    case "linkEditResponse":
-      if (typeof message.editId === "string") {
-        handleLinkEditResponse(message.editId, message.newUrl ?? null);
-      }
-      break;
     case "fileSearchResults":
       if (Array.isArray(message.files)) {
         setFileMentionFiles(message.files, message.currentDocFolder);
@@ -2304,7 +2388,6 @@ function init() {
     // responds with clipboardImage message only if it does. Text paste continues normally.
     vscode.postMessage({ type: "readClipboardImage" });
   }, { capture: true });
-
 
   vscode.postMessage({ type: "ready" });
 }

@@ -4,6 +4,29 @@ import * as fs from "fs/promises";
 import type { Root } from "mdast";
 import { extractVscodeResourcePath } from "./vscode-resource";
 
+/**
+ * `globalThis.crypto` for Node 18, which is what the declared floor runs.
+ *
+ * Web Crypto only became a global in Node 19. VS Code 1.85, the version
+ * `engines.vscode` promises, runs its extension host on Node 18, where
+ * `crypto` is undefined unless you reach for `node:crypto`. Something under
+ * mdast2docx calls it while building the document, so on the floor every DOCX
+ * export died with `ReferenceError: crypto is not defined` and the user got
+ * "Export failed" with no file. PDF was unaffected and has always worked.
+ *
+ * Nobody saw it because a current VS Code runs Node 20 or later, where the
+ * global is there, and because the two export criteria in #88 read "needs a
+ * save dialog" and were never run. The floor check now drives them.
+ *
+ * Assigned rather than declared: the property is configurable in Node 18 and
+ * already present in Node 20, so this is a no-op on any host that does not
+ * need it.
+ */
+if (typeof (globalThis as any).crypto === "undefined") {
+  const { webcrypto } = require("node:crypto");
+  (globalThis as any).crypto = webcrypto;
+}
+
 export type PageSize = "A4" | "Letter";
 
 /**

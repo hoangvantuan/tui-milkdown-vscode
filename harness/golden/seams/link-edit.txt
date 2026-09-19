@@ -1,0 +1,59 @@
+link-edit seam: applyLinkEdit (src/webview/link-popover.ts)
+observes the markdown string only: every 'yes' below is a verdict, not a measurement
+
+[plain-url] target=text newHref="https://example.com"
+note: standard web URL
+  expected: "Here is a [website](https://example.com) to visit."
+  actual:   "Here is a [website](https://example.com) to visit."
+  matches:  yes
+  survives a reload unchanged: yes
+  reload is a fixpoint: yes
+
+[path-containing-spaces] target=text newHref="docs/getting started guide.md"
+note: space-containing destination must be wrapped in <...>
+  expected: "Read the [manual](<docs/getting started guide.md>) for details."
+  actual:   "Read the [manual](<docs/getting started guide.md>) for details."
+  matches:  yes
+  survives a reload unchanged: yes
+  reload is a fixpoint: yes
+
+[relative-path] target=text newHref="../subfolder/notes.md"
+note: relative path with parent traversal
+  expected: "Check [notes](../subfolder/notes.md) here."
+  actual:   "Check [notes](../subfolder/notes.md) here."
+  matches:  yes
+  survives a reload unchanged: yes
+  reload is a fixpoint: yes
+
+[empty-href] target=text newHref=""
+note: empty href unlinks the text mark
+  expected: "Click unlink me please."
+  actual:   "Click unlink me please."
+  matches:  yes
+  survives a reload unchanged: yes
+  reload is a fixpoint: yes
+
+[linked-image] target=image newHref="https://new-dest.com"
+note: linked image destination edit
+  expected: "[![banner](images/banner.png)](https://new-dest.com)"
+  actual:   "[![banner](images/banner.png)](https://new-dest.com)"
+  matches:  yes
+  survives a reload unchanged: yes
+  reload is a fixpoint: yes
+
+[linked-image-spaces] target=image newHref="assets/my new logo.png"
+note: linked image destination with spaces wrapped in <...>
+  expected: "Here is [![logo](images/logo.png)](<assets/my new logo.png>) above."
+  actual:   "Here is [![logo](images/logo.png)](<assets/my new logo.png>) above."
+  matches:  yes
+  survives a reload unchanged: yes
+  reload is a fixpoint: yes
+
+[linked-image-empty-href] target=image newHref=""
+note: empty href unlinks the image mark leaving plain image
+  expected: "Here is ![icon](images/icon.png) above."
+  actual:   "Here is ![icon](images/icon.png) above."
+  matches:  yes
+  survives a reload unchanged: yes
+  reload is a fixpoint: yes
+

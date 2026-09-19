@@ -45,6 +45,7 @@ export interface HandlerContext {
   webview: TypedWebview;
   /** Extension-global memento: the remembered theme, font and zoom live here. */
   globalState: vscode.Memento;
+  /** Extension workspace memento: per-document cursor and scroll positions live here. */
   /** The PROVIDER's map, passed whole with `session.docKey`, never as the inner map. */
   originalImagePaths: Map<string, Map<string, string>>;
   /** The provider's clipboard reporter — it de-duplicates the warning per reason. */
@@ -195,24 +196,6 @@ const handlers: HandlerTable = {
     openLocalFileInEditor(imgPath, ctx.document);
   },
 
-  requestLinkEdit: (msg, ctx) => {
-    const linkMsg = msg;
-    if (!linkMsg.editId) return;
-    vscode.window
-      .showInputBox({
-        prompt: "Enter URL",
-        value: linkMsg.currentUrl || "",
-        placeHolder: "https://example.com",
-      })
-      .then((newUrl) => {
-        ctx.webview.postMessage({
-          type: "linkEditResponse",
-          editId: linkMsg.editId,
-          newUrl: newUrl ?? null,
-        });
-      });
-  },
-
   requestImageRename: (msg, ctx) => {
     handleRequestImageRename(
       msg,
@@ -268,8 +251,8 @@ const handlers: HandlerTable = {
     });
   },
 
-  openWikiLink: async (msg) => {
-    await openWikiLink(msg.filename);
+  openWikiLink: async (msg, ctx) => {
+    await openWikiLink(msg.filename, ctx.document.uri);
   },
 
   export: (msg, ctx) => {
@@ -283,6 +266,7 @@ const handlers: HandlerTable = {
       },
     );
   },
+
 };
 
 /** The `onDidReceiveMessage` body: validate the envelope, look up, run. */

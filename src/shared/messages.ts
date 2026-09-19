@@ -72,12 +72,6 @@ export interface OpenImageInTabMessage {
   path: string;
 }
 
-export interface RequestLinkEditMessage {
-  type: "requestLinkEdit";
-  editId: string;
-  currentUrl?: string;
-}
-
 export interface RequestImageRenameMessage {
   type: "requestImageRename";
   renameId: string;
@@ -105,6 +99,7 @@ export interface ExportMessage {
   mermaidImages?: Array<{ code: string; base64: string }>;
 }
 
+
 export type WebviewToHostMessage =
   | ReadyMessage
   | EditMessage
@@ -118,7 +113,6 @@ export type WebviewToHostMessage =
   | RequestImageUrlEditMessage
   | OpenLinkMessage
   | OpenImageInTabMessage
-  | RequestLinkEditMessage
   | RequestImageRenameMessage
   | FileSearchMessage
   | WikiLinkSearchMessage
@@ -126,7 +120,7 @@ export type WebviewToHostMessage =
   | ExportMessage;
 
 // ============================================================================
-// Host -> Webview Messages (15 types)
+// Host -> Webview Messages (16 types)
 // ============================================================================
 
 export interface UpdateMessage {
@@ -189,12 +183,6 @@ export interface ImageUrlEditResponseMessage {
   newUrl: string | null;
 }
 
-export interface LinkEditResponseMessage {
-  type: "linkEditResponse";
-  editId: string;
-  newUrl: string | null;
-}
-
 export interface ImageRenameResponseMessage {
   type: "imageRenameResponse";
   renameId: string;
@@ -221,6 +209,7 @@ export interface ExportDoneMessage {
   reason?: string;
 }
 
+
 export type HostToWebviewMessage =
   | UpdateMessage
   | ThemeMessage
@@ -232,7 +221,6 @@ export type HostToWebviewMessage =
   | ImageSavedMessage
   | ClipboardImageMessage
   | ImageUrlEditResponseMessage
-  | LinkEditResponseMessage
   | ImageRenameResponseMessage
   | FileSearchResultsMessage
   | WikiLinkSearchResultsMessage
