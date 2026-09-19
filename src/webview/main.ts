@@ -101,6 +101,55 @@ installMarkdownTextEscape();
 // of any host handle.
 setImageSrcProvider(promptForImageUrl);
 
+/**
+ * Apply a position replayed by the host on `ready` (#121).
+ *
+ * This was one `requestAnimationFrame(applyPos)` and it failed two ways at
+ * once, which is why reopening VS Code landed you at the top of the file.
+ *
+ * One: Chromium does not run animation frames for a window it considers not
+ * visible, and a window being restored at startup is exactly that. The
+ * callback never ran, so nothing was restored. Third occurrence of #112's
+ * mechanism in this codebase, after the mermaid render and the lightbox focus
+ * trap; #128 asks for the audit that would have caught all three.
+ *
+ * Two: it was a single shot. The host sends this on `ready`, which can arrive
+ * before the editor is constructed and long before the document has a layout.
+ * Assigning `scrollTop` to a container whose content is still empty clamps to
+ * 0, so even when the frame did run, the position was silently dropped.
+ *
+ * So: a plain timer, retried until the editor exists AND the scroll actually
+ * took, with a deadline so a short document does not spin.
+ */
+function applySavedPosition(cursor?: number, scrollTop?: number): void {
+  const deadline = Date.now() + 3000;
+  const attempt = () => {
+    const scroller = document.getElementById("editor-container");
+    if (!editor || !scroller) {
+      if (Date.now() < deadline) setTimeout(attempt, 50);
+      return;
+    }
+    // Cursor first: setting the selection can scroll, and the scroll offset is
+    // what the user actually notices.
+    if (typeof cursor === "number") {
+      const docSize = editor.state.doc.content.size;
+      const safePos = Math.max(0, Math.min(cursor, docSize));
+      try {
+        editor.commands.setTextSelection(safePos);
+      } catch {
+        // a stale position against a changed document is not worth reporting
+      }
+    }
+    if (typeof scrollTop === "number") {
+      scroller.scrollTop = scrollTop;
+      if (scroller.scrollTop < scrollTop - 2 && Date.now() < deadline) {
+        setTimeout(attempt, 50);
+      }
+    }
+  };
+  attempt();
+}
+
 // Fix: @tiptap/markdown v3.19.0 drops `escape` tokens from marked parser,
 // causing escaped characters like \_ to be silently lost during roundtrip.
 const EscapeToken = Extension.create({
@@ -2222,26 +2271,7 @@ window.addEventListener("message", async (event) => {
       }
       break;
     case "savedEditorPosition": {
-      const applyPos = () => {
-        const scroller = document.getElementById("editor-container");
-        if (typeof message.scrollTop === "number" && scroller) {
-          scroller.scrollTop = message.scrollTop;
-        }
-        if (typeof message.cursor === "number" && editor) {
-          const docSize = editor.state.doc.content.size;
-          const safePos = Math.max(0, Math.min(message.cursor, docSize));
-          try {
-            editor.commands.setTextSelection(safePos);
-          } catch {
-            // ignore selection error
-          }
-        }
-      };
-      if (editor) {
-        applyPos();
-      } else {
-        requestAnimationFrame(applyPos);
-      }
+      applySavedPosition(message.cursor, message.scrollTop);
       break;
     }
     case "systemFonts":
