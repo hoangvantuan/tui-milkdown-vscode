@@ -95,6 +95,8 @@ import { initLinkPopover, type LinkPopoverController } from "./link-popover";
 import { SlashCommand, setImageSrcProvider } from "./slash-command-plugin";
 import { EmojiSuggestion } from "./emoji-plugin";
 import { setupDragHandle } from "./drag-handle-plugin";
+import { setupBacklinksPanel, updateBacklinks, refreshBacklinksIfVisible } from "./backlinks-panel";
+import { setupFocusMode, handleFocusModeTransaction } from "./focus-mode";
 
 // Install unified text escape overrides on MarkdownManager (#97, #99, #100, #101).
 installMarkdownTextEscape();
@@ -1402,10 +1404,12 @@ function initEditor(initialContent: string = ""): Editor | null {
       },
       onSelectionUpdate: ({ editor: ed }) => {
         updateToolbarActiveState(ed);
+        handleFocusModeTransaction(ed);
       },
       onTransaction: ({ editor: ed, transaction: tr }) => {
         updateToolbarActiveState(ed);
         updateTocFromEditor(ed, tr.docChanged);
+        handleFocusModeTransaction(ed);
         if (tr.docChanged) updateWordCount(ed);
         // Persist collapsed heading state on toggle only
         const collapseMeta = tr.getMeta(collapsePluginKey);
@@ -2107,6 +2111,7 @@ window.addEventListener("message", async (event) => {
             if (editor) {
               linkPopover = initLinkPopover(editor);
               initTocSidebar();
+              setupFocusMode(editor, vscode);
               justInitialized = true;
               // Re-apply font after .tiptap element is created
               const savedFont = vscode.getState()?.fontFamily;
@@ -2153,6 +2158,7 @@ window.addEventListener("message", async (event) => {
             }
             // Update TOC after content change (skip if just initialized — initTocSidebar already did it)
             if (!justInitialized) updateTocFromEditor(editor, true);
+            refreshBacklinksIfVisible();
             // Update search result count if search bar is visible
             const searchBar = document.getElementById("search-bar");
             if (searchBar && !searchBar.classList.contains("hidden")) {
@@ -2307,6 +2313,11 @@ window.addEventListener("message", async (event) => {
         setWikiLinkFiles(message.files, message.currentDocFolder);
       }
       break;
+    case "backlinks":
+      if (Array.isArray(message.links)) {
+        updateBacklinks(message.links);
+      }
+      break;
   }
 });
 
@@ -2386,6 +2397,7 @@ function init() {
   setupSearchBar();
   setupMetadataHandlers();
   setupTocHandlers();
+  setupBacklinksPanel(vscode);
 
   const editorEl = document.getElementById("editor");
   if (editorEl) {
