@@ -475,6 +475,23 @@ function findImageNode(view: EditorView, imgEl: Element): NodeInfo | null {
   return null;
 }
 
+/**
+ * Ask the host for an image path when there is no image node yet.
+ *
+ * The slash menu's Image entry used to insert `setImage({ src: "" })`, and an
+ * `<img>` with no src renders nothing at all: the menu looked like it had done
+ * nothing, and whatever the user typed next landed as plain text next to an
+ * invisible node. Reported by hand against 2.17. This reuses the same input box
+ * that double-clicking an existing image opens, so there is one way to type an
+ * image path, not two.
+ */
+export function promptForImageUrl(onPicked: (src: string) => void): void {
+  if (!storedPostMessage) return;
+  requestUrlEdit("", storedPostMessage, (newUrl) => {
+    if (newUrl) onPicked(newUrl);
+  });
+}
+
 export function setImageMap(imageMap: Record<string, string>): void {
   currentImageMap = imageMap;
 }

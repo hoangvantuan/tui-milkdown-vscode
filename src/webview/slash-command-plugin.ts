@@ -25,6 +25,18 @@ import { PluginKey } from "@tiptap/pm/state";
 import fuzzysort from "fuzzysort";
 import { SuggestionPopup } from "./suggestion-popup";
 
+/**
+ * How the Image entry obtains a path. `main.ts` wires this to the same input
+ * box double-clicking an image opens; the harness leaves it null.
+ */
+let imageSrcProvider: ((onPicked: (src: string) => void) => void) | null = null;
+
+export function setImageSrcProvider(
+  provider: ((onPicked: (src: string) => void) => void) | null,
+): void {
+  imageSrcProvider = provider;
+}
+
 export interface SlashCommandItem {
   id: string;
   title: string;
@@ -208,7 +220,21 @@ export const SLASH_COMMAND_ITEMS: SlashCommandItem[] = [
     keywords: ["image", "picture", "photo", "img"],
     icon: `<svg ${SVG_ATTRS}><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`,
     command: (editor, range) => {
-      editor.chain().focus().deleteRange(range).setImage({ src: "" }).run();
+      editor.chain().focus().deleteRange(range).run();
+      // Ask for the path FIRST. Inserting `setImage({ src: "" })` and leaving
+      // it there is what made this entry look broken: an <img> with no src
+      // renders nothing, so nothing appeared to happen.
+      //
+      // The fallback is deliberate rather than dead code: the harness editor
+      // has no host to show an input box, so `harness/slash-seam.ts` still
+      // records what this entry inserts, and its golden does not move.
+      if (imageSrcProvider) {
+        imageSrcProvider((src) => {
+          if (src) editor.chain().focus().setImage({ src }).run();
+        });
+      } else {
+        editor.chain().focus().setImage({ src: "" }).run();
+      }
     },
   },
   {

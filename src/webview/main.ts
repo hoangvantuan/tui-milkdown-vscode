@@ -68,7 +68,7 @@ import {
 } from "./frontmatter";
 import { LineHighlight } from "./line-highlight-plugin";
 import { HeadingLevel, headingSlug } from "./heading-level-plugin";
-import { setupImageEditOverlay, handleUrlEditResponse, handleImageRenameResponse, setImageMap } from "./image-edit-plugin";
+import { setupImageEditOverlay, handleUrlEditResponse, handleImageRenameResponse, setImageMap, promptForImageUrl } from "./image-edit-plugin";
 import { renderTableToMarkdown } from "./table-markdown-serializer";
 import { transformTableCellsAfterParse } from "./table-cell-content-parser";
 import { MermaidDiagram, updateMermaidTheme, clearMermaidCache } from "./mermaid-plugin";
@@ -91,10 +91,15 @@ import { ListKeymapExtension } from "./list-keymap-extension";
 import { escapeHtml } from "./file-search-utils";
 import { createBubbleMenuExtension } from "./bubble-menu";
 import { initLinkPopover, type LinkPopoverController } from "./link-popover";
-import { SlashCommand } from "./slash-command-plugin";
+import { SlashCommand, setImageSrcProvider } from "./slash-command-plugin";
 
 // Install unified text escape overrides on MarkdownManager (#97, #99, #100, #101).
 installMarkdownTextEscape();
+
+// The slash menu's Image entry asks the host for a path through the same input
+// box the image URL editor uses. Wired here because the plugin must stay free
+// of any host handle.
+setImageSrcProvider(promptForImageUrl);
 
 // Fix: @tiptap/markdown v3.19.0 drops `escape` tokens from marked parser,
 // causing escaped characters like \_ to be silently lost during roundtrip.
