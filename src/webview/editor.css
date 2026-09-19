@@ -1736,6 +1736,54 @@ body.dark-theme .tiptap :not(pre) > code {
   background: rgba(255, 255, 255, 0.08);
 }
 
+/* HTML whitelist tags (#132): kbd, sub, sup, details */
+.tiptap kbd {
+  font-family: inherit;
+  font-size: 0.85em;
+  padding: 0.15em 0.4em;
+  background: rgba(var(--border-rgb, 0, 0, 0), 0.06);
+  border: 1px solid rgba(var(--border-rgb, 0, 0, 0), 0.2);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+}
+body.dark-theme .tiptap kbd {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.tiptap sub,
+.tiptap sup {
+  font-size: 75%;
+  line-height: 0;
+  position: relative;
+  vertical-align: baseline;
+}
+.tiptap sup {
+  top: -0.5em;
+}
+.tiptap sub {
+  bottom: -0.25em;
+}
+
+.tiptap details {
+  margin: 1em 0;
+  padding: 0.5em 0.75em;
+  border: 1px solid rgba(var(--border-rgb, 0, 0, 0), 0.12);
+  border-radius: 6px;
+}
+body.dark-theme .tiptap details {
+  border-color: rgba(255, 255, 255, 0.15);
+}
+.tiptap details > summary {
+  cursor: pointer;
+  font-weight: 500;
+  outline: none;
+}
+.tiptap details[open] > summary {
+  margin-bottom: 0.5em;
+}
+
+
 /* Custom scrollbar */
 #editor-container::-webkit-scrollbar { width: 6px; height: 6px; }
 #editor-container::-webkit-scrollbar-track { background: transparent; }

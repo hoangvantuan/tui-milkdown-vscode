@@ -379,6 +379,8 @@ function buildMarkdownExtensions(
     ...require("../src/webview/footnote-extension").footnoteExtensions,
     // --- end W1 ---
     // --- W2: html whitelist (details / kbd / sub / sup) ---
+    ...require("../src/webview/html-marks").htmlMarkExtensions,
+    ...require("../src/webview/details-extension").detailsExtensions,
     // --- end W2 ---
   ];
 }
