@@ -49,9 +49,19 @@ giây giữ, không ai gõ gì. Hai lần chạy ngay sau đó đều xanh, có 
 cửa sổ lên trước. Đây là vùng của `#111`. Ghi lại vì một lỗi thấy một lần vẫn là một
 lỗi; nếu anh gặp lại, đó là bằng chứng thứ hai.
 
-**Cách dùng.** Mở chính file này bằng extension (chuột phải > Open With > TUI Markdown)
-rồi tick trực tiếp. Mỗi mục ghi rõ: làm gì, ĐẠT nghĩa là gì, và cái bẫy đã biết. Mục nào
-trượt thì mở issue mới, dán đúng dòng quan sát được, đừng sửa ngay tại chỗ.
+**Cách dùng: chạy `scripts/manual-checks.sh`.**
+
+```bash
+./scripts/manual-checks.sh
+```
+
+Nó dựng workspace test, mở VS Code với extension, rồi đi qua đúng 14 mục còn lại, mỗi
+lần một mục trên màn hình sạch. Mỗi mục hỏi pass / fail / skip cộng một dòng ghi chú,
+ghi vào `.manual-checks.env` nên dừng giữa chừng rồi chạy lại không mất gì, và cuối
+cùng sinh `docs/manual-checks-results.md`.
+
+Phần dưới là nội dung từng mục, để đọc khi cần hiểu vì sao một mục tồn tại. Đọc cũng
+được, nhưng chạy script thì không quên mục nào và không phải tự chép bảng kết quả.
 
 **Trước khi bắt đầu:**
 

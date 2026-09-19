@@ -3,3 +3,6 @@ out/
 node_modules/
 *.vsix
 .gitnexus
+
+# Raw answers from scripts/manual-checks.sh (resume state, not a result)
+.manual-checks.env
