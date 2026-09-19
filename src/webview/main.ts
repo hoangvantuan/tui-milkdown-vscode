@@ -135,7 +135,14 @@ function applySavedPosition(cursor?: number, scrollTop?: number): void {
       const docSize = editor.state.doc.content.size;
       const safePos = Math.max(0, Math.min(cursor, docSize));
       try {
-        editor.commands.setTextSelection(safePos);
+        // `focus`, not `setTextSelection`. A selection in an editor that does
+        // not hold focus draws NO CARET, so restoring the position perfectly
+        // still looked to the user like the cursor had been lost: there was
+        // nothing blinking anywhere. Nothing in this webview ever focused the
+        // editor on load, so a freshly opened document had no caret at all.
+        // `scrollIntoView: false` so this does not fight the scroll restore
+        // immediately below.
+        editor.commands.focus(safePos, { scrollIntoView: false });
       } catch {
         // a stale position against a changed document is not worth reporting
       }
@@ -1353,6 +1360,12 @@ function initEditor(initialContent: string = ""): Editor | null {
       ],
       content: initialContent,
       contentType: 'markdown',
+      // Opening a document put no caret anywhere: nothing in this webview ever
+      // focused the editor, and a ProseMirror selection in an unfocused view
+      // draws nothing. Restoring the saved position (#121) looked broken for
+      // the same reason even once it was working. `false` here would keep that.
+      // A replayed position moves the caret afterwards; see applySavedPosition.
+      autofocus: 'start' as const,
       editorProps: {
         handlePaste(view, event) {
           const file = getImageFromClipboard(event.clipboardData);
