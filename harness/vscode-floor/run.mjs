@@ -854,7 +854,13 @@ async function driveSurfaces(evaluate, session) {
         open: overlay.classList.contains('active'),
         focusInside: !!(document.activeElement && overlay.contains(document.activeElement)),
         focusTag: document.activeElement?.tagName ?? null,
+        focusClass: document.activeElement?.className ?? null,
         role: overlay.getAttribute('role'),
+        // A covered window gets no animation frame. The focus call used to be
+        // scheduled ONLY from requestAnimationFrame, so this check could fail
+        // for a reason that had nothing to do with the focus trap (#112's
+        // mechanism, second occurrence). Reported so the two never read alike.
+        visibility: document.visibilityState,
       };
     })()`);
     for (const type of ["keyDown", "keyUp"]) {
@@ -874,11 +880,143 @@ async function driveSurfaces(evaluate, session) {
     add(
       "lightbox takes focus on open and gives it back on Escape",
       inside.open && inside.focusInside && after.closed && after.focusLeftOverlay,
-      `opened=${inside.open} focusInside=${inside.focusInside} (${inside.focusTag ?? "-"}) role=${inside.role ?? "-"}; ` +
+      `opened=${inside.open} focusInside=${inside.focusInside} (${inside.focusTag ?? "-"}` +
+        `${inside.focusClass ? "." + String(inside.focusClass).split(" ")[0] : ""}) ` +
+        `role=${inside.role ?? "-"} visibility=${inside.visibility ?? "-"}; ` +
         `afterEscape closed=${after.closed} focusLeftOverlay=${after.focusLeftOverlay} (${after.focusTag ?? "-"})`,
     );
   } catch (err) {
     add("lightbox takes focus on open and gives it back on Escape", false, `threw: ${err.message}`);
+  }
+
+  // --- Bubble menu at a zoom level other than 100% (#116) -------------------
+  // AGENTS.md: CSS `zoom` on `.tiptap` is transparent to the JS coordinate
+  // APIs, which is why every popup in this codebase attaches to
+  // #editor-container. #116 asked for this to be checked by hand at a non-100%
+  // zoom, and nobody did. The numbers are all in the detail line because the
+  // interesting failure is a menu that drifts, not one that vanishes.
+  try {
+    await evaluate(`(() => {
+      const btn = document.getElementById('btn-zoom-in');
+      btn?.click(); btn?.click();
+      return 'ok';
+    })()`);
+    await sleep(500);
+    const selected = await evaluate(`(() => {
+      const root = document.querySelector('.tiptap');
+      const strong = root?.querySelector('strong');
+      if (!strong) return 'no bold text to select';
+      root.focus();
+      const range = document.createRange();
+      range.selectNodeContents(strong);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      document.dispatchEvent(new Event('selectionchange'));
+      return 'ok';
+    })()`);
+    if (selected !== "ok") throw new Error(selected);
+    await sleep(900);
+    const z = await evaluate(`(() => {
+      const root = document.querySelector('.tiptap');
+      const menu = document.querySelector('.bubble-menu');
+      const sel = window.getSelection();
+      const r = sel && sel.rangeCount ? sel.getRangeAt(0).getBoundingClientRect() : null;
+      const m = menu ? menu.getBoundingClientRect() : null;
+      const round = (n) => (n == null ? null : Math.round(n));
+      return {
+        zoom: getComputedStyle(root).zoom,
+        present: !!menu,
+        visible: menu ? getComputedStyle(menu).display !== 'none' : false,
+        selCenterX: round(r ? r.left + r.width / 2 : null),
+        selTop: round(r ? r.top : null),
+        menuCenterX: round(m ? m.left + m.width / 2 : null),
+        menuTop: round(m ? m.top : null),
+        // The whole point of attaching to #editor-container: a menu inside
+        // .tiptap would itself be scaled by the zoom.
+        inContainer: menu ? (!!menu.closest('#editor-container') && !menu.closest('.tiptap')) : false,
+      };
+    })()`);
+    const dx = z.selCenterX != null && z.menuCenterX != null ? Math.abs(z.selCenterX - z.menuCenterX) : null;
+    const dy = z.selTop != null && z.menuTop != null ? Math.abs(z.selTop - z.menuTop) : null;
+    add(
+      "bubble menu still tracks the selection at a non-100% zoom",
+      z.present && z.visible && z.inContainer && dx != null && dx <= 80 && dy != null && dy <= 120,
+      `zoom=${z.zoom} present=${z.present} visible=${z.visible} attachedToEditorContainer=${z.inContainer} ` +
+        `selCenterX=${z.selCenterX} menuCenterX=${z.menuCenterX} dx=${dx} ` +
+        `selTop=${z.selTop} menuTop=${z.menuTop} dy=${dy}`,
+    );
+    await evaluate(`(() => { document.getElementById('btn-zoom-reset')?.click(); return 'ok'; })()`);
+    await sleep(400);
+  } catch (err) {
+    add("bubble menu still tracks the selection at a non-100% zoom", false, `threw: ${err.message}`);
+  }
+
+  // --- @ mention and [[ wiki link popups (#88 hand-test debt) ---------------
+  // Same shape as the slash probe: both are @tiptap/suggestion consumers over
+  // the shared SuggestionPopup, and both need a real transaction, so the
+  // trigger goes in with Input.insertText rather than a DOM write.
+  for (const [label, trigger, popupSel, itemSel] of [
+    ["@ mention", "@", ".file-mention-popup", ".file-mention-item"],
+    ["[[ wiki link", "[[", ".wiki-link-popup", ".wiki-link-item"],
+  ]) {
+    const name = `${label} popup lists workspace files`;
+    try {
+      const placed = await evaluate(`(() => {
+        const root = document.querySelector('.tiptap');
+        const last = root?.lastElementChild;
+        if (!last) return 'empty doc';
+        root.focus();
+        const range = document.createRange();
+        range.selectNodeContents(last);
+        range.collapse(false);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        return 'ok';
+      })()`);
+      if (placed !== "ok") throw new Error(`caret: ${placed}`);
+      for (const type of ["keyDown", "keyUp"]) {
+        await session.send("Input.dispatchKeyEvent", {
+          type, key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13,
+        });
+      }
+      await sleepShort();
+      await session.send("Input.insertText", { text: trigger });
+      // The host answers this one over a message round trip, unlike the slash
+      // menu, so it needs longer than sleepShort.
+      await sleep(1200);
+      const popup = await evaluate(`(() => {
+        const el = document.querySelector('${popupSel}');
+        if (!el) return {
+          open: false,
+          anyPopup: document.querySelectorAll('.file-mention-popup, .wiki-link-popup, .slash-command-popup').length,
+          tail: (document.querySelector('.tiptap')?.lastElementChild?.textContent ?? '').slice(-12),
+        };
+        const items = el.querySelectorAll('${itemSel}');
+        return {
+          open: true,
+          items: items.length,
+          first: items[0]?.textContent?.trim()?.slice(0, 40) ?? null,
+          inContainer: !!el.closest('#editor-container') && !el.closest('.tiptap'),
+        };
+      })()`);
+      add(
+        name,
+        popup.open && popup.items >= 1 && popup.inContainer,
+        `open=${popup.open} items=${popup.items ?? 0} first=${JSON.stringify(popup.first ?? null)} ` +
+          `attachedToEditorContainer=${popup.inContainer ?? false}` +
+          (popup.open ? "" : ` otherPopups=${popup.anyPopup} tail=${JSON.stringify(popup.tail ?? null)}`),
+      );
+      for (const type of ["keyDown", "keyUp"]) {
+        await session.send("Input.dispatchKeyEvent", {
+          type, key: "Escape", code: "Escape", windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27,
+        });
+      }
+      await sleepShort();
+    } catch (err) {
+      add(name, false, `threw: ${err.message}`);
+    }
   }
 
   // --- Heading anchor button (#84) ------------------------------------------

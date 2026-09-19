@@ -155,6 +155,32 @@ function focusOverlay() {
   }
 }
 
+/** Fallback delay for a window Chromium considers not visible. Matches `mermaid-plugin.ts`. */
+const HIDDEN_WINDOW_FALLBACK_MS = 50;
+
+/**
+ * Move focus into the overlay once it has been laid out, WITHOUT depending on a
+ * frame ever being painted.
+ *
+ * `requestAnimationFrame` used to be the only scheduler here, and Chromium does
+ * not run rAF callbacks for a window it considers not visible. Opening the
+ * lightbox in a covered or background window therefore trapped nothing: the
+ * overlay went `active`, focus stayed on whatever was behind it, and Tab walked
+ * the document underneath the dialog. Same defect as #112, same fix. The timer
+ * is the floor; whichever of the two arrives first wins, so a visible window
+ * still focuses on the next frame exactly as before.
+ */
+function scheduleFocusOverlay(): void {
+  let ran = false;
+  const once = () => {
+    if (ran) return;
+    ran = true;
+    focusOverlay();
+  };
+  requestAnimationFrame(once);
+  setTimeout(once, HIDDEN_WINDOW_FALLBACK_MS);
+}
+
 export function openLightbox(src: string, alt: string, triggerEl?: HTMLElement): void {
   const { overlay, image, svgWrapper } = getElements();
   if (!overlay || !image) return;
@@ -171,9 +197,7 @@ export function openLightbox(src: string, alt: string, triggerEl?: HTMLElement):
   overlay.classList.add('active');
   applyTransform();
 
-  requestAnimationFrame(() => {
-    focusOverlay();
-  });
+  scheduleFocusOverlay();
 }
 
 export function openMermaidLightbox(svgMarkup: string, caption: string, triggerEl?: HTMLElement): void {
@@ -207,9 +231,7 @@ export function openMermaidLightbox(svgMarkup: string, caption: string, triggerE
   overlay.classList.add('active');
   applyTransform();
 
-  requestAnimationFrame(() => {
-    focusOverlay();
-  });
+  scheduleFocusOverlay();
 }
 
 let initialized = false;
