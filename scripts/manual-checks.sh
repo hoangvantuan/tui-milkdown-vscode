@@ -186,7 +186,7 @@ finish() {
 # docs/manual-checks.md. Keep the two in step.
 # ──────────────────────────────────────────────────────────────────────────
 
-TOTAL_STAGES=14
+TOTAL_STAGES=13
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WS="${TUI_CHECK_WS:-${TMPDIR:-/tmp/}}"
@@ -325,18 +325,6 @@ say "ĐẠT nếu: 10/10. Bất cứ số nào nhỏ hơn là fail, ghi con số
 verdict B1 "B1"
 
 # ── 5 ─────────────────────────────────────────────────────────────────────
-stage "B2: Nhớ vị trí con trỏ và cuộn theo từng file (#121)"
-note "Lưu ở workspaceState của extension host, KHÔNG ở vscode.setState()."
-note "Webview này không bật retainContextWhenHidden: ẩn tab là webview bị huỷ."
-open_doc "long.md"
-step "Cuộn xuống khoảng giữa, đặt con trỏ vào một đoạn nhận ra được."
-step "Đóng tab, mở lại: phải đúng chỗ cũ, cả cuộn lẫn con trỏ."
-step "Mở test.md ở vị trí khác, qua lại hai file: mỗi file nhớ riêng."
-step "Đóng hẳn VS Code, mở lại workspace: vị trí phải còn đó."
-say "Bước cuối là chỗ workspaceState khác setState, và là lý do chọn nó."
-verdict B2 "B2"
-
-# ── 6 ─────────────────────────────────────────────────────────────────────
 stage "C1: Clipboard lỗi thì có báo, không im lặng (#105)"
 note "Trước #105 nó thất bại không kêu một tiếng."
 step "Copy một đoạn CHỮ rồi dán vào editor: phải ra chữ, bình thường."
@@ -345,7 +333,7 @@ say "Cái cần thấy là MỘT TOAST LỖI, không phải im lặng tuyệt đ
 warn "Không ép được lỗi thì chọn [s]kip và ghi lý do. ĐỪNG chọn pass."
 verdict C1 "C1"
 
-# ── 7 ─────────────────────────────────────────────────────────────────────
+# ── 6 ─────────────────────────────────────────────────────────────────────
 stage "C2: Dán ảnh (#88)"
 open_doc "test.md"
 step "Chụp màn hình vào clipboard: Cmd+Ctrl+Shift+4."
@@ -354,7 +342,7 @@ say "ĐẠT nếu cả ba: ảnh hiện trong tài liệu, có file mới trong 
 say "và markdown ở source view trỏ đúng đường dẫn tương đối đó."
 verdict C2 "C2"
 
-# ── 8 ─────────────────────────────────────────────────────────────────────
+# ── 7 ─────────────────────────────────────────────────────────────────────
 stage "C3: Đổi tên đường dẫn ảnh thì file trên đĩa đổi theo (#88)"
 note "Cần tuiMarkdown.autoRenameImages đang bật (mặc định bật)."
 open_doc "test.md"
@@ -364,7 +352,7 @@ step "Thử đổi cả THƯ MỤC: thao tác này cố ý bị từ chối."
 say "ĐẠT nếu: đổi tên trong cùng thư mục thì chạy, đổi thư mục thì không."
 verdict C3 "C3"
 
-# ── 9 ─────────────────────────────────────────────────────────────────────
+# ── 8 ─────────────────────────────────────────────────────────────────────
 stage "C4b: Ảnh bị xoá có THẬT SỰ vào Thùng rác không (#88, #126)"
 warn "Đây là mục đáng nhất trong cả bản kiểm."
 note "Floor đã chứng minh file BIẾN MẤT khi lưu, nhưng đo được foundIn~/.Trash=no."
@@ -379,7 +367,7 @@ step "Rồi xoá tiếp dòng ảnh dùng chung, Cmd+S, trong khi other.md vẫn
 note "Nó sẽ bị xoá không hỏi gì. Đó là #126, đã biết, không cần mở issue mới."
 verdict C4B "C4b"
 
-# ── 10 ────────────────────────────────────────────────────────────────────
+# ── 9 ────────────────────────────────────────────────────────────────────
 stage "E1b: Chèn bằng Enter, và lời mời tạo file (#123)"
 note "Floor đã nhận phần popup liệt kê file. Phần chèn thì chưa."
 open_doc "test.md"
@@ -391,7 +379,7 @@ say "bấm Create thì file rỗng được tạo CẠNH tài liệu và mở ra
 step "Thử [[../ngoài-thư-mục]]: KHÔNG được mời tạo, chỉ báo not found."
 verdict E1B "E1b"
 
-# ── 11 ────────────────────────────────────────────────────────────────────
+# ── 10 ────────────────────────────────────────────────────────────────────
 stage "F1: editor.tabSize đổi thì thụt lề editor ghi ra đổi theo (#102)"
 note "tuiMarkdown.listIndent mặc định 'editor', tức bám editor.tabSize cho markdown."
 open_doc ".vscode/settings.json"
@@ -404,7 +392,7 @@ say "Bước cuối chính là lỗi #102 báo: dòng nối thụt bằng tab t�
 say "của nó ở lần lưu thứ hai."
 verdict F1 "F1"
 
-# ── 12 ────────────────────────────────────────────────────────────────────
+# ── 11 ────────────────────────────────────────────────────────────────────
 stage "G1: Ảnh chụp trước và sau ở hai theme (#86)"
 note "#86 dời 2356 dòng CSS ra editor.css và tuyên bố KHÔNG đổi một declaration nào."
 note "Không lưới tự động nào kiểm được tuyên bố đó. Chỉ có mắt."
@@ -416,7 +404,7 @@ step "Đổi qua đủ 12 theme một lượt."
 say "ĐẠT nếu: không theme nào vỡ layout hoặc mất màu chữ."
 verdict G1 "G1"
 
-# ── 13 ────────────────────────────────────────────────────────────────────
+# ── 12 ────────────────────────────────────────────────────────────────────
 stage "X1: Git Graph mở diff .md (#48)"
 note "#122 chữa việc MỞ file và điều đó ĐÃ có bằng chứng tự động."
 note "Diff editor là một đường KHÁC trong VS Code, floor workspace không cài Git Graph."
@@ -426,7 +414,7 @@ warn "Nếu diff vẫn mở bằng WYSIWYG: đó là defect KHÁC #122. Mở iss
 warn "đừng mở lại #48."
 verdict X1 "X1"
 
-# ── 14 ────────────────────────────────────────────────────────────────────
+# ── 13 ────────────────────────────────────────────────────────────────────
 stage "X2: Các menu TRÔNG như thế nào"
 note "Floor khẳng định menu hiện ra và đúng số mục. Nó không nói gì về đẹp xấu."
 open_doc "test.md"
@@ -448,7 +436,7 @@ _clear
   printf 'Sinh bởi `scripts/manual-checks.sh`. Tiêu chí và lý do từng mục nằm ở\n'
   printf '`docs/manual-checks.md`.\n\n'
   printf '| Mục | Kết quả | Ghi chú |\n| --- | --- | --- |\n'
-  for k in A1B A2 A3B B1 B2 C1 C2 C3 C4B E1B F1 G1 X1 X2; do
+  for k in A1B A2 A3B B1 C1 C2 C3 C4B E1B F1 G1 X1 X2; do
     v=$(grep -E "^${k}=" "$ENV_FILE" | tail -n1 | cut -d= -f2- || true)
     n=$(grep -E "^${k}_NOTE=" "$ENV_FILE" | tail -n1 | cut -d= -f2- || true)
     printf '| %s | %s | %s |\n' "$k" "${v:-chưa chạy}" "${n:-}"

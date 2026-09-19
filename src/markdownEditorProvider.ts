@@ -109,7 +109,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       document,
       webview: session.webview,
       globalState: this.context.globalState,
-      workspaceState: this.context.workspaceState,
       originalImagePaths: this.originalImagePaths,
       notifyClipboardError: (target, reason, warningMessage) =>
         this.notifyClipboardError(target, reason, warningMessage),

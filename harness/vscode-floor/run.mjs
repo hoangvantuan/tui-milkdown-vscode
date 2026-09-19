@@ -379,7 +379,6 @@ async function probeWebview(session) {
     images: document.querySelectorAll('.tiptap img').length,
     sizedImages: document.querySelectorAll('.tiptap img[width]').length,
     rawHtmlBadges: document.querySelectorAll('.tiptap .raw-html-block').length,
-    headingAnchors: document.querySelectorAll('.tiptap .heading-anchor-btn').length,
     wordCountText: document.getElementById('word-count')?.textContent ?? null,
     searchReplaceToggle: !!document.getElementById('search-toggle-replace'),
     lightboxOverlay: !!document.getElementById('lightbox-overlay')
@@ -1101,34 +1100,6 @@ async function driveSurfaces(evaluate, session) {
     }
   }
 
-  // --- Heading anchor button (#84) ------------------------------------------
-  // The risk this pins is not the clipboard, which a webview may refuse; it is
-  // that a button living INSIDE contenteditable corrupts the document when
-  // pressed. So the assertion is on the heading's text, before and after.
-  try {
-    const result = await evaluate(`(async () => {
-      const heading = document.querySelector('.tiptap h1');
-      const btn = heading?.querySelector('.heading-anchor-btn');
-      if (!btn) return { present: false };
-      const before = heading.textContent;
-      btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-      await new Promise((r) => setTimeout(r, 400));
-      return {
-        present: true,
-        textUnchanged: heading.textContent === before,
-        copiedClass: btn.classList.contains('is-copied'),
-        title: btn.getAttribute('title'),
-      };
-    })()`);
-    add(
-      "heading anchor button does not disturb the document it lives in",
-      result.present && result.textUnchanged,
-      `present=${result.present} headingTextUnchanged=${result.textUnchanged} ` +
-        `clipboardAccepted=${result.copiedClass} title=${JSON.stringify(result.title ?? null)}`,
-    );
-  } catch (err) {
-    add("heading anchor button does not disturb the document it lives in", false, `threw: ${err.message}`);
-  }
 
   // --- Export, both formats (#88 hand-test debt) ----------------------------
   // Two of the six #88 criteria read "needs a save dialog", which is why nobody

@@ -101,61 +101,6 @@ installMarkdownTextEscape();
 // of any host handle.
 setImageSrcProvider(promptForImageUrl);
 
-/**
- * Apply a position replayed by the host on `ready` (#121).
- *
- * This was one `requestAnimationFrame(applyPos)` and it failed two ways at
- * once, which is why reopening VS Code landed you at the top of the file.
- *
- * One: Chromium does not run animation frames for a window it considers not
- * visible, and a window being restored at startup is exactly that. The
- * callback never ran, so nothing was restored. Third occurrence of #112's
- * mechanism in this codebase, after the mermaid render and the lightbox focus
- * trap; #128 asks for the audit that would have caught all three.
- *
- * Two: it was a single shot. The host sends this on `ready`, which can arrive
- * before the editor is constructed and long before the document has a layout.
- * Assigning `scrollTop` to a container whose content is still empty clamps to
- * 0, so even when the frame did run, the position was silently dropped.
- *
- * So: a plain timer, retried until the editor exists AND the scroll actually
- * took, with a deadline so a short document does not spin.
- */
-function applySavedPosition(cursor?: number, scrollTop?: number): void {
-  const deadline = Date.now() + 3000;
-  const attempt = () => {
-    const scroller = document.getElementById("editor-container");
-    if (!editor || !scroller) {
-      if (Date.now() < deadline) setTimeout(attempt, 50);
-      return;
-    }
-    // Cursor first: setting the selection can scroll, and the scroll offset is
-    // what the user actually notices.
-    if (typeof cursor === "number") {
-      const docSize = editor.state.doc.content.size;
-      const safePos = Math.max(0, Math.min(cursor, docSize));
-      try {
-        // `focus`, not `setTextSelection`. A selection in an editor that does
-        // not hold focus draws NO CARET, so restoring the position perfectly
-        // still looked to the user like the cursor had been lost: there was
-        // nothing blinking anywhere. Nothing in this webview ever focused the
-        // editor on load, so a freshly opened document had no caret at all.
-        // `scrollIntoView: false` so this does not fight the scroll restore
-        // immediately below.
-        editor.commands.focus(safePos, { scrollIntoView: false });
-      } catch {
-        // a stale position against a changed document is not worth reporting
-      }
-    }
-    if (typeof scrollTop === "number") {
-      scroller.scrollTop = scrollTop;
-      if (scroller.scrollTop < scrollTop - 2 && Date.now() < deadline) {
-        setTimeout(attempt, 50);
-      }
-    }
-  };
-  attempt();
-}
 
 // Fix: @tiptap/markdown v3.19.0 drops `escape` tokens from marked parser,
 // causing escaped characters like \_ to be silently lost during roundtrip.
@@ -1360,11 +1305,10 @@ function initEditor(initialContent: string = ""): Editor | null {
       ],
       content: initialContent,
       contentType: 'markdown',
-      // Opening a document put no caret anywhere: nothing in this webview ever
-      // focused the editor, and a ProseMirror selection in an unfocused view
-      // draws nothing. Restoring the saved position (#121) looked broken for
-      // the same reason even once it was working. `false` here would keep that.
-      // A replayed position moves the caret afterwards; see applySavedPosition.
+      // Opening a document used to put no caret anywhere: nothing in this
+      // webview focused the editor, and a ProseMirror selection in an unfocused
+      // view draws nothing at all. Found while chasing a position-restore
+      // report that turned out not to be about positions.
       autofocus: 'start' as const,
       editorProps: {
         handlePaste(view, event) {
@@ -2283,10 +2227,6 @@ window.addEventListener("message", async (event) => {
         vscode.setState({ ...vscode.getState(), zoomLevel: currentZoom });
       }
       break;
-    case "savedEditorPosition": {
-      applySavedPosition(message.cursor, message.scrollTop);
-      break;
-    }
     case "systemFonts":
       if (Array.isArray(message.fonts) && fontSelector) {
         fontSelector.setFonts(message.fonts);
@@ -2448,43 +2388,6 @@ function init() {
     // responds with clipboardImage message only if it does. Text paste continues normally.
     vscode.postMessage({ type: "readClipboardImage" });
   }, { capture: true });
-
-  const scroller = document.getElementById("editor-container");
-  if (scroller) {
-    let positionDebounce: ReturnType<typeof setTimeout> | undefined;
-    const reportPosition = () => {
-      if (!editor) return;
-      const cursor = editor.state.selection.from;
-      const scrollTop = scroller.scrollTop;
-      vscode.postMessage({
-        type: "saveEditorPosition",
-        cursor,
-        scrollTop,
-      });
-    };
-
-    scroller.addEventListener("scroll", () => {
-      clearTimeout(positionDebounce);
-      positionDebounce = setTimeout(reportPosition, 300);
-    }, { passive: true });
-
-    document.addEventListener("selectionchange", () => {
-      clearTimeout(positionDebounce);
-      positionDebounce = setTimeout(reportPosition, 300);
-    });
-
-    window.addEventListener("pagehide", () => {
-      clearTimeout(positionDebounce);
-      reportPosition();
-    });
-
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "hidden") {
-        clearTimeout(positionDebounce);
-        reportPosition();
-      }
-    });
-  }
 
   vscode.postMessage({ type: "ready" });
 }

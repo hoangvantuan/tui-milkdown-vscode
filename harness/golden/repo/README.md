@@ -51,8 +51,6 @@ Resizable tables with multi-line cell content. Right-click context menu for row/
 - **Link Navigation** — `Cmd+Click` / `Ctrl+Click` to follow links, scroll to headings, open files, or launch URLs
 - **Table of Contents** — Sidebar with click-to-scroll, active heading tracking, collapse/expand
 - **Wiki Links** — Type `[[` for autocomplete over the workspace's Markdown files; `[[Page]]` links resolve on click, and following one that does not exist offers to create it next to the current document
-- **Copy Heading Anchor**: hover a heading for a `#` button that copies its anchor
-- **Resume Where You Left Off**: cursor and scroll position are remembered per file
 - **File Mentions** — Type `@` to search any file in the workspace and insert a relative link
 
 ### Writing Experience

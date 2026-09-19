@@ -45,41 +45,6 @@ function computeHeadingDecorations(doc: Parameters<typeof DecorationSet.create>[
       );
       decorations.push(widget);
 
-      // Anchor copy button, revealed on hover by the CSS. It writes the slug
-      // with a leading `#`, the form a markdown link to this heading takes.
-      // `mousedown` rather than `click`: the button sits inside contenteditable
-      // and a click would first move the selection into the heading.
-      const slug = headingSlug(node.textContent);
-      const anchor = Decoration.widget(
-        pos + 1,
-        () => {
-          const btn = document.createElement("button");
-          btn.className = "heading-anchor-btn";
-          btn.type = "button";
-          btn.textContent = "#";
-          btn.title = `Copy link to "${node.textContent}"`;
-          btn.setAttribute("aria-label", `Copy link to heading ${node.textContent}`);
-          btn.setAttribute("contenteditable", "false");
-          btn.addEventListener("mousedown", (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            void navigator.clipboard.writeText(`#${slug}`).then(
-              () => {
-                btn.classList.add("is-copied");
-                setTimeout(() => btn.classList.remove("is-copied"), 1200);
-              },
-              () => {
-                // Clipboard can be refused by the webview; say nothing rather
-                // than replace the document with an error screen, which is what
-                // showError() in main.ts actually does.
-              },
-            );
-          });
-          return btn;
-        },
-        { side: -1 }
-      );
-      decorations.push(anchor);
     }
   });
 

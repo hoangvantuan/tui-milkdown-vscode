@@ -581,7 +581,7 @@ cái đã trả lẫn cái vừa lộ ra.
   trong `harness/vscode-floor/run.mjs` nay gõ `/` và đọc menu slash, mở find-and-replace
   và thay một từ, bôi đen rồi đọc bubble menu, kéo tay cầm resize ảnh rồi đọc lại
   chiều rộng đã ghi, mở lightbox và đóng bằng Escape, rê chuột lên heading để lấy nút
-  copy anchor, và đọc dòng reading time. Răng đo theo hai mẻ, đúng 3 và đúng 4 dòng đỏ
+  copy anchor (nút này sau đó bị GỠ theo yêu cầu, xem CHANGELOG), và đọc dòng reading time. Răng đo theo hai mẻ, đúng 3 và đúng 4 dòng đỏ
   khi gỡ đúng phần code tương ứng. Floor đi từ 20 lên 29 check. (Con số "mười bốn" của
   bản trước là cộng nhẩm sai: liệt kê ra thì nó là 17. Danh sách dưới đây đếm lại.)
 - **Ba trong bảy probe đó TỐ OAN code đang chạy đúng trước khi chúng đúng.** Ghi lại vì
@@ -633,6 +633,12 @@ cái đã trả lẫn cái vừa lộ ra.
   vào đây.** Nó đã sai ba lần: bản đầu viết 14 trong khi liệt kê ra 17, rồi lượt đi
   kiểm thật cho thấy 5 mục lái được bằng máy và nay là check floor. Một con số chép ở
   bốn chỗ là bốn chỗ sẽ lệch nhau.
+- **Lượt kiểm tay thật tìm ra 3 lỗi nữa và làm GỠ một tính năng.** `#121` (nhớ vị trí
+  con trỏ) bị gỡ ngay trong chu kỳ dựng ra nó, sau khi đã sửa hai lỗi thật trong nó mà
+  người dùng vẫn thấy y như cũ. Cái họ báo là "mất trỏ", và nguyên nhân là chưa bao
+  giờ có gì focus editor, không liên quan tới vị trí. Bài học: **triệu chứng báo lên và
+  cơ chế hỏng có thể không dính gì tới nhau**, nên đừng sửa cái mình đoán, hãy hỏi lại
+  người dùng thấy gì.
 - **Lượt trả nợ ấy tìm ra hai lỗi đang ship, không phải bằng cách đọc mã.** DOCX export
   chết trên chính phiên bản `engines.vscode` hứa (`crypto is not defined`, Node 18 chưa
   có Web Crypto global), và lightbox không bẫy được tiêu điểm trong cửa sổ bị che (đúng

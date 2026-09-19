@@ -28,7 +28,6 @@ Lấy đó làm lý do để làm nốt phần dưới.
 | A2 | `Ctrl/Cmd+Shift+M` hai chiều | **TAY** (floor chỉ kiểm hai lệnh có đăng ký) |
 | A3 | Bubble menu ở zoom khác 100% | **floor** `bubble menu still tracks the selection at a non-100% zoom` |
 | B1 | Gõ rồi đóng tab trong 300 ms | **TAY** |
-| B2 | Nhớ vị trí con trỏ và cuộn | **TAY** |
 | C1 | Clipboard lỗi có báo | **TAY** |
 | C2 | Dán ảnh | **TAY** |
 | C3 | Đổi tên ảnh | **TAY** |
@@ -148,17 +147,22 @@ chứng minh đường mã có chạy, không chứng minh gì về cuộn thậ
 - [ ] Mở một file dài, cuộn xuống giữa, rồi sửa file đó từ một cửa sổ khác (hoặc
       `echo >> file.md` từ terminal). Vị trí cuộn KHÔNG được nhảy về đầu.
 
-### B2. Vị trí con trỏ và cuộn nhớ theo từng file (#121)
+### ~~B2. Vị trí con trỏ và cuộn nhớ theo từng file (#121)~~ ĐÃ GỠ
 
-Lưu ở `workspaceState` của extension host chứ không ở `vscode.setState()`, vì webview
-này không bật `retainContextWhenHidden`: ẩn tab là webview bị huỷ, `setState` đi theo.
+Tính năng này đã bị gỡ khỏi 2.17 theo yêu cầu, sau chính lượt kiểm tay này. Hai lỗi
+đã tìm ra và sửa trước khi gỡ, và không lỗi nào là thứ báo cáo thật sự nói tới:
 
-- [ ] Mở file dài, cuộn xuống khoảng giữa, đặt con trỏ vào một đoạn nhận ra được.
-- [ ] Đóng tab, mở lại: **đúng chỗ cũ**, cả cuộn lẫn con trỏ.
-- [ ] Chuyển sang tab khác rồi quay lại (không đóng): vẫn đúng chỗ.
-- [ ] Mở file thứ hai ở vị trí khác, qua lại giữa hai file: mỗi file nhớ vị trí riêng.
-- [ ] Đóng hẳn VS Code, mở lại workspace: vị trí còn đó (đây là chỗ `workspaceState`
-      khác `setState`, và là lý do chọn nó).
+- Replay được hẹn bằng `requestAnimationFrame` đơn độc, thứ không bao giờ chạy trong
+  một cửa sổ đang được khôi phục lúc khởi động. Lần thứ BA cùng cơ chế `#112`.
+- Nó chỉ bắn một lần, với một editor có thể chưa dựng xong.
+
+Còn "mất trỏ" hoá ra là: **chưa bao giờ có gì focus editor trong webview này**, mà một
+selection của ProseMirror trong view không giữ tiêu điểm thì không vẽ caret. Mở tài
+liệu là không có con trỏ, chấm hết. Phần đó ở lại: editor nay dựng với
+`autofocus: 'start'`.
+
+Bài học đáng giữ hơn cả tính năng: **triệu chứng người dùng báo và cơ chế hỏng có thể
+không dính gì tới nhau.** Sửa hai lỗi thật rồi mà người dùng vẫn thấy y như cũ.
 
 ---
 
@@ -365,7 +369,6 @@ trả lời, đừng chép tay lại.
 | A2 | `Ctrl/Cmd+Shift+M` hai chiều (#108) | | |
 | A3b | Bubble menu ở zoom DƯỚI 100% (#116) | | |
 | B1 | Gõ rồi đóng tab trong 300 ms, 10 lần (#104) | | |
-| B2 | Nhớ vị trí con trỏ và cuộn (#121) | | |
 | C1 | Clipboard lỗi có báo (#105) | | |
 | C2 | Dán ảnh (#88) | | |
 | C3 | Đổi tên ảnh (#88) | | |
