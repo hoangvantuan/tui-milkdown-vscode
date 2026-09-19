@@ -1,6 +1,7 @@
 import type { EditorView } from "@tiptap/pm/view";
 import type { WebviewToHostMessage } from "../shared/messages";
 import { IMAGE_NODE_TYPES } from "./main";
+import { sameResource } from "../utils/vscode-resource";
 import { cleanImagePath } from "../utils/clean-image-path";
 import { openLightbox } from "./image-lightbox-plugin";
 
@@ -495,9 +496,16 @@ function requestUrlEdit(
   if (isBase64) {
     displayUrl = "";
   } else if (isLocalImage) {
-    // Reverse lookup from imageMap
+    // Reverse lookup from imageMap.
+    //
+    // `sameResource`, not `===`. The host builds these URIs with
+    // `asWebviewUri()` and the DOM hands back a percent-encoded spelling of the
+    // same string, so an exact comparison missed EVERY image: the input box
+    // then offered the whole `https://file%2B.vscode-resource...` URL as the
+    // path to edit, and whatever the user typed went into their markdown as an
+    // absolute webview URL. Found by hand-checking the image rename criterion.
     for (const [originalPath, webviewUri] of Object.entries(currentImageMap)) {
-      if (webviewUri === currentUrl) {
+      if (sameResource(webviewUri, currentUrl)) {
         displayUrl = originalPath;
         break;
       }
