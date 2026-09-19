@@ -159,6 +159,106 @@ async function runDefaultEditorAssociationCheck(uri: vscode.Uri): Promise<void> 
   }
 }
 
+
+/**
+ * Does removing an image from the markdown actually remove the file on save?
+ * (`autoDeleteImages`, one of the six #88 criteria that had never been run,
+ * because it needs a real save.)
+ *
+ * The name says DELETES, not TRASHES, deliberately. The code passes
+ * `useTrash: true` and the settings description promises the Trash, but this
+ * host has measured `foundIn~/.Trash=no` while the file did leave the
+ * workspace. That is reported and not asserted: one extension-test host is not
+ * evidence about the user's own machine, and checking your own Trash after a
+ * real delete is a line in `docs/manual-checks.md` for exactly that reason.
+ *
+ * It also MEASURES #126 rather than asserting it: a second document referencing
+ * the same file must not make any difference to the current code, and the
+ * detail line records whether it did. Change that behaviour and this line moves.
+ *
+ * Side effect worth knowing: whatever `useTrash` does here, it acts outside the
+ * throwaway workspace. Two 1-pixel PNGs per run.
+ */
+async function runImageDeleteOnSaveCheck(uri: vscode.Uri): Promise<void> {
+  const name = "removing an image from the markdown deletes the file on save";
+  const docFolder = path.dirname(uri.fsPath);
+  const imagesDir = path.join(docFolder, "images");
+  // Smallest valid PNG, so nothing here depends on a fixture being staged.
+  const PNG = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    "base64",
+  );
+  const lone = path.join(imagesDir, "floor-delete-me.png");
+  const shared = path.join(imagesDir, "floor-shared.png");
+  const otherDoc = path.join(docFolder, "floor-other.md");
+
+  try {
+    fs.mkdirSync(imagesDir, { recursive: true });
+    fs.writeFileSync(lone, PNG);
+    fs.writeFileSync(shared, PNG);
+    // A SECOND document referencing the shared image. This is #126's setup.
+    fs.writeFileSync(otherDoc, "# Other\n\n![shared](images/floor-shared.png)\n", "utf8");
+
+    const document = await vscode.workspace.openTextDocument(uri);
+    const marker = "\n![lone](images/floor-delete-me.png)\n![shared](images/floor-shared.png)\n";
+
+    // Save one: both images are in the text, so the rebuild at the end of
+    // handleDocumentSave puts them in originalImagePaths. Without this the
+    // next save has nothing to diff against and detects nothing.
+    const addEdit = new vscode.WorkspaceEdit();
+    addEdit.insert(uri, new vscode.Position(document.lineCount, 0), marker);
+    await vscode.workspace.applyEdit(addEdit);
+    await document.save();
+    await sleep(1200);
+    const baselined = fs.existsSync(lone) && fs.existsSync(shared);
+
+    // Save two: both references leave this document.
+    const text = document.getText();
+    const start = document.positionAt(text.indexOf(marker));
+    const end = document.positionAt(text.indexOf(marker) + marker.length);
+    const removeEdit = new vscode.WorkspaceEdit();
+    removeEdit.delete(uri, new vscode.Range(start, end));
+    await vscode.workspace.applyEdit(removeEdit);
+    await document.save();
+    await sleep(2500);
+
+    const loneGone = !fs.existsSync(lone);
+    const sharedGone = !fs.existsSync(shared);
+    // "Deleted" and "moved to the Trash" are different promises, and the
+    // settings description makes the second one. `useTrash: true` is what the
+    // code passes; whether the platform honours it is a separate fact, so it is
+    // reported rather than assumed.
+    let inTrash = "unknown";
+    try {
+      const trash = path.join(process.env.HOME ?? "", ".Trash");
+      inTrash = fs
+        .readdirSync(trash)
+        .some((f) => f.startsWith("floor-delete-me"))
+        ? "yes"
+        : "no";
+    } catch {
+      inTrash = "unreadable";
+    }
+    record(
+      name,
+      baselined && loneGone,
+      `baselined=${baselined} loneImageDeleted=${loneGone} foundIn~/.Trash=${inTrash}; ` +
+        `imageStillUsedByFloorOther.mdDeleted=${sharedGone} (#126: true is the ` +
+        `current behaviour, the reference in floor-other.md is not consulted)`,
+    );
+  } catch (err) {
+    record(name, false, err instanceof Error ? `${err.name}: ${err.message}` : String(err));
+  } finally {
+    for (const f of [lone, shared, otherDoc]) {
+      try {
+        fs.rmSync(f, { force: true });
+      } catch {
+        /* the workspace is thrown away anyway */
+      }
+    }
+  }
+}
+
 export async function run(): Promise<void> {
   const resultPath = process.env.TUI_FLOOR_RESULT;
   const samplePath = process.env.TUI_FLOOR_SAMPLE;
@@ -313,6 +413,10 @@ export async function run(): Promise<void> {
         // tests prove the command writes the right JSON; they cannot prove VS
         // Code then honours it. This opens the file the ordinary way, with no
         // viewType, and asks which editor won.
+        // Both of these modify the document, so they sit after everything
+        // above has been recorded.
+        await runImageDeleteOnSaveCheck(uri);
+
         await runDefaultEditorAssociationCheck(uri);
       }
     }
