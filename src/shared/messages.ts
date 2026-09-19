@@ -99,6 +99,10 @@ export interface ExportMessage {
   mermaidImages?: Array<{ code: string; base64: string }>;
 }
 
+export interface RequestBacklinksMessage {
+  type: "requestBacklinks";
+}
+
 
 export type WebviewToHostMessage =
   | ReadyMessage
@@ -117,7 +121,8 @@ export type WebviewToHostMessage =
   | FileSearchMessage
   | WikiLinkSearchMessage
   | OpenWikiLinkMessage
-  | ExportMessage;
+  | ExportMessage
+  | RequestBacklinksMessage;
 
 // ============================================================================
 // Host -> Webview Messages (16 types)
@@ -209,6 +214,19 @@ export interface ExportDoneMessage {
   reason?: string;
 }
 
+export interface BacklinkItem {
+  label: string;
+  path: string;
+  relativePath: string;
+  count: number;
+  preview?: string;
+}
+
+export interface BacklinksMessage {
+  type: "backlinks";
+  links: BacklinkItem[];
+}
+
 
 export type HostToWebviewMessage =
   | UpdateMessage
@@ -224,4 +242,5 @@ export type HostToWebviewMessage =
   | ImageRenameResponseMessage
   | FileSearchResultsMessage
   | WikiLinkSearchResultsMessage
-  | ExportDoneMessage;
+  | ExportDoneMessage
+  | BacklinksMessage;
