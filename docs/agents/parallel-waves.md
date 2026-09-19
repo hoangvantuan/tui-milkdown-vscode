@@ -629,7 +629,10 @@ cái đã trả lẫn cái vừa lộ ra.
 
 ### Còn treo
 
-- **Mười bốn tiêu chí kiểm tay còn lại.** Của sóng 7: bàn phím trên menu bảng (`#118`),
+- **Mười bốn tiêu chí kiểm tay còn lại**, nay đã có bản kiểm viết sẵn ở
+  `docs/manual-checks.md`: từng bước, ĐẠT nghĩa là gì, bẫy đã biết, và một bảng kết quả.
+  Chỉ riêng việc viết nó ra đã tìm được `#126`, vì viết bước kiểm buộc phải đối chiếu
+  từng lời hứa trong tài liệu với mã thật. Của sóng 7: bàn phím trên menu bảng (`#118`),
   bubble menu ở mức zoom khác 100% (`#116`), cuộn tay rồi đóng mở lại tab (`#121`).
   Của `#88`: dán ảnh, đổi tên ảnh, xoá ảnh, export DOCX, export PDF, `@` và `[[`. Của
   sóng 4: `#105`, `#104`, `#86`, `#108`. Và một của `#102`. Cộng thêm hai thứ floor cố
@@ -685,7 +688,7 @@ roundtrip          40 fixtures + 12 seams: 52 passed, 0 failed   <- 39 + 7 = 46 
 vòng hai           52 passed, 0 failed
 verify:vscode-floor 29/29                       <- 20 lúc kết sóng, 9 check trả nợ thêm sau
 package.json       2.17.0
-issue mở           1: #85
+issue mở           2: #85, #126
 ```
 
 Sóng 7 đóng `#114` tới `#124` cộng `#84`, bốn worker `agy`, bốn worktree, một xung đột

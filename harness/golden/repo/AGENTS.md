@@ -152,7 +152,7 @@ Extension provides these settings via `tuiMarkdown.*` namespace:
 - `highlightCurrentLine` (boolean, default: true) - Enable cursor line highlight
 - `imageSaveFolder` (string, default: `images`) - Folder to save pasted images (relative to document)
 - `autoRenameImages` (boolean, default: true) - Automatically rename image files when you change the image path in Markdown (only when folder stays the same)
-- `autoDeleteImages` (boolean, default: true) - Automatically delete image files when removed from Markdown (moves to Trash, warns if used elsewhere)
+- `autoDeleteImages` (boolean, default: true) - Automatically delete image files when removed from Markdown (moves to Trash, no confirmation). It does NOT warn when the image is still referenced by another document: `ImageDelete.usedInFiles` is declared `// Will be populated by caller` and no caller ever populates it (#126). An image whose filename reappears in another folder is treated as a move and left alone
 - `autoHideToolbar` (boolean, default: false) - Auto-hide toolbar when typing (show on hover)
 - `listIndent` (`"editor"` | `2` | `4` | `"tab"`, default: `"editor"`) - List and code-block indentation. `"editor"` follows `editor.insertSpaces` / `editor.tabSize` resolved for `markdown`
 - `chromiumPath` (string, default: empty) - Explicit Chrome/Edge/Chromium/Brave executable for PDF export; empty means auto-discovery (`chromium-discovery.ts`)
