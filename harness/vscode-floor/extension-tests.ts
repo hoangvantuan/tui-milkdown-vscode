@@ -51,8 +51,13 @@ const EXPECTED_COMMANDS = [
 const HOLD_MS = Number(process.env.TUI_FLOOR_HOLD_MS ?? 25000);
 /** The text the runner types in. Spelled once, in run.mjs, and passed here. */
 const SENTINEL = process.env.TUI_FLOOR_SENTINEL ?? "FLOORPROBE";
-/** How long to wait for the runner to finish driving before giving up. */
-const DRIVEN_TIMEOUT_MS = 60000;
+/**
+ * How long to wait for the runner to finish driving before giving up.
+ *
+ * The drive phase grew past 60s when the export probe landed: a PDF export
+ * launches a real Chromium, and that alone is budgeted 30s on the runner side.
+ */
+const DRIVEN_TIMEOUT_MS = 180000;
 
 interface Check {
   name: string;
@@ -259,6 +264,64 @@ async function runImageDeleteOnSaveCheck(uri: vscode.Uri): Promise<void> {
   }
 }
 
+
+/** Where the stubbed save dialog sends each export. Set before the drive phase. */
+const exportTargets = new Map<string, vscode.Uri>();
+
+/**
+ * Answer the export save dialog without a human, so the DOCX and PDF paths can
+ * be driven at all. Two of the six #88 criteria are "needs a save dialog", and
+ * that is the only reason they were never run.
+ *
+ * `vscode.window` is a plain object in the extension host, so its methods can be
+ * replaced for the life of this process. Both stubs are needed: the dialog, and
+ * the "Open the file?" notification afterwards, which has buttons and therefore
+ * waits forever for a click that is never coming.
+ *
+ * Installed BEFORE `phase-interact`, because the runner clicks Export during the
+ * drive phase and the stub has to already be in place.
+ */
+function stubExportDialogs(docFolder: string): void {
+  (vscode.window as any).showSaveDialog = async (opts: any) => {
+    const ext = String(opts?.defaultUri?.fsPath ?? "export.docx").split(".").pop();
+    const target = vscode.Uri.file(path.join(docFolder, `floor-export.${ext}`));
+    exportTargets.set(String(ext), target);
+    return target;
+  };
+  const quiet = async () => undefined;
+  (vscode.window as any).showInformationMessage = quiet;
+}
+
+/**
+ * Assert what the driven Export button actually produced. The bytes are checked
+ * by their magic number rather than by size, because an empty or truncated file
+ * has a size too.
+ */
+function recordExportResults(docFolder: string): void {
+  for (const [ext, magic, label] of [
+    ["docx", "504b0304", "DOCX"],
+    ["pdf", "25504446", "PDF"],
+  ] as Array<[string, string, string]>) {
+    const name = `export produces a real ${label} file`;
+    const target = exportTargets.get(ext) ?? vscode.Uri.file(path.join(docFolder, `floor-export.${ext}`));
+    try {
+      if (!fs.existsSync(target.fsPath)) {
+        record(name, false, `no file at ${path.basename(target.fsPath)}; the export never wrote one`);
+        continue;
+      }
+      const buf = fs.readFileSync(target.fsPath);
+      const head = buf.subarray(0, 4).toString("hex");
+      record(
+        name,
+        head === magic && buf.length > 1000,
+        `${path.basename(target.fsPath)} bytes=${buf.length} magic=${head} (expected ${magic})`,
+      );
+    } catch (err) {
+      record(name, false, err instanceof Error ? `${err.name}: ${err.message}` : String(err));
+    }
+  }
+}
+
 export async function run(): Promise<void> {
   const resultPath = process.env.TUI_FLOOR_RESULT;
   const samplePath = process.env.TUI_FLOOR_SAMPLE;
@@ -354,6 +417,7 @@ export async function run(): Promise<void> {
       // the document, the version here is no longer 1, and the assertion below
       // is about the delta rather than an absolute number.
       const versionBeforeEdit = afterHold.version;
+      stubExportDialogs(path.dirname(samplePath));
       fs.writeFileSync(path.join(base, "phase-interact"), "go", "utf8");
 
       const drivenPath = path.join(base, "phase-driven");
@@ -413,6 +477,8 @@ export async function run(): Promise<void> {
         // tests prove the command writes the right JSON; they cannot prove VS
         // Code then honours it. This opens the file the ordinary way, with no
         // viewType, and asks which editor won.
+        recordExportResults(path.dirname(samplePath));
+
         // Both of these modify the document, so they sit after everything
         // above has been recorded.
         await runImageDeleteOnSaveCheck(uri);

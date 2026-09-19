@@ -846,11 +846,22 @@ async function driveSurfaces(evaluate, session) {
       return 'ok';
     })()`);
     if (opened !== "ok") throw new Error(opened);
-    await sleep(700);
-    const inside = await evaluate(`(() => {
+    // Poll rather than read once at a fixed delay. The focus is scheduled by
+    // whichever of an animation frame and a 50ms timer arrives first, and a
+    // covered window gets no frame, so a single read at 700ms measures the
+    // scheduler as much as the focus trap.
+    const inside = await evaluate(`(async () => {
       const overlay = document.getElementById('lightbox-overlay');
       if (!overlay) return { open: false };
+      const started = Date.now();
+      let waited = 0;
+      while (Date.now() - started < 2500) {
+        if (document.activeElement && overlay.contains(document.activeElement)) break;
+        await new Promise((r) => setTimeout(r, 100));
+        waited = Date.now() - started;
+      }
       return {
+        waited,
         open: overlay.classList.contains('active'),
         focusInside: !!(document.activeElement && overlay.contains(document.activeElement)),
         focusTag: document.activeElement?.tagName ?? null,
@@ -882,7 +893,7 @@ async function driveSurfaces(evaluate, session) {
       inside.open && inside.focusInside && after.closed && after.focusLeftOverlay,
       `opened=${inside.open} focusInside=${inside.focusInside} (${inside.focusTag ?? "-"}` +
         `${inside.focusClass ? "." + String(inside.focusClass).split(" ")[0] : ""}) ` +
-        `role=${inside.role ?? "-"} visibility=${inside.visibility ?? "-"}; ` +
+        `role=${inside.role ?? "-"} visibility=${inside.visibility ?? "-"} waitedForFocus=${inside.waited ?? "-"}ms; ` +
         `afterEscape closed=${after.closed} focusLeftOverlay=${after.focusLeftOverlay} (${after.focusTag ?? "-"})`,
     );
   } catch (err) {
@@ -906,6 +917,11 @@ async function driveSurfaces(evaluate, session) {
       const root = document.querySelector('.tiptap');
       const strong = root?.querySelector('strong');
       if (!strong) return 'no bold text to select';
+      // Scroll the anchor into view FIRST. The first version of this probe did
+      // not, measured a selection 834px above the viewport, and read
+      // floating-ui flipping the menu to the other side as the menu drifting.
+      // A comparison against an off-screen anchor measures nothing.
+      strong.scrollIntoView({ block: 'center' });
       root.focus();
       const range = document.createRange();
       range.selectNodeContents(strong);
@@ -1048,6 +1064,43 @@ async function driveSurfaces(evaluate, session) {
     add("heading anchor button does not disturb the document it lives in", false, `threw: ${err.message}`);
   }
 
+  // --- Export, both formats (#88 hand-test debt) ----------------------------
+  // Two of the six #88 criteria read "needs a save dialog", which is why nobody
+  // ran them. The host stubs `showSaveDialog` and the "Open the file?"
+  // notification before this phase starts; all this side does is drive the real
+  // button, which is the half that was never exercised. The host then checks the
+  // bytes. PDF launches a real Chromium, hence the longer wait.
+  //
+  // Runs LAST among the surfaces: it opens the appearance panel over the editor
+  // and it writes files.
+  try {
+    await evaluate(`(() => { document.getElementById('btn-appearance')?.click(); return 'ok'; })()`);
+    await sleep(500);
+    for (const [format, waitMs] of [["docx", 9000], ["pdf", 30000]]) {
+      const clicked = await evaluate(`(() => {
+        const sel = document.getElementById('export-format');
+        const go = document.getElementById('btn-export-go');
+        if (!sel || !go) return 'no export controls';
+        sel.value = '${format}';
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+        go.click();
+        return 'ok';
+      })()`);
+      if (clicked !== "ok") throw new Error(clicked);
+      await sleep(waitMs);
+    }
+    add(
+      "export button could be driven for both formats",
+      true,
+      "clicked #btn-export-go for docx and pdf; the host checks what they wrote",
+    );
+    await evaluate(`(() => { document.getElementById('btn-appearance')?.click(); return 'ok'; })()`);
+    await sleepShort();
+  } catch (err) {
+    add("export button could be driven for both formats", false, `threw: ${err.message}`);
+  }
+
+
   return results;
 }
 
@@ -1180,6 +1233,33 @@ async function driveInteractions(base, session, contextId) {
 }
 
 /** Attach to every page/iframe target the browser endpoint reports. */
+
+/**
+ * Bring the floor window to the front, on macOS.
+ *
+ * Not cosmetic. Chromium treats a covered window as not visible: it stops
+ * running animation frames there (#112, and again in the lightbox focus trap),
+ * and focus and layout behave differently enough that position-sensitive probes
+ * flip between runs. The harness used to measure a covered window whenever it
+ * was started from a terminal that stayed on top, which is every run, and read
+ * the resulting flakiness as machine load twice before.
+ *
+ * Best effort: a failure here is reported in the check detail as
+ * `visibility=hidden`, not as a harness error.
+ */
+async function raiseWindow(pid) {
+  if (process.platform !== "darwin") return "skipped (not darwin)";
+  try {
+    await run("osascript", [
+      "-e",
+      `tell application "System Events" to set frontmost of (first process whose unix id is ${pid}) to true`,
+    ]);
+    return "raised";
+  } catch (err) {
+    return `could not raise: ${err.message}`;
+  }
+}
+
 async function attachAll(port, sessions) {
   const response = await fetch(`http://127.0.0.1:${port}/json/list`);
   const targets = await response.json();
@@ -1257,6 +1337,13 @@ async function main() {
     },
   );
 
+  // Raise the window before anything is probed. See raiseWindow: a covered
+  // window is not just harder to watch, it behaves differently.
+  const raised = await (async () => {
+    await sleep(4000);
+    return raiseWindow(child.pid);
+  })();
+
   const hostOutput = [];
   child.stdout.on("data", (data) => hostOutput.push(String(data)));
   child.stderr.on("data", (data) => hostOutput.push(String(data)));
@@ -1321,7 +1408,10 @@ async function main() {
   const consoleEntries = [...sessions.values()].flatMap((s) => s.consoleEntries);
   for (const session of sessions.values()) session.close();
 
-  const exitCode = await Promise.race([exited, sleep(60000).then(() => null)]);
+  // 180s, not 60s: the drive phase now includes a PDF export that launches a
+  // real Chromium, and this race is what decides whether the host is allowed to
+  // finish writing its results or gets SIGKILLed mid-run.
+  const exitCode = await Promise.race([exited, sleep(180000).then(() => null)]);
   if (exitCode === null) child.kill("SIGKILL");
 
   const checks = [];
@@ -1332,7 +1422,7 @@ async function main() {
     ok: sessions.size > 0,
     detail:
       sessions.size > 0
-        ? `${sessions.size} debug target(s)`
+        ? `${sessions.size} debug target(s); window ${raised}`
         : "no debug target ever appeared; see the host output below",
   });
   if (fs.existsSync(resultFile)) {
