@@ -532,7 +532,7 @@ async function driveTransientKeystroke(base, session, contextId) {
  * run AFTER the read-only phase has recorded its checks, for the same reason
  * the typing probe does.
  */
-async function driveSurfaces(evaluate, session) {
+async function driveSurfaces(evaluate, session, sessions) {
   const results = [];
   const add = (name, ok, detail) => results.push({ name, ok, detail });
 
@@ -1101,6 +1101,93 @@ async function driveSurfaces(evaluate, session) {
   }
 
 
+  // --- Theme screenshots (#86 hand-test debt) -------------------------------
+  // Not a check: #86 moved 2,356 lines of CSS out of the provider and claimed
+  // it changed no declaration, and no assertion can judge that. This captures
+  // every theme so a human (or a model that can read images) looks once instead
+  // of clicking through twelve of them. Off by default because it writes files
+  // and costs about ten seconds; set TUI_FLOOR_SHOTS to a directory.
+  const shotDir = process.env.TUI_FLOOR_SHOTS;
+  if (shotDir) {
+    try {
+      fs.mkdirSync(shotDir, { recursive: true });
+      // Reset the view first. This runs LAST among the surfaces on purpose,
+      // because moving it to the front made `Page.captureScreenshot` hang
+      // after the first shot and took the whole run down with it. Running last
+      // means the lightbox probe has left a fullscreen diagram open and the
+      // document scrolled, so undo both before shooting.
+      await evaluate(`(() => {
+        document.getElementById('lightbox-overlay')?.classList.remove('active');
+        const c = document.getElementById('editor-container');
+        if (c) c.scrollTop = 0;
+        return 'ok';
+      })()`);
+      await sleep(500);
+      const themes = await evaluate(`(() => {
+        const sel = document.getElementById('theme-select');
+        if (!sel) return [];
+        return Array.from(sel.options).map((o) => o.value);
+      })()`);
+      let taken = 0;
+      for (const theme of themes) {
+        await evaluate(`(() => {
+          const sel = document.getElementById('theme-select');
+          if (!sel) return 'no select';
+          sel.value = '${theme}';
+          sel.dispatchEvent(new Event('change', { bubbles: true }));
+          return 'ok';
+        })()`);
+        await sleep(600);
+        // Page.captureScreenshot refuses an iframe target ("Command can only be
+        // executed on top-level targets"), and the webview IS one. Shoot from a
+        // top-level session instead, which also captures the VS Code chrome
+        // around the editor, which is what a human judging a theme looks at.
+        //
+        // Every `send` here is raced against a timeout, and that is not
+        // belt-and-braces. A DevTools session whose target is gone never
+        // settles its promise, and with no pending handles left Node then
+        // exits 0 with an empty stdout: the run reported nothing at all, took
+        // three minutes, and the only evidence it had run was the host's own
+        // `runner drove the webview = false`. Cost an hour to find.
+        let shot = null;
+        for (const candidate of sessions.values()) {
+          try {
+            shot = await Promise.race([
+              candidate.send("Page.captureScreenshot", { format: "png" }),
+              sleep(5000).then(() => null),
+            ]);
+            if (shot?.data) break;
+          } catch {
+            shot = null;
+          }
+        }
+        if (shot?.data) {
+          fs.writeFileSync(path.join(shotDir, `${String(taken).padStart(2, "0")}-${theme}.png`),
+            Buffer.from(shot.data, "base64"));
+          taken += 1;
+        }
+      }
+      // REPORTED, not asserted. `Page.captureScreenshot` waits for a surface
+      // frame, and a window Chromium considers covered produces none, so this
+      // captures however many it manages before the window loses the front:
+      // measured 12/12 once and 1/12 four times in a row, same code. It is a
+      // convenience for looking at themes, not evidence about them. #86's own
+      // claim was checked another way and does not need this: see the theme
+      // section of `docs/manual-checks.md`.
+      add(
+        "theme screenshots captured",
+        taken > 0,
+        `${taken}/${themes.length} themes written to ${shotDir}` +
+          (taken < themes.length
+            ? "; the rest timed out, which means the window lost the front (reported, not asserted)"
+            : ""),
+      );
+    } catch (err) {
+      add("theme screenshots captured", false, `threw: ${err.message}`);
+    }
+  }
+
+
   // --- Export, both formats (#88 hand-test debt) ----------------------------
   // Two of the six #88 criteria read "needs a save dialog", which is why nobody
   // ran them. The host stubs `showSaveDialog` and the "Open the file?"
@@ -1162,7 +1249,7 @@ async function driveSurfaces(evaluate, session) {
  * snapshot taken during the probe loop, so modifying the document now cannot
  * corrupt them.
  */
-async function driveInteractions(base, session, contextId) {
+async function driveInteractions(base, session, contextId, sessions) {
   const interactMarker = path.join(base, "phase-interact");
   const drivenMarker = path.join(base, "phase-driven");
   const steps = [];
@@ -1242,7 +1329,7 @@ async function driveInteractions(base, session, contextId) {
     // 2. Operate each 2.17 surface. These report as their own checks rather
     //    than folding into this one, so a broken lightbox does not read as a
     //    broken slash menu.
-    surfaces.push(...(await driveSurfaces(evaluate, session)));
+    surfaces.push(...(await driveSurfaces(evaluate, session, sessions)));
 
     // 3. Click the view-source button, the cheapest host dispatch there is.
     const clicked = await evaluate(`(() => {
@@ -1284,6 +1371,8 @@ async function driveInteractions(base, session, contextId) {
  * Best effort: a failure here is reported in the check detail as
  * `visibility=hidden`, not as a harness error.
  */
+let floorPid = 0;
+
 async function raiseWindow(pid) {
   if (process.env.TUI_FLOOR_NO_RAISE) return "skipped (TUI_FLOOR_NO_RAISE)";
   if (process.platform !== "darwin") return "skipped (not darwin)";
@@ -1377,6 +1466,7 @@ async function main() {
 
   // Raise the window before anything is probed. See raiseWindow: a covered
   // window is not just harder to watch, it behaves differently.
+  floorPid = child.pid;
   const raised = await (async () => {
     await sleep(4000);
     return raiseWindow(child.pid);
@@ -1441,7 +1531,7 @@ async function main() {
   // tell the two apart.
   await driveTransientKeystroke(base, webviewSession, webview?.contextId);
 
-  const driven = await driveInteractions(base, webviewSession, webview?.contextId);
+  const driven = await driveInteractions(base, webviewSession, webview?.contextId, sessions);
 
   const consoleEntries = [...sessions.values()].flatMap((s) => s.consoleEntries);
   for (const session of sessions.values()) session.close();
