@@ -1316,6 +1316,8 @@ function initEditor(initialContent: string = ""): Editor | null {
         // --- W1: math + footnotes ---
         // --- end W1 ---
         // --- W2: html whitelist (details / kbd / sub / sup) ---
+        ...require("./html-marks").htmlMarkExtensions,
+        ...require("./details-extension").detailsExtensions,
         // --- end W2 ---
         ...conditionalExtensions,
       ],
