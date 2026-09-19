@@ -375,6 +375,8 @@ function buildMarkdownExtensions(
     // the two branches merge without a conflict. Delete the markers once 3.0
     // has shipped and the mirror is stable again.
     // --- W1: math + footnotes ---
+    ...require("../src/webview/math-extension").mathExtensions,
+    ...require("../src/webview/footnote-extension").footnoteExtensions,
     // --- end W1 ---
     // --- W2: html whitelist (details / kbd / sub / sup) ---
     // --- end W2 ---
