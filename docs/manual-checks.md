@@ -1,10 +1,53 @@
-# Bản kiểm tay: 14 tiêu chí không có lưới tự động nào chạm tới
+# Bản kiểm tay: những gì lưới tự động vẫn KHÔNG chạm tới
 
-Mười bốn tiêu chí dưới đây đã dồn lại qua bốn sóng worker. Chúng KHÔNG phải việc còn
-thiếu code: mã đã ship, chỉ là chưa ai ngồi trước một cửa sổ VS Code thật mà xác nhận.
-Cái nào tự động hoá được thì đã nằm trong `npm run verify:vscode-floor` (29 check) rồi;
-những cái ở đây cần clipboard hệ thống, hộp thoại lưu file, Thùng rác, tiêu điểm bàn
-phím thật, hoặc mắt người.
+File này là **nguồn sự thật duy nhất** cho việc còn bao nhiêu tiêu chí phải kiểm bằng
+tay. Tài liệu khác trỏ về đây thay vì chép lại con số, vì con số đã sai ba lần rồi.
+
+Bản đầu liệt kê 14 mục và nói cả 14 đều cần một con người. Lượt đi kiểm thật cho thấy
+điều đó sai: **năm mục lái được bằng máy và nay đã là check floor**, một mục lái được
+một nửa. Quan trọng hơn, chính lượt đi kiểm ấy tìm ra **hai lỗi đang ship**, cả hai đều
+không thể thấy bằng cách đọc mã:
+
+- **DOCX export CHẾT trên đúng phiên bản VS Code mà `engines.vscode` hứa.**
+  `ReferenceError: crypto is not defined`: Web Crypto chỉ thành global từ Node 19, mà
+  1.85 chạy extension host trên Node 18. Ai dùng VS Code 1.85 bấm Export DOCX đều nhận
+  "Export failed" và không có file. PDF không dính. Đã sửa.
+- **Lightbox không bẫy được tiêu điểm trong cửa sổ không hiển thị.** Đúng cơ chế của
+  `#112`, lần thứ hai: `focusOverlay()` chỉ được hẹn từ `requestAnimationFrame`, mà
+  Chromium không chạy rAF cho cửa sổ bị che. Overlay mở ra, tiêu điểm nằm lại dưới
+  tài liệu, Tab đi lang thang bên dưới một hộp thoại đang mở. Đã sửa.
+
+Lấy đó làm lý do để làm nốt phần dưới.
+
+## Trạng thái
+
+| Mục | Tiêu chí | Ai kiểm |
+| --- | --- | --- |
+| A1 | Menu bảng: mở, roving focus, Escape, ba mục căn lề | **floor** `table context menu is operable from the keyboard` |
+| A1b | Menu bảng: **Enter kích hoạt** một mục | **TAY** (xem A1) |
+| A2 | `Ctrl/Cmd+Shift+M` hai chiều | **TAY** (floor chỉ kiểm hai lệnh có đăng ký) |
+| A3 | Bubble menu ở zoom khác 100% | **floor** `bubble menu still tracks the selection at a non-100% zoom` |
+| B1 | Gõ rồi đóng tab trong 300 ms | **TAY** |
+| B2 | Nhớ vị trí con trỏ và cuộn | **TAY** |
+| C1 | Clipboard lỗi có báo | **TAY** |
+| C2 | Dán ảnh | **TAY** |
+| C3 | Đổi tên ảnh | **TAY** |
+| C4 | Xoá ảnh khỏi markdown thì file biến mất khi lưu | **floor** `removing an image from the markdown deletes the file on save` |
+| C4b | Ảnh đó có thật sự vào **Thùng rác** không | **TAY** (floor đo được `foundIn~/.Trash=no`, xem C4) |
+| D1 | Export DOCX | **floor** `export produces a real DOCX file` |
+| D2 | Export PDF | **floor** `export produces a real PDF file` |
+| E1 | Popup `@` và `[[` liệt kê file | **floor** `@ mention popup` / `[[ wiki link popup` |
+| E1b | Chèn bằng Enter, và lời mời tạo file | **TAY** |
+| F1 | `editor.tabSize` đổi thụt lề | **TAY** |
+| G1 | Ảnh chụp hai theme | **TAY** |
+| X1 | Git Graph diff (`#48`) | **TAY** |
+| X2 | Dáng các menu | **TAY** |
+
+**Một quan sát chưa tái hiện được.** Trong một lần chạy floor, check
+`document still unmodified after the hold` báo `isDirty=true`: tài liệu tự bẩn trong 25
+giây giữ, không ai gõ gì. Hai lần chạy ngay sau đó đều xanh, có và không có bước đưa
+cửa sổ lên trước. Đây là vùng của `#111`. Ghi lại vì một lỗi thấy một lần vẫn là một
+lỗi; nếu anh gặp lại, đó là bằng chứng thứ hai.
 
 **Cách dùng.** Mở chính file này bằng extension (chuột phải > Open With > TUI Markdown)
 rồi tick trực tiếp. Mỗi mục ghi rõ: làm gì, ĐẠT nghĩa là gì, và cái bẫy đã biết. Mục nào
@@ -13,12 +56,17 @@ trượt thì mở issue mới, dán đúng dòng quan sát được, đừng s�
 **Trước khi bắt đầu:**
 
 ```bash
-npm run build          # bản production, đúng thứ người dùng chạy
+npm run build                # bản production, đúng thứ người dùng chạy
+npm run verify:vscode-floor  # 36 check, phải xanh hết trước khi kiểm tay
 ```
 
 Rồi F5 (Extension Development Host), hoặc `npm run package` và cài file `.vsix`. Mở một
 thư mục có ít nhất: một file `.md` dài hơn hai màn hình, một thư mục `images/`, và một
 file `.md` thứ hai để kiểm wiki link.
+
+Lưu ý: floor check chạy trên **VS Code 1.85**, tức là lời hứa của `engines.vscode`, chứ
+không phải bản anh đang cài. Muốn chạy trên bản khác thì
+`npm run verify:vscode-floor -- --version <x.y.z>`.
 
 Ghi kết quả ở bảng cuối file.
 
@@ -30,19 +78,27 @@ Ba mục này chỉ cần bàn phím, làm liền một mạch được.
 
 ### A1. Menu chuột phải trên bảng dùng được bằng bàn phím (#118)
 
-Đây là mục floor check **chịu thua rõ nhất**, đã thử ba cách và hỏng cả ba (range
-selection đặt bằng script không sync vào ProseMirror; click qua CDP dùng toạ độ trang
-chứ không phải toạ độ iframe; `defaultPrevented` không phải bằng chứng vì webview của
-VS Code tự huỷ `contextmenu`). Nên nó nằm đây.
+Floor check đã nhận phần lớn mục này: menu mở ra, roving focus chạy, Escape đóng, ba
+mục căn lề có mặt. **Enter kích hoạt thì KHÔNG**, và lý do đáng ghi lại vì nó là giới
+hạn thật của harness, không phải lười.
 
-- [ ] Chuột phải vào một ô bảng, menu hiện ra.
-- [ ] Nhấn Tab và mũi tên lên/xuống: tiêu điểm chạy qua từng mục, **nhìn thấy được** là
-      mục nào đang được chọn.
+Lệnh căn lề đọc selection của **ProseMirror**. ProseMirror chỉ đồng bộ selection từ DOM
+khi view của nó đang giữ tiêu điểm, và trong cửa sổ floor `root.focus()` không ăn:
+`focusInEditor=false` ở mọi lần chạy. Đặt range bằng script không tới được ProseMirror;
+mousedown tổng hợp mang đúng toạ độ ô cũng không; click qua CDP thì dùng toạ độ trang
+chứ không phải toạ độ iframe. Nên dòng `enterChangedAlign=false` trong detail của check
+nghĩa là **selection chưa vào bảng**, không phải Enter không chạy, và nó được BÁO chứ
+không được KHẲNG ĐỊNH. Khẳng định nó là làm đỏ một tính năng đang chạy đúng, đúng cái
+sai ba phiên bản trước của probe này đã mắc.
+
+- [x] ~~Chuột phải vào một ô bảng, menu hiện ra.~~ floor
+- [x] ~~Tiêu điểm chạy qua từng mục, Escape đóng.~~ floor
+- [x] ~~Ba mục căn lề trái / giữa / phải có mặt.~~ floor
+- [ ] **Enter trên một mục thực thi mục đó.** Đây chính là lỗi #118 đã sửa: trước đây
+      menu bắt `mousedown` nên Enter không làm gì cả. Đi tới `Align Column Left` bằng
+      mũi tên, Enter, và nhìn cột đổi căn lề.
 - [ ] Home nhảy về mục đầu, End nhảy xuống mục cuối.
-- [ ] Enter trên một mục **thực thi** mục đó. Đây chính là lỗi #118 đã sửa: trước đây
-      menu bắt `mousedown` nên Enter không làm gì cả.
-- [ ] Escape đóng menu VÀ trả tiêu điểm về editor (gõ một ký tự, nó phải vào tài liệu).
-- [ ] Ba mục căn lề trái / giữa / phải đổi đúng cột đang đứng.
+- [ ] Escape trả tiêu điểm về editor (gõ một ký tự, nó phải vào tài liệu).
 - [ ] Bấm vào một `<select>` gốc của hệ thống bên trong menu (nếu có) không làm menu tự
       đóng. Đây là lý do phần đóng-khi-click-ra-ngoài cố ý vẫn giữ `mousedown`.
 
@@ -54,17 +110,18 @@ VS Code tự huỷ `contextmenu`). Nên nó nằm đây.
 - [ ] Đang ở source, bấm tổ hợp: quay lại WYSIWYG. Đây là chiều trước đây KHÔNG có
       đường về ngoài icon trên thanh tiêu đề.
 
-### A3. Bubble menu ở mức zoom KHÁC 100% (#116)
+### A3. Bubble menu ở mức zoom KHÁC 100% (#116): ĐÃ TỰ ĐỘNG
 
-Toàn bộ popup trong repo này gắn vào `#editor-container` chứ không gắn vào `.tiptap`,
-vì CSS `zoom` trên `.tiptap` trong suốt với các API toạ độ của JS. Đây là phép kiểm duy
-nhất chứng minh bubble menu làm đúng luật đó.
+Floor check `bubble menu still tracks the selection at a non-100% zoom`. Ở `zoom=1.2`:
+`dx=0 dy=44`, menu vẫn gắn `#editor-container` chứ không gắn `.tiptap`.
 
-- [ ] Ở 100%: bôi đen một đoạn chữ, bubble menu hiện **ngay cạnh vùng chọn**.
-- [ ] Bấm `Cmd/Ctrl +` hai lần (lên khoảng 120%), bôi đen lại: menu vẫn bám đúng vùng
-      chọn, không lệch xuống hoặc sang phải.
-- [ ] `Cmd/Ctrl -` xuống dưới 100%, bôi đen lại: vẫn đúng.
-- [ ] Năm nút Bold, Italic, Code, Link, Highlight đều tác động đúng vùng đang chọn.
+Một bài học nằm trong chính probe này: bản đầu đo một vùng chọn nằm **cao hơn viewport
+834px** rồi đọc việc floating-ui lật menu sang phía kia thành "menu trôi". So sánh với
+một mốc nằm ngoài màn hình thì không đo được gì. Nay nó cuộn mốc vào tầm nhìn trước.
+
+- [x] ~~Ở 120%: menu bám đúng vùng chọn.~~ floor
+- [ ] Dưới 100% (`Cmd/Ctrl -`): vẫn đúng. Floor mới chỉ đo phía trên 100%.
+- [ ] Năm nút Bold, Italic, Code, Link, Highlight tác động đúng vùng đang chọn.
 
 ---
 
@@ -128,12 +185,27 @@ Cần `tuiMarkdown.autoRenameImages` đang bật (mặc định bật).
 - [ ] Đổi cả THƯ MỤC (không chỉ tên file): thao tác này cố ý bị từ chối, chỉ đổi tên
       trong cùng thư mục mới tự động.
 
-### C4. Xoá ảnh khỏi markdown thì file vào Thùng rác (#88)
+### C4. Xoá ảnh khỏi markdown thì file vào Thùng rác (#88): MỘT NỬA ĐÃ TỰ ĐỘNG
+
+Floor check `removing an image from the markdown deletes the file on save` dựng hai ảnh
+PNG 1 pixel, lưu một lần để chúng vào `originalImagePaths`, rồi bỏ cả hai tham chiếu và
+lưu lại. Nó báo:
+
+```
+baselined=true loneImageDeleted=true foundIn~/.Trash=no;
+imageStillUsedByFloorOther.mdDeleted=true
+```
+
+Hai điều rút ra. Một, `#126` nay được ĐO chứ không phải đọc từ mã: tài liệu thứ hai
+tham chiếu cùng ảnh không ngăn được việc xoá. Hai, file rời khỏi workspace nhưng
+**không thấy trong `~/.Trash`**, nên phần "vào Thùng rác" vẫn là việc của anh, trên máy
+anh. Một extension-test host không phải bằng chứng về desktop của ai cả.
 
 Cần `tuiMarkdown.autoDeleteImages` đang bật (mặc định bật).
 
-- [ ] Xoá dòng ảnh khỏi tài liệu, **lưu**.
-- [ ] File ảnh vào Thùng rác (Trash), KHÔNG bị xoá vĩnh viễn.
+- [x] ~~Xoá dòng ảnh khỏi tài liệu, lưu, file biến mất.~~ floor
+- [ ] File ảnh vào Thùng rác (Trash), KHÔNG bị xoá vĩnh viễn. **Floor đo được là KHÔNG
+      thấy nó trong `~/.Trash`.** Đây là mục đáng kiểm nhất trong cả bản.
 - [ ] Khôi phục từ Thùng rác được (đây là điểm khác nhau giữa "xoá" và "chuyển vào
       thùng rác", và là lý do thiết kế như vậy).
 - [ ] Đổi ảnh sang THƯ MỤC khác (cùng tên file) rồi lưu: KHÔNG bị xoá, vì đó là thao
@@ -148,7 +220,18 @@ Cần `tuiMarkdown.autoDeleteImages` đang bật (mặc định bật).
 
 Hai mục, cần hộp thoại lưu file.
 
-### D1. Export DOCX (#88)
+### D1. Export DOCX (#88): ĐÃ TỰ ĐỘNG, TRỪ HỘP THOẠI
+
+Floor check `export produces a real DOCX file`. Host thay `showSaveDialog` và cái thông
+báo "Open the file?" đi kèm, runner bấm đúng nút Export thật, host kiểm magic number
+của thứ rơi xuống: `bytes=32242 magic=504b0304`.
+
+Nội dung đã soi bằng `officecli view ... text`: 12 đoạn, 1 bảng 3 hàng, 2 ảnh, heading
+đúng style `Heading 1`, code block đúng font Consolas. Alert `[!NOTE]` ra thành chữ
+thường, task list ra thành bullet `●` không có ô tick: đó là hành vi hiện tại, không
+phải lỗi mới.
+
+**Đây là mục tìm ra lỗi nặng nhất của cả lượt kiểm.** Xem đầu file.
 
 - [ ] Mở panel Appearance (icon bên phải thanh công cụ), chọn định dạng `DOCX`, bấm
       `Export`.
@@ -161,7 +244,11 @@ Hai mục, cần hộp thoại lưu file.
 - [ ] Bấm Export hai lần liên tiếp thật nhanh: lần hai bị chặn bởi khoá bận, không sinh
       ra hai tiến trình.
 
-### D2. Export PDF (#88)
+### D2. Export PDF (#88): ĐÃ TỰ ĐỘNG, TRỪ HỘP THOẠI
+
+Floor check `export produces a real PDF file`: `bytes=116569 magic=25504446`. Nội dung
+đã soi bằng `pdftotext`: heading, chữ đậm, link kèm URL, bảng đủ cột và giá trị, task,
+code, alert, ảnh. Chromium tự dò được, không cần đặt `tuiMarkdown.chromiumPath`.
 
 Cần một Chromium thật. `tuiMarkdown.chromiumPath` để trống thì tự dò
 Chrome/Edge/Chromium/Brave.
@@ -176,9 +263,14 @@ Chrome/Edge/Chromium/Brave.
 
 ## E. Popup gõ
 
-### E1. `@` mention và `[[` wiki link (#88)
+### E1. `@` mention và `[[` wiki link (#88): POPUP ĐÃ TỰ ĐỘNG
 
-- [ ] Gõ `@` giữa một đoạn văn: popup danh sách file hiện ra.
+Hai floor check: `@ mention popup lists workspace files` (2 mục) và
+`[[ wiki link popup lists workspace files` (1 mục), cả hai gắn `#editor-container`.
+Phần chèn bằng Enter và lời mời tạo file thì chưa.
+
+- [x] ~~Gõ `@`: popup danh sách file hiện ra.~~ floor
+- [x] ~~Gõ `[[`: popup thứ hai hiện ra.~~ floor
 - [ ] Gõ thêm vài ký tự: danh sách lọc mờ (fuzzy) theo ký tự đó.
 - [ ] Mũi tên lên/xuống đổi lựa chọn, Enter chèn, Escape đóng mà không chèn.
 - [ ] Sau khi chèn: trong source view nó là một link markdown đúng cú pháp.
@@ -254,20 +346,21 @@ Floor check khẳng định menu có hiện ra và có đúng số mục. Nó kh
 
 Ngày kiểm: `__________`  ·  Phiên bản: `2.17.0`  ·  VS Code: `__________`
 
+Chỉ liệt kê phần CÒN LẠI. Những mục floor đã nhận thì `npm run verify:vscode-floor`
+trả lời, đừng chép tay lại.
+
 | Mục | Tiêu chí | Kết quả | Ghi chú / issue mở |
 | --- | --- | --- | --- |
-| A1 | Menu bảng dùng bằng bàn phím (#118) | | |
+| A1b | Enter kích hoạt một mục trong menu bảng (#118) | | |
 | A2 | `Ctrl/Cmd+Shift+M` hai chiều (#108) | | |
-| A3 | Bubble menu ở zoom khác 100% (#116) | | |
-| B1 | Gõ rồi đóng tab trong 300 ms (#104) | | |
+| A3b | Bubble menu ở zoom DƯỚI 100% (#116) | | |
+| B1 | Gõ rồi đóng tab trong 300 ms, 10 lần (#104) | | |
 | B2 | Nhớ vị trí con trỏ và cuộn (#121) | | |
 | C1 | Clipboard lỗi có báo (#105) | | |
 | C2 | Dán ảnh (#88) | | |
 | C3 | Đổi tên ảnh (#88) | | |
-| C4 | Xoá ảnh vào Thùng rác (#88) | | |
-| D1 | Export DOCX (#88) | | |
-| D2 | Export PDF (#88) | | |
-| E1 | `@` mention và `[[` wiki link (#88) | | |
+| C4b | Ảnh xoá có vào Thùng rác không (#88) | | |
+| E1b | Chèn bằng Enter, và lời mời tạo file (#123) | | |
 | F1 | `editor.tabSize` đổi thụt lề (#102) | | |
 | G1 | Ảnh chụp hai theme (#86) | | |
 | X1 | Git Graph diff (#48) | | |

@@ -629,15 +629,14 @@ cái đã trả lẫn cái vừa lộ ra.
 
 ### Còn treo
 
-- **Mười bốn tiêu chí kiểm tay còn lại**, nay đã có bản kiểm viết sẵn ở
-  `docs/manual-checks.md`: từng bước, ĐẠT nghĩa là gì, bẫy đã biết, và một bảng kết quả.
-  Chỉ riêng việc viết nó ra đã tìm được `#126`, vì viết bước kiểm buộc phải đối chiếu
-  từng lời hứa trong tài liệu với mã thật. Của sóng 7: bàn phím trên menu bảng (`#118`),
-  bubble menu ở mức zoom khác 100% (`#116`), cuộn tay rồi đóng mở lại tab (`#121`).
-  Của `#88`: dán ảnh, đổi tên ảnh, xoá ảnh, export DOCX, export PDF, `@` và `[[`. Của
-  sóng 4: `#105`, `#104`, `#86`, `#108`. Và một của `#102`. Cộng thêm hai thứ floor cố
-  ý KHÔNG nhận: diff view của Git Graph (`#48`, một đường khác trong VS Code, và floor
-  workspace không cài extension đó) và việc các menu TRÔNG như thế nào.
+- **Số tiêu chí còn phải kiểm tay: xem `docs/manual-checks.md`, ĐỪNG chép lại con số
+  vào đây.** Nó đã sai ba lần: bản đầu viết 14 trong khi liệt kê ra 17, rồi lượt đi
+  kiểm thật cho thấy 5 mục lái được bằng máy và nay là check floor. Một con số chép ở
+  bốn chỗ là bốn chỗ sẽ lệch nhau.
+- **Lượt trả nợ ấy tìm ra hai lỗi đang ship, không phải bằng cách đọc mã.** DOCX export
+  chết trên chính phiên bản `engines.vscode` hứa (`crypto is not defined`, Node 18 chưa
+  có Web Crypto global), và lightbox không bẫy được tiêu điểm trong cửa sổ bị che (đúng
+  cơ chế `#112`, lần thứ hai). Bài học: **món nợ lưới là món trả trước.**
 - **Menu chuột phải trên bảng là ca floor chịu thua rõ nhất.** Ba lần thử: range
   selection đặt bằng script không sync vào ProseMirror; click qua CDP dùng toạ độ
   trang chứ không phải toạ độ iframe; và `defaultPrevented` không phải bằng chứng vì

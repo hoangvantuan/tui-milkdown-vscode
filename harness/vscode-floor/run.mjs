@@ -555,11 +555,28 @@ async function driveSurfaces(evaluate, session) {
   // explicit `selectionInCell` precondition below; if it is false the detail
   // says so instead of blaming the menu.
   try {
+    // A DOM range plus a synthetic `selectionchange` puts the BROWSER selection
+    // in the cell but leaves ProseMirror's own selection wherever it was, and
+    // the alignment command reads ProseMirror's. That is why an earlier version
+    // of this probe saw the menu open, the focus rove and Enter do nothing, and
+    // nearly reported a working command as broken for the second time.
+    //
+    // A synthetic mousedown/mouseup carrying the cell's centre coordinates does
+    // reach ProseMirror: its handler reads `posAtCoords` off the event, and a
+    // DOM event's clientX/clientY are relative to THIS frame, unlike a
+    // DevTools Input event, which is dispatched in the top-level page's
+    // coordinates and lands somewhere else entirely.
     const placed = await evaluate(`(() => {
       const root = document.querySelector('.tiptap');
       const cell = root?.querySelector('table td, table th');
       if (!cell) return 'no table cell';
       root.focus();
+      const r = cell.getBoundingClientRect();
+      const at = { bubbles: true, cancelable: true, view: window, button: 0,
+                   clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 };
+      cell.dispatchEvent(new MouseEvent('mousedown', at));
+      cell.dispatchEvent(new MouseEvent('mouseup', at));
+      cell.dispatchEvent(new MouseEvent('click', at));
       const range = document.createRange();
       range.selectNodeContents(cell);
       range.collapse(false);
@@ -614,6 +631,54 @@ async function driveSurfaces(evaluate, session) {
     const moved = await evaluate(
       `document.activeElement?.textContent?.trim()?.slice(0, 24) ?? null`,
     );
+    // Walk to an alignment entry and press Enter. This is the DEFECT #118
+    // fixed: items were bound to `mousedown`, so a focused item did nothing on
+    // Enter. Focus moving and Escape closing were true before the fix too, so
+    // without this the check does not cover the thing the issue was about.
+    let steps = 0;
+    let focusLabel = moved;
+    while (steps < 14 && !/align/i.test(String(focusLabel ?? ""))) {
+      for (const type of ["keyDown", "keyUp"]) {
+        await session.send("Input.dispatchKeyEvent", {
+          type, key: "ArrowDown", code: "ArrowDown", windowsVirtualKeyCode: 40, nativeVirtualKeyCode: 40,
+        });
+      }
+      await sleep(120);
+      focusLabel = await evaluate(`document.activeElement?.textContent?.trim()?.slice(0, 24) ?? null`);
+      steps += 1;
+    }
+    const reachedAlign = /align/i.test(String(focusLabel ?? ""));
+    const alignBefore = await evaluate(
+      `document.querySelector('.tiptap table td, .tiptap table th')?.style.textAlign || '(none)'`,
+    );
+    if (reachedAlign) {
+      for (const type of ["keyDown", "keyUp"]) {
+        await session.send("Input.dispatchKeyEvent", {
+          type, key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13,
+        });
+      }
+      await sleep(600);
+    }
+    const alignAfter = await evaluate(
+      `document.querySelector('.tiptap table td, .tiptap table th')?.style.textAlign || '(none)'`,
+    );
+    // REPORTED, NOT ASSERTED, and the difference is the point.
+    //
+    // Enter reaching a focused item is the defect #118 fixed (items used to be
+    // bound to `mousedown`), so it is the one thing here worth proving, and
+    // this harness cannot prove it. The alignment command reads ProseMirror's
+    // selection, ProseMirror syncs its selection from the DOM only while its
+    // view holds focus, and in this window `root.focus()` does not take:
+    // `focusInEditor` is false in every run. A synthetic mousedown carrying the
+    // cell's own coordinates does not fix it either; that was tried.
+    //
+    // So `enterChangedAlign=false` here means the SELECTION never got into the
+    // table, not that Enter did nothing. Asserting on it would fail a working
+    // feature, which is the mistake three earlier versions of this probe made.
+    // The line stays in `docs/manual-checks.md`, and the number is printed so a
+    // future run that does manage it is visible immediately.
+    const enterActivated = reachedAlign && alignAfter !== alignBefore;
+
     for (const type of ["keyDown", "keyUp"]) {
       await session.send("Input.dispatchKeyEvent", {
         type, key: "Escape", code: "Escape", windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27,
@@ -629,7 +694,8 @@ async function driveSurfaces(evaluate, session) {
         `openedImmediately=${fired.openedImmediately} open=${menu.open} items=${menu.items ?? 0} ` +
         `alignEntries=${menu.alignEntries ?? 0} focusInside=${menu.focusInside} ` +
         `focus=${JSON.stringify(menu.focusLabel ?? null)} afterArrowDown=${JSON.stringify(moved)} ` +
-        `closedOnEscape=${closed}`,
+        `reachedAlignIn=${steps}steps(${JSON.stringify(focusLabel ?? null)}) ` +
+        `enterChangedAlign=${enterActivated} (${alignBefore}->${alignAfter}; reported, not asserted: focusInEditor=false means the ProseMirror selection never reached the table) closedOnEscape=${closed}`,
     );
   } catch (err) {
     add("table context menu is operable from the keyboard and offers alignment", false, `threw: ${err.message}`);
@@ -1248,6 +1314,7 @@ async function driveInteractions(base, session, contextId) {
  * `visibility=hidden`, not as a harness error.
  */
 async function raiseWindow(pid) {
+  if (process.env.TUI_FLOOR_NO_RAISE) return "skipped (TUI_FLOOR_NO_RAISE)";
   if (process.platform !== "darwin") return "skipped (not darwin)";
   try {
     await run("osascript", [
