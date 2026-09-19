@@ -2572,3 +2572,99 @@ body.theme-midnight { --overlay-bg: #c9d1d9; --overlay-fg: #0d1117; }
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+
+/* Drag handle (#133) */
+.drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 24px;
+  cursor: grab;
+  color: var(--toolbar-fg, #cccccc);
+  opacity: 0.6;
+  border-radius: 3px;
+  user-select: none;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+.drag-handle:hover {
+  background-color: rgba(var(--accent-rgb, 59, 130, 246), 0.15);
+  opacity: 1;
+}
+.drag-handle:active,
+.drag-handle[data-dragging="true"] {
+  cursor: grabbing;
+}
+
+/* Emoji suggestion popup (#133) */
+.emoji-popup {
+  position: absolute;
+  z-index: 1000;
+  width: 280px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: rgba(var(--toolbar-bg-rgb), 0.85);
+  color: var(--toolbar-fg);
+  border: 1px solid rgba(var(--border-rgb), 0.2);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 4px;
+}
+@supports (backdrop-filter: blur(12px)) {
+  .emoji-popup {
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    background: rgba(var(--toolbar-bg-rgb), 0.7);
+  }
+}
+.emoji-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+.emoji-item:hover,
+.emoji-item.is-selected {
+  background: rgba(var(--accent-rgb), 0.1);
+}
+.emoji-item.is-selected {
+  background: rgba(var(--accent-rgb), 0.15);
+}
+.emoji-item-symbol {
+  font-size: 18px;
+  line-height: 1;
+  width: 24px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.emoji-item-name {
+  font-weight: 500;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.emoji-item-shortcode {
+  font-size: 11px;
+  opacity: 0.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-left: auto;
+}
+.emoji-empty {
+  padding: 12px 8px;
+  text-align: center;
+  font-size: 12px;
+  opacity: 0.5;
+}
+.emoji-popup mark {
+  background: rgba(var(--accent-rgb), 0.25);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+

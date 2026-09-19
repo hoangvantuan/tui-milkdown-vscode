@@ -1,3 +1,49 @@
-# emoji-insert seam
+# emoji-insert seam — insertEmoji and searchEmojis (src/webview/emoji-plugin.ts)
+observes the markdown string only; every 'yes' below is a verdict, not a measurement
 
-(not filled in yet — owner: wave-8 W3)
+[shortcode-picked-from-menu] fixture="Hello :smile"
+note: picker replaces trigger query with unicode emoji
+  expected: "Hello 😄"
+  actual:   "Hello 😄"
+  matches expected: yes
+  survives reload unchanged: yes
+  reload is fixpoint: yes
+
+[shortcode-picked-in-paragraph] fixture="Celebration :tada: underway"
+note: picker replaces shortcode within surrounding text
+  expected: "Celebration 🎉 underway"
+  actual:   "Celebration 🎉 underway"
+  matches expected: yes
+  survives reload unchanged: yes
+  reload is fixpoint: yes
+
+[shortcode-picked-in-list] fixture="- Task with :heart:"
+note: picker inserts inline unicode into a list item
+  expected: "- Task with ❤\n"
+  actual:   "- Task with ❤\n"
+  matches expected: yes
+  survives reload unchanged: yes
+  reload is fixpoint: yes
+
+[unicode-already-in-document] fixture="Unicode 😄 and 🎉 stay unicode, never :smile: or :tada:"
+note: existing unicode emoji is preserved and never converted to :shortcode:
+  expected: "Unicode 😄 and 🎉 stay unicode, never :smile: or :tada:"
+  actual:   "Unicode 😄 and 🎉 stay unicode, never :smile: or :tada:"
+  matches expected: yes
+  survives reload unchanged: yes
+  reload is fixpoint: yes
+
+[shortcode-typed-not-picked] fixture="Literal :smile: and :heart: left unpicked"
+note: literal shortcode typed without picking stays literal text
+  expected: "Literal :smile: and :heart: left unpicked"
+  actual:   "Literal :smile: and :heart: left unpicked"
+  matches expected: yes
+  survives reload unchanged: yes
+  reload is fixpoint: yes
+
+--- fuzzy search ranking ---
+query "smile": 😄 (:smile: score=1.000), 😃 (:smiley: score=0.965), 😸 (:smile_cat: score=0.941)
+query "tada": 🎉 (:tada: score=1.000), 🇹🇦 (:tristan_da_cunha: score=0.677), ✡ (:star_of_david: score=0.335)
+query "heart": ❤ (:heart: score=1.000), ♥ (:hearts: score=0.981), 💙 (:blue_heart: score=0.958)
+query "thumb": 👍 (:+1: score=0.876), 👎 (:-1: score=0.845), 🫰 (:hand_with_index_finger_and_thumb_crossed: score=0.830)
+query "fire": 🔥 (:fire: score=1.000), 🚒 (:fire_engine: score=0.946), 🧑‍🚒 (:firefighter: score=0.938)
