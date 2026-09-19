@@ -368,6 +368,16 @@ function buildMarkdownExtensions(
     WikiLink,
     RawHtmlBlock,
     RawHtmlInline,
+    // --- wave 8 ownership markers (#85) ---------------------------------
+    // Two 3.0 workers add markdown-relevant extensions at the same time, and
+    // this list plus harness/editor.ts must stay mirror images of each other.
+    // Each worker appends INSIDE its own block and touches no other line, so
+    // the two branches merge without a conflict. Delete the markers once 3.0
+    // has shipped and the mirror is stable again.
+    // --- W1: math + footnotes ---
+    // --- end W1 ---
+    // --- W2: html whitelist (details / kbd / sub / sup) ---
+    // --- end W2 ---
   ];
 }
 

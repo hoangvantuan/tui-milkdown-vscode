@@ -17,6 +17,7 @@
  * from Node. Persist webview state with `{ ...getState(), key }`.
  */
 import { Editor, Extension } from "@tiptap/core";
+import { publishTiptapGlobals } from "./tiptap-globals";
 import type {
   WebviewToHostMessage,
   HostToWebviewMessage,
@@ -1159,6 +1160,11 @@ const customMarked = createCustomMarked();
 
 // Editor initialization
 function initEditor(initialContent: string = ""): Editor | null {
+  // Publish Tiptap and ProseMirror on window BEFORE any lazy artifact can be
+  // injected. An artifact that bundled its own ProseMirror would get its own
+  // PluginKey identities and its own EditorState class, and the mismatch only
+  // shows up at runtime (src/webview/tiptap-globals.ts).
+  publishTiptapGlobals();
 
   const editorEl = getEditorEl();
   if (!editorEl) {
@@ -1301,6 +1307,16 @@ function initEditor(initialContent: string = ""): Editor | null {
         RawHtmlBlock,
         RawHtmlInline,
         createBubbleMenuExtension({ onOpenLink: () => linkPopover?.open() }),
+        // --- wave 8 ownership markers (#85) ---------------------------------
+        // Two 3.0 workers add markdown-relevant extensions at the same time, and
+        // this list plus harness/editor.ts must stay mirror images of each other.
+        // Each worker appends INSIDE its own block and touches no other line, so
+        // the two branches merge without a conflict. Delete the markers once 3.0
+        // has shipped and the mirror is stable again.
+        // --- W1: math + footnotes ---
+        // --- end W1 ---
+        // --- W2: html whitelist (details / kbd / sub / sup) ---
+        // --- end W2 ---
         ...conditionalExtensions,
       ],
       content: initialContent,

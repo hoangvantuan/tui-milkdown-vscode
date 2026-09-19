@@ -218,6 +218,7 @@
     "package": "vsce package"
   },
   "devDependencies": {
+    "@types/katex": "^0.16.8",
     "@types/node": "^25.9.5",
     "@types/vscode": "~1.85.0",
     "esbuild": "0.28.2",
@@ -233,6 +234,8 @@
     "@tiptap/core": "3.30.1",
     "@tiptap/extension-bubble-menu": "3.30.1",
     "@tiptap/extension-code-block-lowlight": "3.30.1",
+    "@tiptap/extension-drag-handle": "3.30.1",
+    "@tiptap/extension-emoji": "3.30.1",
     "@tiptap/extension-find-and-replace": "3.30.1",
     "@tiptap/extension-highlight": "3.30.1",
     "@tiptap/extension-image": "3.30.1",
@@ -249,6 +252,7 @@
     "fuzzysort": "4.0.2",
     "image-size": "^2.0.2",
     "js-yaml": "5.3.0",
+    "katex": "^0.16.47",
     "lowlight": "^3.3.0",
     "mdast2docx": "^1.6.1",
     "mermaid": "^11.17.2",

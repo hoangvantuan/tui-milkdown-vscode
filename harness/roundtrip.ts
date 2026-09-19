@@ -35,6 +35,10 @@ import { runReplaceSeam } from "./replace-seam";
 import { runLinkEditSeam } from "./link-edit-seam";
 import { runTableAlignSeam } from "./table-align-seam";
 import { runImgWidthSeam } from "./img-width-seam";
+import { runMathFootnoteSeam } from "./math-footnote-seam";
+import { runHtmlRenderSeam } from "./html-render-seam";
+import { runEmojiInsertSeam } from "./emoji-insert-seam";
+import { runCodeBlockSeam } from "./codeblock-seam";
 import { formatUnifiedDiff } from "./diff";
 
 const MAX_DIFF_LINES = 120;
@@ -210,6 +214,28 @@ function main(): number {
       name: "seams/img-width.txt",
       goldenPath: path.join(repoRoot, "harness", "golden", "seams", "img-width.txt"),
       run: runImgWidthSeam,
+    },
+    // Wave-8 seams (#85), same rule: registered before the worktrees were cut so
+    // each worker owns one seam file and this list stays untouched.
+    {
+      name: "seams/math-footnote.txt",
+      goldenPath: path.join(repoRoot, "harness", "golden", "seams", "math-footnote.txt"),
+      run: runMathFootnoteSeam,
+    },
+    {
+      name: "seams/html-render.txt",
+      goldenPath: path.join(repoRoot, "harness", "golden", "seams", "html-render.txt"),
+      run: runHtmlRenderSeam,
+    },
+    {
+      name: "seams/emoji-insert.txt",
+      goldenPath: path.join(repoRoot, "harness", "golden", "seams", "emoji-insert.txt"),
+      run: runEmojiInsertSeam,
+    },
+    {
+      name: "seams/codeblock.txt",
+      goldenPath: path.join(repoRoot, "harness", "golden", "seams", "codeblock.txt"),
+      run: runCodeBlockSeam,
     },
   ];
 
