@@ -389,6 +389,62 @@ kể cả con số tạm.
 **Phép đo đầu tiên của check mới quét quá rộng.** Xem mục "Phép thử răng cũng
 phải kiểm phép thử" ở phần kỷ luật.
 
+## LỖI VÀ BÀI HỌC CỦA SÓNG 8
+
+**Marker block trong hai file dùng chung: hiệu quả, nhưng câu chữ của tôi thiếu một câu.**
+Sóng 8 có HAI ticket markdown-relevant, nên luật cũ "chỉ một worker được chạm
+`harness/editor.ts`" không dùng được. Thay bằng marker block, mỗi worker một khối, trong
+cả `src/webview/main.ts` lẫn `harness/editor.ts`. Nó chạy: hai nhánh merge không xung đột
+một dòng nào trong hai file đó.
+
+Nhưng tôi viết "chỉ được thêm dòng BÊN TRONG marker block mang tên mình" mà quên nói dòng
+`import` đi đâu. Worker tuân thủ theo nghĩa đen và viết `...require("./html-marks")` ngay
+giữa mảng extension. esbuild nội tuyến `require()` tĩnh trong bundle IIFE nên không có
+`require` nào sống trong file phát hành (`grep -c "require(" out/webview/main.js` trả 0),
+tức là không hỏng, nhưng nó lệch với mọi import khác trong repo. **Câu phải thêm: "dòng
+import đi lên đầu file như bình thường".** Đã sửa vào chính comment của marker.
+
+**Một cơ chế lazy mới thì phải DỰNG NGUYÊN MẪU, đừng suy ra từ cái cũ.** Tôi suýt chép
+nguyên khuôn mermaid cho KaTeX, drag handle và emoji. Mermaid là một thư viện độc lập; ba
+thứ kia là extension cắm vào một editor đang sống, và một artifact mang theo bản
+`prosemirror-state` riêng sẽ có PluginKey riêng và lớp `EditorState` riêng, nên `instanceof`
+bên trong ProseMirror hỏng ở runtime mà không có gì hỏng lúc biên dịch. Nửa giờ dựng nguyên
+mẫu trong sandbox trả lời dứt điểm: externalize `@tiptap/core` và `@tiptap/pm/*` về global,
+`editor.registerPlugin()` chạy, plugin đếm 68 lên 69, `view.state instanceof EditorState`
+vẫn đúng. Nếu không dựng, con số đó đã là một giả định nằm trong bốn bản spec.
+
+Cùng phép đo đó còn bắt được một thứ spec suýt nói sai: `@tiptap/extension-emoji` khai một
+node `emoji` KÈM `renderMarkdown`, mà schema thì cố định lúc `new Editor()`. "Dùng upstream,
+lazy" là bất khả thi theo nghĩa đen, và tệ hơn, renderer đó có thể ghi `:smile:` đè lên ký
+tự unicode người dùng đã lưu. Spec phải nói thẳng: lazy phần DỮ LIỆU, UI dùng
+`suggestion-popup.ts`, chèn text unicode, không đụng schema.
+
+**Thân issue MẸ sai một chỗ lớn, và điều phối viên đo ra trước khi viết ticket con.** #85
+nói math "pass through but shows as source". Nửa đầu sai: `$\frac{a}{b}$` lưu ra
+`$\\frac{a}{b}$` và `$$\int_0^1$$` ra `$$\\int\_0^1$$`. Đó là mất dữ liệu đang ship,
+không phải thiếu renderer. Phát hiện bằng một probe 12 ca chạy qua `harness/editor.ts`
+TRƯỚC khi viết dòng spec đầu tiên, cùng cách sóng 7 làm với #84. Tỉ lệ luỹ kế giữ ở 10 trên
+28 ticket giao đi: cả bốn thân ticket con của sóng 8 đều đúng, vì cả bốn đều được đo lại.
+
+**Kiểm worker bằng phép đo CỦA MÌNH, và phép đo của mình sai hai lần.** Cả bốn worker đều
+được kiểm bằng probe độc lập chứ không đọc seam của họ: ca `kbd-in-link` thật sự khỏi, bug
+math thật sự khỏi, fixture `math-passthrough.md` thật sự đỏ trên develop và xanh trên nhánh.
+Nhưng hai phép đo của tôi sai: một lần `grep -c` đếm 0 ca đỏ trong khi seam đỏ thật (pattern
+sai), một lần grep khối mã trong báo cáo báo 26 dòng "bịa" mà phần lớn là output lệnh. Cả
+hai lần nghi phép đo của mình trước là đúng.
+
+**Check mới đỏ lần đầu vì phép đo, lần thứ ba liên tiếp trong harness này.** Probe drag
+handle hover vào `.tiptap p` đầu tiên và báo `hoveredAt=435,-526`: các probe chạy trước đã
+cuộn tài liệu, đoạn văn đó nằm trên khung nhìn, con trỏ không đi đâu cả. Mã sản phẩm đúng.
+Luật cũ của repo ("hover cần mousemove với toạ độ trong rect") vẫn đúng nhưng chưa đủ:
+**toạ độ trong rect của một phần tử ngoài khung nhìn là toạ độ âm.**
+
+**Phá bốn cơ chế cùng lúc là phép thử răng rẻ hơn bốn lượt.** Một lượt floor check cho ra
+5 đỏ trên 40, và con số 5 chứ không phải 4 mới là thứ đáng giá: check cũ
+`an image with a width` cũng đỏ, vì gỡ whitelist HTML thì `<details>` và `<kbd>` quay về
+làm raw-HTML badge và nó đếm badge. Một ràng buộc ngầm giữa check cũ và nội dung
+`sample.md`, ghi lại thay vì để người sau tự vấp.
+
 ## Ràng buộc bắt buộc đưa vào spec mọi worker
 
 1. Cấm sửa MỌI `.md` ở GỐC repo, không riêng `CHANGELOG.md` và `AGENTS.md`:

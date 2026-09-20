@@ -57,6 +57,7 @@ src/
 │   ├── readClipboardImage.ts # Native clipboard read (osascript / PowerShell / xclip)
 │   ├── requestImageRename.ts # Rename on disk + rewrite this document + workspace references
 │   ├── openWikiLink.ts       # [[name]] resolution and open; creates the file when nothing resolves (#123)
+│   ├── backlinks.ts          # Workspace scan for [[wiki]] and @ references to the open document (#134)
 │   ├── defaultEditor.ts      # QuickPick writing workbench.editorAssociations for the workspace (#122)
 │   └── exportDocument.ts     # export: busy lock, synchronous read, lazy require of the renderers
 ├── constants.ts              # Shared constants (MAX_FILE_SIZE)
@@ -86,6 +87,19 @@ src/
     ├── alert-extension.ts    # GitHub-style alert blocks ([!NOTE], [!TIP], etc.)
     ├── mermaid-plugin.ts     # Mermaid diagram rendering (SVG preview, view/edit mode, caching)
     ├── mermaid-bridge.ts     # Lazy-loads the mermaid artifact with the page nonce (retry/latch semantics)
+    ├── artifact-bridge.ts    # The same load semantics, reusable: loadArtifact("katex" | "dragHandle" | "emoji") (#85)
+    ├── tiptap-globals.ts     # Publishes Tiptap + ProseMirror on window so a lazy artifact reuses the page's single instance (#85)
+    ├── katex-loader.ts       # Separate esbuild entry → out/webview/katex-loader.js (KaTeX only; CSS and fonts are copied assets)
+    ├── drag-handle-loader.ts # Separate esbuild entry → out/webview/drag-handle-loader.js (@tiptap/extension-drag-handle)
+    ├── emoji-loader.ts       # Separate esbuild entry → out/webview/emoji-loader.js (the emojibase dataset ONLY, never the schema node)
+    ├── math-extension.ts     # inlineMath / blockMath, LaTeX held as a node attribute, KaTeX rendered lazily (#131)
+    ├── footnote-extension.ts # footnoteReference / footnoteDefinition + hover preview (#131)
+    ├── html-marks.ts         # <kbd>, <sub>, <sup> as marks, so a link can wrap them (#132)
+    ├── details-extension.ts  # <details>/<summary> rendered collapsible (#132)
+    ├── drag-handle-plugin.ts # Block reordering; loads its artifact on first hover and forces the handle into #editor-container (#133)
+    ├── emoji-plugin.ts       # Emoji picker on ':', fourth consumer of suggestion-popup.ts; inserts unicode, adds no schema node (#133)
+    ├── focus-mode.ts         # Hides toolbar/TOC/progress and centres the active line, on the latched rAF+timer pair (#134)
+    ├── backlinks-panel.ts    # Panel listing documents that link here (#134)
     ├── mermaid-loader.ts     # Separate esbuild entry → out/webview/mermaid-loader.js (mermaid + ELK)
     ├── line-highlight-plugin.ts # ProseMirror plugin for cursor line highlight
     ├── heading-level-plugin.ts # ProseMirror plugin for H1-H6 level badges
@@ -138,6 +152,10 @@ harness/                            # Dependency-verification harness (see harne
 ├── link-edit-seam.ts               # The markdown an inline link edit writes back (#117)
 ├── table-align-seam.ts             # The separator row a set-alignment command produces (#118)
 ├── img-width-seam.ts               # How an image with width/height parses and serializes (#120, #124)
+├── math-footnote-seam.ts           # Math and footnote nodes: attributes in, markdown out (#131)
+├── html-render-seam.ts             # <details>/<kbd>/<sub>/<sup>: node or mark, and what they serialize to (#132)
+├── emoji-insert-seam.ts            # What the emoji picker writes, and that unicode is never rewritten (#133)
+├── codeblock-seam.ts               # Line numbers and wrap are view state, so the fenced block is unchanged (#134)
 ├── vscode-floor/                   # VS Code floor check: run.mjs (driver + surface probes) + extension-tests.ts (in-host checks)
 ├── fixtures/synthetic/*.md         # One feature per fixture
 └── golden/                         # Committed baselines (corpus + seams), captured on the pre-upgrade dependency tree
@@ -208,6 +226,11 @@ Uses `@tiptap/core` with `@tiptap/markdown` (Beta, MarkedJS-based parser) for ma
 - `npm test` globs `out/test/**/*.test.js`, so DELETING a test source leaves its compiled copy behind and the runner keeps passing it. `rm -rf out/test` after removing a test, or the count will not move and a test for deleted code will still be green
 - Backticks are banned inside the `Runtime.evaluate` template literals in `run.mjs`. That has cost two syntax errors; use string concatenation
 - Seam files are registered in `harness/roundtrip.ts` by the coordinator BEFORE a parallel wave's worktrees are cut, so each worker owns one seam file and none of them edits the shared list. `esbuild.harness.config.js` reads `test/*.test.ts` from disk for the same reason
+- **A lazy Tiptap EXTENSION is not the mermaid pattern, and the difference is invisible until runtime.** Mermaid is a standalone library, so its artifact can be self-contained. KaTeX, the drag handle and the emoji dataset plug into a live editor, and an artifact carrying its own `prosemirror-state` gets its own PluginKey identities and its own `EditorState` class: `instanceof` checks inside ProseMirror then fail with nothing failing at compile time. `src/webview/tiptap-globals.ts` publishes the page's Tiptap and ProseMirror on `window`, and `tiptapGlobalsPlugin` in `esbuild.config.js` resolves the bare specifiers inside every artifact to them. A new artifact that imports `@tiptap/*` MUST go through `lazyArtifactConfig`, never a hand-rolled esbuild entry
+- **`@tiptap/extension-emoji` is deliberately used for its DATA only.** It declares a schema node named `emoji` with its own `renderMarkdown`, a schema is fixed at `new Editor()`, and that renderer would rewrite a unicode character the user already saved into a `:shortcode:`. The picker inserts plain unicode text through `suggestion-popup.ts` and adds nothing to the schema. The seam `harness/emoji-insert-seam.ts` is what pins that: `😄` in, `😄` out
+- **The webview startup bundle has a hard gate.** `assertWebviewBudget()` in `esbuild.config.js` FAILS the production build past 1,100,000 B (`build:dev` is unminified and exempt). The number is deliberate, not inherited: 2.15 recorded 933,347 B after the mermaid split, 2.17 shipped 983,969 B, and `tiptap-globals.ts` costs 16,839 B of the remainder. Measured marginal costs if the 3.0 renderers were eager: KaTeX 267,806 B plus 1.1 MB of fonts, `@tiptap/extension-drag-handle` 127,420 B (yjs and y-prosemirror, reached through `@tiptap/extension-collaboration`, which this editor does not use), `@tiptap/extension-emoji` 528,529 B (`emojibase-data` does not tree-shake). All three are artifacts
+- Math holds its LaTeX as a node ATTRIBUTE, and that is the whole fix for #131, not a second rule in `installMarkdownTextEscape`. Before 3.0 the escape module's group 3 (`[\\`\*\_\[\]\~\]`) reached inside` $...$`, so` $\frac{a}{b}$`was saved as`$\\frac{a}{b}$`and`$$\int_0^1$$` as `$$\\int\_0^1$$`: data loss on the first save. An attribute is not text, so the escaper never sees it. Do NOT add a `$\` rule there; #99 and #101 are the standing example of two issues wanting opposite things from one rule
+- `<kbd>`, `<sub>` and `<sup>` are MARKS, not atoms, and that is why `[<kbd>Ctrl</kbd> docs](url)` survives a save. `docs/upstream/tiptap-markdown-mark-around-atom.md` records that a mark can never wrap an atom, and it still holds; marks sidestep it rather than fix it. `MarkdownLink.parseMarkdown` also had to batch its child tokens, because feeding `parseInline` one token at a time never lets it see an opening tag, its text and its closing tag together
 - Security trade-offs are documented where they are made: mermaid `securityLevel: "loose"` and nonce exposure in `mermaid-plugin.ts` / `mermaid-bridge.ts`, PDF export invariants in `export-pdf.ts`
 
 ## Development Guidelines
