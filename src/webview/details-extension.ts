@@ -54,6 +54,48 @@ export const Details = Node.create({
     return ["details", mergeAttributes(HTMLAttributes), 0];
   },
 
+  /**
+   * Why a NodeView at all, when renderHTML already produces a <details>:
+   * clicking <summary> is handled by the browser, which flips the `open`
+   * ATTRIBUTE on the DOM node without a ProseMirror transaction. ProseMirror
+   * sees an unexplained mutation, redraws the node from a state that still
+   * says closed, and the disclosure springs shut again. Measured before this
+   * existed: open on the first click, closed again 900 ms later, so a second
+   * click only reopened it and it could never be closed by hand.
+   *
+   * The fix is NOT to dispatch a transaction for the toggle. `open` is
+   * serialized by renderMarkdown, so writing the user's disclosure state into
+   * the document would put ` open` into their file just because they looked
+   * inside a block, and #85's rule is that rendering never changes what is
+   * saved. Instead the attribute mutation is ignored, which leaves the browser's
+   * native toggle in charge of the DOM and leaves the document untouched.
+   *
+   * The attribute keeps its other job: `<details open>` written by hand parses
+   * to open: true, renders open, and is saved back with ` open`.
+   */
+  addNodeView() {
+    return ({ node }) => {
+      const dom = document.createElement("details");
+      if (node.attrs.open) dom.setAttribute("open", "");
+      return {
+        dom,
+        // <summary> is the node's first child, so the children render inside
+        // the same element, exactly as renderHTML would place them.
+        contentDOM: dom,
+        // ViewMutationRecord, not MutationRecord: ProseMirror also passes a
+        // { type: "selection" } record through here, which has no attributeName.
+        ignoreMutation: (mutation: { type: string; attributeName?: string | null }) =>
+          mutation.type === "attributes" && mutation.attributeName === "open",
+        update: (updated: { type: { name: string } }) => {
+          if (updated.type.name !== "details") return false;
+          // Keep the DOM, and with it whatever the reader has open right now.
+          // Re-applying attrs here would undo the click all over again.
+          return true;
+        },
+      };
+    };
+  },
+
   markdownTokenizer: {
     name: "details",
     level: "block",

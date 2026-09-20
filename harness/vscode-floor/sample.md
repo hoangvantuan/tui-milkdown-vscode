@@ -44,3 +44,7 @@ $$
 Hidden body.
 
 </details>
+
+A sentence with a footnote reference[^floor].
+
+[^floor]: The footnote body the hover preview must show.

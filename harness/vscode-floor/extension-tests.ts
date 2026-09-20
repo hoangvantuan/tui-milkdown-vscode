@@ -509,6 +509,34 @@ export async function run(): Promise<void> {
           `isDirty=${afterHold.isDirty} sentinelInText=${text.includes(SENTINEL)} version ${versionBeforeEdit}\u2192${afterHold.version}`,
         );
 
+        // The runner clicked the first backlink entry, which posts openLink to
+        // the host. Whether that actually OPENED the document can only be seen
+        // from here; the webview has no way to know.
+        const backlinkOpened = vscode.window.tabGroups.all
+          .flatMap((group) => group.tabs)
+          .some((tab) => (tab.label || "").toLowerCase().includes("links-here"));
+        record(
+          "clicking a backlink opens the linking document",
+          backlinkOpened,
+          `linksHereTabOpen=${backlinkOpened} tabs=[${vscode.window.tabGroups.all
+            .flatMap((group) => group.tabs)
+            .map((tab) => tab.label)
+            .join(", ")}]`,
+        );
+
+        // The runner opened and closed a <details> disclosure. That is a
+        // VIEW action, and `open` is serialized by the details renderer, so a
+        // toggle that reached the document would put ` open` into the user's
+        // file just because they looked inside a block. #85's rule is that
+        // rendering never changes what is saved, and this is the only place
+        // that rule is checked against a real editor rather than a seam.
+        record(
+          "opening a <details> does not write ` open` into the document",
+          !/<details\s+open/i.test(text),
+          `detailsOpenInText=${/<details\s+open/i.test(text)} ` +
+            `detailsTagsInText=${(text.match(/<details/gi) || []).length}`,
+        );
+
         // The `pendingEdit` guard is what stops the host's own WorkspaceEdit
         // from being echoed back to the webview as an `update`, re-serialized
         // and posted again as a new `edit`. A broken guard is a runaway

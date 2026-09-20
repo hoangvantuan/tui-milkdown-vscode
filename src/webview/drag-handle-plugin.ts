@@ -4,10 +4,10 @@
  * Lazy-loaded via loadArtifact("dragHandle") on first user interaction (first hover or mouse move)
  * to keep @tiptap/extension-drag-handle (127 KB) out of the startup bundle.
  *
- * Upstream DragHandlePlugin appends its wrapper div to editor.view.dom.parentElement
- * (#editor), which is not #editor-container. Per AGENTS.md, floating UI elements must attach
- * to #editor-container (the unzoomed parent) to survive CSS zoom on .tiptap.
- * attachHandleToContainer() moves the handle wrapper into #editor-container.
+ * Upstream DragHandlePlugin appends its wrapper div to editor.view.dom.parentElement,
+ * which is #editor: already inside #editor-container and already outside the element
+ * that carries the CSS `zoom`. AGENTS.md's rule for floating UI is therefore satisfied
+ * with no intervention, so attachHandleToContainer() only reports; see its comment.
  */
 import { type Editor, getExtensionField } from "@tiptap/core";
 import type DragHandleType from "@tiptap/extension-drag-handle";
@@ -32,18 +32,25 @@ export function isHandleInContainer(): boolean {
 }
 
 /**
- * Move the drag handle wrapper into #editor-container if not already there.
- * Returns true if the handle is inside #editor-container.
+ * Report where the handle ended up. It deliberately MOVES NOTHING.
+ *
+ * An earlier version appended the wrapper to #editor-container, reading
+ * AGENTS.md's "popups attach to #editor-container, not .tiptap" as an
+ * instruction to relocate it. The relocation is unnecessary: upstream appends
+ * the handle to `editor.view.dom.parentElement`, which is #editor, already
+ * inside #editor-container and already outside the element that carries the
+ * CSS `zoom`. The rule was satisfied before anything moved.
+ *
+ * Measured rather than argued: with no relocation the floor check reports the
+ * handle following the block under the pointer at zoom 1.0 and at zoom 1.2,
+ * and a drag reordering the block it points at.
+ *
+ * Upstream positions the handle with floating-ui at `strategy: "absolute"`,
+ * writing `left`/`top` onto the handle element itself, so anything that
+ * changes which box those offsets are measured against is a risk taken for no
+ * benefit.
  */
 export function attachHandleToContainer(): boolean {
-  const container = document.getElementById("editor-container");
-  const handle = document.querySelector(".drag-handle");
-  if (!container || !handle) return false;
-
-  const wrapper = handle.parentElement;
-  if (wrapper && wrapper.parentElement !== container) {
-    container.appendChild(wrapper);
-  }
   return isHandleInContainer();
 }
 
