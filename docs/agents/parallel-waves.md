@@ -475,6 +475,39 @@ hai trường đó tách được chúng ra. Lưu ý `sheetRules` có thể bằ
 làm raw-HTML badge và nó đếm badge. Một ràng buộc ngầm giữa check cũ và nội dung
 `sample.md`, ghi lại thay vì để người sau tự vấp.
 
+## TRẢ NỢ KIỂM TRA TAY SÓNG 8, và ba lỗi của chính cái lưới
+
+Sáu tiêu chí sóng 8 đóng lại kèm câu "phải kiểm tra bằng mắt". Tự động hóa cả sáu, floor
+đi từ 42 lên **49 check, 49 passed**. Bốn bài học, tất cả đều đắt:
+
+**"0 đỏ" thường nghĩa là bạn quên build.** Teeth test đầu tiên của sáu check này báo 0 đỏ,
+và tôi suýt tin rằng check vô dụng. Tôi đã chạy `node harness/vscode-floor/run.mjs` thẳng,
+lệnh đó KHÔNG build, nên nó đo bundle cũ. Sau `npm run build && npm run build:floor-tests`:
+8 đỏ. Teeth test luôn phải qua `npm run verify:vscode-floor`, không bao giờ qua runner trần.
+
+**Backtick trong template literal của `Runtime.evaluate`: lần thứ ba.** AGENTS.md đã ghi,
+tôi vẫn dính. Nó không phải lỗi hiếm cần nhớ, nó là lỗi CHẮC CHẮN sẽ lặp: dùng nối chuỗi.
+
+**Probe đỏ bốn lần liên tiếp mà sản phẩm không hề có bug.** Cả bốn đều là lỗi đo của tôi:
+hover một khối mà probe trước đã cuộn đi; chờ `top` trên wrapper trong khi floating-ui ghi
+vào chính phần tử handle; chờ "đã đặt vị trí" khi probe trước đã đặt rồi; và so với một
+khối tôi tự chọn trong khi con trỏ đang nằm trên khối khác. Luật rút ra: **một probe đo vị
+trí phải đo lại trước MỖI lần di chuột, và phải từ chối số đọc lấy trong lúc khung nhìn
+vừa cuộn.** Khẳng định luôn phải là "handle thẳng hàng với khối DƯỚI CON TRỎ", không bao
+giờ là "thẳng hàng với khối probe đã chọn".
+
+**Cái lưới tự nó có ba lỗi, và một cái đủ sức che mọi lỗi tương lai.** Nặng nhất:
+`DevToolsSession.send` chỉ được giải quyết bởi message đúng id, không `onclose`, không
+timeout. VS Code thoát giữa pha drive thì mọi lệnh treo, node cạn event loop và **thoát 0
+mà không in một dòng nào**: `npm run verify:vscode-floor` báo thành công cho một lần chạy
+không kiểm tra gì, ba lần liên tiếp. Thứ duy nhất cứu là tôi thấy sự im lặng đó bất
+thường. Hai lỗi còn lại: host đua với runner bằng đồng hồ cố định 180 s mà bảy probe mới
+làm tràn (nay là nhịp tim), và probe đo một lần rồi hover nhiều lần.
+
+Luật cho mọi sóng sau: **một lần chạy không kiểm tra được gì thì PHẢI đỏ.** Nếu một
+harness có thể im lặng và thoát 0, mọi con số xanh nó từng in ra đều không còn là bằng
+chứng.
+
 ## Ràng buộc bắt buộc đưa vào spec mọi worker
 
 1. Cấm sửa MỌI `.md` ở GỐC repo, không riêng `CHANGELOG.md` và `AGENTS.md`:
