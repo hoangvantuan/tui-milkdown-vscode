@@ -304,7 +304,12 @@ export async function updateWorkspaceReferences(
 export interface ImageDelete {
   relativePath: string; // Relative path in markdown
   absolutePath: string; // Absolute file path on disk
-  usedInFiles: string[]; // Other files using this image (for warning)
+  // Other markdown documents that still reference this file. Filled by
+  // `populateImageUsage` in src/host/imageUsage.ts, which is what turns a
+  // silent trashing into a prompt (#126). Empty here by construction:
+  // `detectImageDeletes` compares two path lists and never reads the
+  // workspace, so the scan is the caller's job.
+  usedInFiles: string[];
 }
 
 /**
@@ -346,7 +351,7 @@ export function detectImageDeletes(
           deletes.push({
             relativePath: origRelative,
             absolutePath: origAbsolute,
-            usedInFiles: [], // Will be populated by caller
+            usedInFiles: [], // populateImageUsage fills this before the delete
           });
         }
       }

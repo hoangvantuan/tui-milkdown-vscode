@@ -210,26 +210,60 @@ async function runDefaultEditorAssociationCheck(uri: vscode.Uri): Promise<void> 
 
 
 /**
- * Does removing an image from the markdown actually remove the file on save?
- * (`autoDeleteImages`, one of the six #88 criteria that had never been run,
- * because it needs a real save.)
+ * Where a trashed file landed, or why the answer is not known. macOS renames
+ * on collision but keeps the leading name, hence the prefix match. Shared by
+ * the image check and the isolated probe, so the two readings are comparable.
+ */
+function findInTrash(prefix: string): string {
+  const home = process.env.HOME ?? "";
+  const candidates: Array<[string, string]> = [
+    ["~/.Trash", path.join(home, ".Trash")],
+    ["/System/Volumes/Data/.Trashes", `/System/Volumes/Data/.Trashes/${process.getuid?.() ?? ""}`],
+    ["/.Trashes", `/.Trashes/${process.getuid?.() ?? ""}`],
+  ];
+  const seen: string[] = [];
+  for (const [label, dir] of candidates) {
+    try {
+      const entries = fs.readdirSync(dir);
+      if (entries.some((f) => f.startsWith(prefix))) return label;
+      seen.push(`${label}:${entries.length}entries`);
+    } catch (err) {
+      seen.push(`${label}:${err instanceof Error ? err.name : "unreadable"}`);
+    }
+  }
+  return `nowhere found (HOME=${home || "unset"}, ${seen.join(" ")})`;
+}
+
+
+/**
+ * `autoDeleteImages`, all three of its branches, in a live host (#88, #126).
  *
- * The name says DELETES, not TRASHES, deliberately. The code passes
- * `useTrash: true` and the settings description promises the Trash, but this
- * host has measured `foundIn~/.Trash=no` while the file did leave the
- * workspace. That is reported and not asserted: one extension-test host is not
- * evidence about the user's own machine, and checking your own Trash after a
- * real delete is a line in `docs/manual-checks.md` for exactly that reason.
+ * The name of the first check says DELETES, not TRASHES, deliberately. The
+ * code passes `useTrash: true` and the settings description promises the
+ * Trash; whether the platform honours it is a separate fact, so the landing
+ * place is REPORTED with enough diagnostics to tell "the host did not trash
+ * it" apart from "this process cannot see the Trash".
  *
- * It also MEASURES #126 rather than asserting it: a second document referencing
- * the same file must not make any difference to the current code, and the
- * detail line records whether it did. Change that behaviour and this line moves.
+ * Three things here exist only against a live host and are the reason this is
+ * not all unit tests:
  *
- * Side effect worth knowing: whatever `useTrash` does here, it acts outside the
- * throwaway workspace. Two 1-pixel PNGs per run.
+ * - The prompt is a real notification with buttons, so it waits for a click
+ *   that is never coming. It is replaced the way `stubExportDialogs` replaces
+ *   the save dialog. The replacement takes an `answer` AND an `onPrompt` hook,
+ *   because the only way to observe ORDERING from outside is to look at the
+ *   world at the moment the question is asked.
+ * - The stale-Yes branch needs a document that changes UNDER the open prompt.
+ *   `onPrompt` puts the image reference back with a real `WorkspaceEdit`, which
+ *   is what a user typing during the prompt does, and the handler's
+ *   re-validation must then refuse its own Yes.
+ * - The unqueued-delete branch is invisible to a clock: it asserts that the
+ *   image nothing else references is ALREADY gone when the question about a
+ *   different image is asked.
+ *
+ * Side effect worth knowing: whatever `useTrash` does here, it acts outside
+ * the throwaway workspace. Three 1-pixel PNGs per run.
  */
 async function runImageDeleteOnSaveCheck(uri: vscode.Uri): Promise<void> {
-  const name = "removing an image from the markdown deletes the file on save";
   const docFolder = path.dirname(uri.fsPath);
   const imagesDir = path.join(docFolder, "images");
   // Smallest valid PNG, so nothing here depends on a fixture being staged.
@@ -238,72 +272,236 @@ async function runImageDeleteOnSaveCheck(uri: vscode.Uri): Promise<void> {
     "base64",
   );
   const lone = path.join(imagesDir, "floor-delete-me.png");
-  const shared = path.join(imagesDir, "floor-shared.png");
+  const kept = path.join(imagesDir, "floor-shared-kept.png");
+  const doomed = path.join(imagesDir, "floor-shared-doomed.png");
+  const restored = path.join(imagesDir, "floor-shared-restored.png");
   const otherDoc = path.join(docFolder, "floor-other.md");
+  const staged = [lone, kept, doomed, restored, otherDoc];
+
+  const KEEP_NAME = "removing an image from the markdown deletes the file on save";
+  const YES_NAME = "answering the prompt deletes the shared image after all";
+  const STALE_NAME = "an image put back while the prompt is open survives the answer";
+
+  // The prompt stub. Only the #126 question carries the buttons, so anything
+  // else the handler says (a failed delete) is recorded separately instead of
+  // being mistaken for a prompt.
+  const prompts: string[] = [];
+  const otherWarnings: string[] = [];
+  let answer: (items: string[]) => string | undefined = () => undefined;
+  let onPrompt: () => Promise<void> = async () => {};
+  const realWarning = vscode.window.showWarningMessage;
+  (vscode.window as any).showWarningMessage = async (message: string, ...items: string[]) => {
+    if (!items.includes("Delete Anyway")) {
+      otherWarnings.push(message);
+      return undefined;
+    }
+    prompts.push(message);
+    await onPrompt();
+    return answer(items);
+  };
+
+  const document = await vscode.workspace.openTextDocument(uri);
+
+  /** Append the references and save, so they enter `originalImagePaths`. */
+  async function baseline(marker: string): Promise<void> {
+    const edit = new vscode.WorkspaceEdit();
+    edit.insert(uri, new vscode.Position(document.lineCount, 0), marker);
+    await vscode.workspace.applyEdit(edit);
+    await document.save();
+    // The rebuild at the end of the save handler emits nothing, so this one
+    // wait really is a clock. Everything that CAN be waited on, is.
+    await sleep(1200);
+  }
+
+  /** Take the references out and save: this is the save that detects. */
+  async function dropMarker(marker: string): Promise<void> {
+    const text = document.getText();
+    const at = text.indexOf(marker);
+    if (at < 0) throw new Error(`marker missing from the document: ${JSON.stringify(marker)}`);
+    const edit = new vscode.WorkspaceEdit();
+    edit.delete(
+      uri,
+      new vscode.Range(document.positionAt(at), document.positionAt(at + marker.length)),
+    );
+    await vscode.workspace.applyEdit(edit);
+    await document.save();
+  }
+
+  /**
+   * Wait for the THING BEING ASSERTED, never for a clock: the handler now runs
+   * a workspace scan before it can prompt, so a flat budget that was generous
+   * before #126 would report `prompts=0` on a loaded machine and that would
+   * read as a defect. The settle afterwards is for the negative halves, which
+   * are deletes that must never come and so cannot be waited on.
+   */
+  async function waitFor(done: () => boolean, settleMs = 500): Promise<void> {
+    const deadline = Date.now() + 20000;
+    while (Date.now() < deadline && !done()) await sleep(200);
+    await sleep(settleMs);
+  }
 
   try {
     fs.mkdirSync(imagesDir, { recursive: true });
-    fs.writeFileSync(lone, PNG);
-    fs.writeFileSync(shared, PNG);
-    // A SECOND document referencing the shared image. This is #126's setup.
-    fs.writeFileSync(otherDoc, "# Other\n\n![shared](images/floor-shared.png)\n", "utf8");
+    for (const f of [lone, kept, doomed, restored]) fs.writeFileSync(f, PNG);
+    // The SECOND document. It references all three shared images and not the
+    // lone one, which is the whole of #126's setup.
+    fs.writeFileSync(
+      otherDoc,
+      "# Other\n\n![kept](images/floor-shared-kept.png)\n" +
+        "![doomed](images/floor-shared-doomed.png)\n" +
+        "![restored](images/floor-shared-restored.png)\n",
+      "utf8",
+    );
 
-    const document = await vscode.workspace.openTextDocument(uri);
-    const marker = "\n![lone](images/floor-delete-me.png)\n![shared](images/floor-shared.png)\n";
+    // --- 1. Keep: the shared image survives, the lone one does not, and the
+    //        lone one is already gone when the question is asked.
+    const keepMarker =
+      "\n![lone](images/floor-delete-me.png)\n![kept](images/floor-shared-kept.png)\n";
+    let loneGoneWhenAsked: boolean | undefined;
+    answer = () => "Keep";
+    onPrompt = async () => {
+      loneGoneWhenAsked = !fs.existsSync(lone);
+    };
 
-    // Save one: both images are in the text, so the rebuild at the end of
-    // handleDocumentSave puts them in originalImagePaths. Without this the
-    // next save has nothing to diff against and detects nothing.
-    const addEdit = new vscode.WorkspaceEdit();
-    addEdit.insert(uri, new vscode.Position(document.lineCount, 0), marker);
-    await vscode.workspace.applyEdit(addEdit);
-    await document.save();
-    await sleep(1200);
-    const baselined = fs.existsSync(lone) && fs.existsSync(shared);
-
-    // Save two: both references leave this document.
-    const text = document.getText();
-    const start = document.positionAt(text.indexOf(marker));
-    const end = document.positionAt(text.indexOf(marker) + marker.length);
-    const removeEdit = new vscode.WorkspaceEdit();
-    removeEdit.delete(uri, new vscode.Range(start, end));
-    await vscode.workspace.applyEdit(removeEdit);
-    await document.save();
-    await sleep(2500);
+    await baseline(keepMarker);
+    const baselined = fs.existsSync(lone) && fs.existsSync(kept);
+    await dropMarker(keepMarker);
+    await waitFor(() => prompts.length > 0 && !fs.existsSync(lone));
 
     const loneGone = !fs.existsSync(lone);
-    const sharedGone = !fs.existsSync(shared);
-    // "Deleted" and "moved to the Trash" are different promises, and the
-    // settings description makes the second one. `useTrash: true` is what the
-    // code passes; whether the platform honours it is a separate fact, so it is
-    // reported rather than assumed.
-    let inTrash = "unknown";
-    try {
-      const trash = path.join(process.env.HOME ?? "", ".Trash");
-      inTrash = fs
-        .readdirSync(trash)
-        .some((f) => f.startsWith("floor-delete-me"))
-        ? "yes"
-        : "no";
-    } catch {
-      inTrash = "unreadable";
-    }
+    const keptSurvived = fs.existsSync(kept);
+    const asked = prompts.length;
+    const namedOther = prompts.some((m) => m.includes("floor-other.md"));
+    const trashedTo = loneGone ? findInTrash("floor-delete-me") : "not deleted";
     record(
-      name,
-      baselined && loneGone,
-      `baselined=${baselined} loneImageDeleted=${loneGone} foundIn~/.Trash=${inTrash}; ` +
-        `imageStillUsedByFloorOther.mdDeleted=${sharedGone} (#126: true is the ` +
-        `current behaviour, the reference in floor-other.md is not consulted)`,
+      KEEP_NAME,
+      baselined && loneGone && keptSurvived && asked === 1 && namedOther && loneGoneWhenAsked === true,
+      `baselined=${baselined} loneImageDeleted=${loneGone} trashedTo=${trashedTo}; ` +
+        `sharedImageSurvived=${keptSurvived} prompts=${asked} namedOther=${namedOther} ` +
+        `loneAlreadyGoneWhenAsked=${loneGoneWhenAsked} otherWarnings=${otherWarnings.length}` +
+        ` (#126: the shared image must survive a Keep, and the unreferenced one must` +
+        ` not queue behind the question. trashedTo is REPORTED: one extension-test` +
+        ` host is not evidence about the user's own desktop)`,
     );
+
+    // --- 2. Delete Anyway: the same prompt, the other button.
+    const yesMarker = "\n![doomed](images/floor-shared-doomed.png)\n";
+    const promptsBeforeYes = prompts.length;
+    answer = () => "Delete Anyway";
+    onPrompt = async () => {};
+
+    await baseline(yesMarker);
+    await dropMarker(yesMarker);
+    await waitFor(() => prompts.length > promptsBeforeYes && !fs.existsSync(doomed));
+
+    const doomedGone = !fs.existsSync(doomed);
+    const askedYes = prompts.length - promptsBeforeYes;
+    record(
+      YES_NAME,
+      askedYes === 1 && doomedGone,
+      `prompts=${askedYes} sharedImageDeleted=${doomedGone} ` +
+        `trashedTo=${doomedGone ? findInTrash("floor-shared-doomed") : "not deleted"} ` +
+        `(#126: Keep is not the only answer the host can give, and this is the half` +
+        ` the Keep check cannot reach)`,
+    );
+
+    // --- 3. The document changes under the open prompt, and the Yes goes stale.
+    const staleMarker = "\n![restored](images/floor-shared-restored.png)\n";
+    const promptsBeforeStale = prompts.length;
+    let putBack = false;
+    answer = () => "Delete Anyway";
+    onPrompt = async () => {
+      // What a user typing while the notification sits there actually does.
+      const edit = new vscode.WorkspaceEdit();
+      edit.insert(uri, new vscode.Position(document.lineCount, 0), staleMarker);
+      putBack = await vscode.workspace.applyEdit(edit);
+    };
+
+    await baseline(staleMarker);
+    await dropMarker(staleMarker);
+    // The assertion is a delete that must NOT happen, so the settle is longer.
+    await waitFor(() => prompts.length > promptsBeforeStale, 2000);
+
+    const restoredSurvived = fs.existsSync(restored);
+    const askedStale = prompts.length - promptsBeforeStale;
+    record(
+      STALE_NAME,
+      askedStale === 1 && putBack && restoredSurvived,
+      `prompts=${askedStale} referencePutBackDuringPrompt=${putBack} ` +
+        `imageSurvivedTheYes=${restoredSurvived} ` +
+        `(#126: the prompt has no deadline, and the save that puts the image back` +
+        ` detects nothing because the baseline was already cleared, so the answer` +
+        ` is re-validated against a fresh read of the document)`,
+    );
+
+    // Leave the document without the re-added line. This save detects nothing:
+    // the baseline was rebuilt from the text that did not contain it.
+    await dropMarker(staleMarker);
+    await sleep(500);
   } catch (err) {
-    record(name, false, err instanceof Error ? `${err.name}: ${err.message}` : String(err));
+    record(
+      KEEP_NAME,
+      false,
+      err instanceof Error ? `${err.name}: ${err.message}` : String(err),
+    );
   } finally {
-    for (const f of [lone, shared, otherDoc]) {
+    (vscode.window as any).showWarningMessage = realWarning;
+    for (const f of staged) {
       try {
         fs.rmSync(f, { force: true });
       } catch {
         /* the workspace is thrown away anyway */
       }
+    }
+  }
+}
+
+
+/**
+ * Does `vscode.workspace.fs.delete(..., { useTrash: true })` reach the Trash in
+ * THIS host, with no extension code in the way?
+ *
+ * The image check reports `trashedTo=` and cannot attribute it: a file that
+ * left the workspace without appearing in the Trash could be our call passing
+ * the wrong option, or the host not honouring it. This probe makes the same
+ * call `executeImageDeletes` makes, on a file the extension has never heard
+ * of, so the two readings can be compared and only one of them can be about
+ * our code.
+ *
+ * It ASSERTS the delete and REPORTS the destination, which is the split the
+ * settings description forces: "deletes the file" is ours to guarantee,
+ * "moves it to the Trash" is the platform's, and a red check every run for a
+ * host limitation would only teach people to ignore this command. Where the
+ * file really goes on a human's desktop stays a line in `docs/manual-checks.md`.
+ */
+async function runTrashCapabilityProbe(docFolder: string, findInTrash: (p: string) => string): Promise<void> {
+  const name = "vscode.workspace.fs.delete accepts useTrash in this host";
+  const probe = path.join(docFolder, "floor-trash-probe.txt");
+  try {
+    fs.writeFileSync(probe, "floor trash probe", "utf8");
+    let threw = "";
+    try {
+      await vscode.workspace.fs.delete(vscode.Uri.file(probe), { useTrash: true });
+    } catch (err) {
+      threw = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    }
+    const gone = !fs.existsSync(probe);
+    record(
+      name,
+      gone && threw === "",
+      `deleted=${gone} threw=${threw || "no"} ` +
+        `landedIn=${gone ? findInTrash("floor-trash-probe") : "still on disk"} ` +
+        `(landedIn is REPORTED, not asserted: compare it with the image check's` +
+        ` trashedTo — the same reading from both means the Trash half is VS` +
+        ` Code's behaviour as this harness launches it, not this extension's call)`,
+    );
+  } catch (err) {
+    record(name, false, err instanceof Error ? `${err.name}: ${err.message}` : String(err));
+  } finally {
+    try {
+      fs.rmSync(probe, { force: true });
+    } catch {
+      /* the workspace is thrown away anyway */
     }
   }
 }
@@ -642,6 +840,8 @@ export async function run(): Promise<void> {
 
         // Both of these modify the document, so they sit after everything
         // above has been recorded.
+        await runTrashCapabilityProbe(path.dirname(samplePath), findInTrash);
+
         await runImageDeleteOnSaveCheck(uri);
 
         await runDiffEditorCheck(uri);

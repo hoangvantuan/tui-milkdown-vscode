@@ -21,6 +21,12 @@ export class Uri {
     return new Uri(parsed.pathname, parsed.protocol.replace(/:$/, ""));
   }
 
+  // `resolveImagePath` reaches for this on every relative path, so anything
+  // driving the host's image code through the stub needs it present.
+  static joinPath(base: Uri, ...segments: string[]): Uri {
+    return new Uri(path.join(base.fsPath, ...segments), base.scheme);
+  }
+
   toString(): string {
     return `file://${this.fsPath}`;
   }

@@ -2,6 +2,17 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## [3.0.1] - 2026-09-20
+
+### Changed
+
+- **`autoDeleteImages` is covered end to end in a live host**: the floor check went from one branch to four, 50 checks to 53. `Keep`, `Delete Anyway`, the unreferenced image that must not queue behind the question, and the reference put back under an open prompt are each asserted against a real extension host, because a notification with buttons and a document changing mid-await exist nowhere else. `docs/manual-checks.md` C4 is down to the three things a machine genuinely cannot answer: whether the file reaches the Trash on a human's desktop, whether it comes back, and whether the prompt reads well.
+
+### Fixed
+
+- **Deleting an image another document still used trashed it with no warning (#126)**: `a.md` and `b.md` both rendered `images/shared.png`; removing it from `a.md` and saving sent the file to the Trash, leaving `b.md` with a broken image and nothing said. `AGENTS.md` had claimed the warning existed, but `ImageDelete.usedInFiles` shipped declared `// Will be populated by caller` with no caller. `src/host/imageUsage.ts` is that caller. An image nothing else references still goes without confirmation; a shared one raises a prompt naming the other documents, and `Keep` — or dismissing the notification, or any host that never answers one — leaves the file alone. Matching is by resolved absolute path, so `notes/c.md` writing `../images/shared.png` counts where a string compare would have missed it. The scan runs only on a save that actually removed an image. Two things follow from the prompt having no deadline: images nothing else references are trashed before it, so the common case keeps its old timing, and the answer is re-validated against a fresh read of the document, so putting the image back while the prompt is open beats a stale Yes. The floor check that used to MEASURE this now asserts it, and waits for the prompt rather than for a clock.
+- **The Trash half of `autoDeleteImages` is attributed rather than shrugged at**: the floor check reported `foundIn~/.Trash=no` and could not say whose fault it was. A new probe makes the same `vscode.workspace.fs.delete(..., { useTrash: true })` call on a file the extension has never heard of and gets the same reading, so the missing Trash is VS Code's behaviour as the floor launches it, not this extension's call. Measured outside VS Code for completeness: `NSFileManager.trashItem` does reach `~/.Trash` from both `/private/tmp` and `os.tmpdir()`, so the operating system is not the reason. Where the file lands on a human's desktop stays a hand check, now with a reason instead of a shrug.
+
 ## [3.0.0] - 2026-09-20
 
 Release 3.0 (#85) extends what the editor RENDERS without extending what it writes to disk. Every heavy renderer is a lazy artifact, the way mermaid has been since 2.15, and the webview startup bundle now has a build gate rather than a convention. Four `agy` workers ran in parallel on four worktrees; every issue below was closed against the coordinator's own measurements, not the worker's report.
