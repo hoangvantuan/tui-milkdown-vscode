@@ -58,6 +58,10 @@ const SENTINEL = process.env.TUI_FLOOR_SENTINEL ?? "FLOORPROBE";
  * launches a real Chromium, and that alone is budgeted 30s on the runner side.
  */
 const DRIVEN_TIMEOUT_MS = 180000;
+/** How long the runner may go SILENT before this side calls the drive dead. */
+const STALL_TIMEOUT_MS = 90000;
+/** Backstop for a runner that dies before recording anything at all. */
+const DRIVEN_CAP_MS = 900000;
 
 interface Check {
   name: string;
@@ -79,6 +83,46 @@ async function waitForFile(file: string, timeoutMs: number): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (fs.existsSync(file)) return true;
+    await sleep(250);
+  }
+  return false;
+}
+
+/**
+ * Wait for `file`, but measure patience against the runner's HEARTBEAT rather
+ * than against a fixed clock.
+ *
+ * A fixed budget couples the rendezvous to how many probes the runner happens
+ * to have: wave 8 added seven, the drive crept up on the old flat 180 s, and a
+ * run that was merely slow lost every check after the tipping point and left
+ * the reason invisible. What actually needs catching is a runner that has
+ * STOPPED, and `phase-progress` says exactly that: the runner touches it as it
+ * records each check, so a long drive is fine and a dead one is caught in
+ * STALL_TIMEOUT_MS. The absolute cap is the backstop for a runner that dies
+ * before its first heartbeat.
+ */
+async function waitForFileWithHeartbeat(
+  file: string,
+  heartbeat: string,
+  stallMs: number,
+  capMs: number,
+): Promise<boolean> {
+  const hardDeadline = Date.now() + capMs;
+  let lastBeat = Date.now();
+  let lastSeen = 0;
+  while (Date.now() < hardDeadline) {
+    if (fs.existsSync(file)) return true;
+    let stamp = 0;
+    try {
+      stamp = fs.statSync(heartbeat).mtimeMs;
+    } catch {
+      /* not started yet */
+    }
+    if (stamp > lastSeen) {
+      lastSeen = stamp;
+      lastBeat = Date.now();
+    }
+    if (Date.now() - lastBeat > stallMs) return false;
     await sleep(250);
   }
   return false;
@@ -499,14 +543,53 @@ export async function run(): Promise<void> {
       fs.writeFileSync(path.join(base, "phase-interact"), "go", "utf8");
 
       const drivenPath = path.join(base, "phase-driven");
-      if (!(await waitForFile(drivenPath, DRIVEN_TIMEOUT_MS))) {
-        record("runner drove the webview", false, "phase-driven never appeared");
+      const progressPath = path.join(base, "phase-progress");
+      if (!(await waitForFileWithHeartbeat(drivenPath, progressPath, STALL_TIMEOUT_MS, DRIVEN_CAP_MS))) {
+        let beats = "never";
+        try {
+          beats = `${Math.round((Date.now() - fs.statSync(progressPath).mtimeMs) / 1000)}s ago`;
+        } catch {
+          /* the runner never recorded a check */
+        }
+        record(
+          "runner drove the webview",
+          false,
+          `phase-driven never appeared; last runner heartbeat ${beats}`,
+        );
       } else {
         const text = afterHold.getText();
         record(
           "a typed character reaches the document",
           afterHold.isDirty && text.includes(SENTINEL),
           `isDirty=${afterHold.isDirty} sentinelInText=${text.includes(SENTINEL)} version ${versionBeforeEdit}\u2192${afterHold.version}`,
+        );
+
+        // The runner clicked the first backlink entry, which posts openLink to
+        // the host. Whether that actually OPENED the document can only be seen
+        // from here; the webview has no way to know.
+        const backlinkOpened = vscode.window.tabGroups.all
+          .flatMap((group) => group.tabs)
+          .some((tab) => (tab.label || "").toLowerCase().includes("links-here"));
+        record(
+          "clicking a backlink opens the linking document",
+          backlinkOpened,
+          `linksHereTabOpen=${backlinkOpened} tabs=[${vscode.window.tabGroups.all
+            .flatMap((group) => group.tabs)
+            .map((tab) => tab.label)
+            .join(", ")}]`,
+        );
+
+        // The runner opened and closed a <details> disclosure. That is a
+        // VIEW action, and `open` is serialized by the details renderer, so a
+        // toggle that reached the document would put ` open` into the user's
+        // file just because they looked inside a block. #85's rule is that
+        // rendering never changes what is saved, and this is the only place
+        // that rule is checked against a real editor rather than a seam.
+        record(
+          "opening a <details> does not write ` open` into the document",
+          !/<details\s+open/i.test(text),
+          `detailsOpenInText=${/<details\s+open/i.test(text)} ` +
+            `detailsTagsInText=${(text.match(/<details/gi) || []).length}`,
         );
 
         // The `pendingEdit` guard is what stops the host's own WorkspaceEdit

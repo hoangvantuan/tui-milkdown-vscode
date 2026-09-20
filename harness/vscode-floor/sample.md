@@ -31,3 +31,20 @@ flowchart TD
 <img src="media/icon.png" width="96" alt="A sized image">
 
 ![A plain image](media/icon.png)
+
+Inline math $\frac{a}{b}$ and a formula block follow. Press <kbd>Ctrl</kbd> to run.
+
+$$
+\int_0^1 x^2 dx
+$$
+
+<details>
+<summary>More</summary>
+
+Hidden body.
+
+</details>
+
+A sentence with a footnote reference[^floor].
+
+[^floor]: The footnote body the hover preview must show.

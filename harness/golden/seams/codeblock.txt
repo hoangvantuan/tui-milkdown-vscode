@@ -1,0 +1,46 @@
+# codeblock seam
+
+Records parse, view state (line numbers and wrap), and serialized markdown
+for fenced code blocks.
+
+[plain-codeblock] plain fenced code block without language tag
+  input: ``` \n const a = 1; \n ```
+  parsed: node=codeBlock lang=""
+  view: lineNumbers=false wrap=false
+  serialized: ``` \n const a = 1; \n ```
+
+[fenced-with-language] fenced code block with typescript language tag
+  input: ```typescript \n function add(a: number, b: number): number { \n   return a + b; \n } \n ```
+  parsed: node=codeBlock lang="typescript"
+  view: lineNumbers=false wrap=false
+  serialized: ```typescript \n function add(a: number, b: number): number { \n   return a + b; \n } \n ```
+
+[multiline-linenumbers] multiline code block with line numbers active in view state
+  input: ```python \n def hello(): \n     print("line 1") \n     print("line 2") \n ```
+  parsed: node=codeBlock lang="python"
+  view: lineNumbers=true wrap=false
+  serialized: ```python \n def hello(): \n     print("line 1") \n     print("line 2") \n ```
+
+[multiline-wrap] multiline code block with wrap active in view state
+  input: ```bash \n echo "This is a long command line that wraps across multiple display lines" \n ```
+  parsed: node=codeBlock lang="bash"
+  view: lineNumbers=false wrap=true
+  serialized: ```bash \n echo "This is a long command line that wraps across multiple display lines" \n ```
+
+[multiline-both] multiline code block with both line numbers and wrap active in view state
+  input: ```javascript \n const a = 1; \n const b = 2; \n console.log(a + b); \n ```
+  parsed: node=codeBlock lang="javascript"
+  view: lineNumbers=true wrap=true
+  serialized: ```javascript \n const a = 1; \n const b = 2; \n console.log(a + b); \n ```
+
+[empty-codeblock] empty code block preserves fences
+  input: ``` \n ```
+  parsed: node=codeBlock lang=""
+  view: lineNumbers=false wrap=false
+  serialized: ``` \n  \n ```
+
+[markdown-inside-codeblock] markdown syntax inside code block remains verbatim content
+  input: ```markdown \n # Heading inside code \n - list item \n ```
+  parsed: node=codeBlock lang="markdown"
+  view: lineNumbers=true wrap=true
+  serialized: ```markdown \n # Heading inside code \n - list item \n ```

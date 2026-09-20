@@ -1,0 +1,51 @@
+# html-render seam
+
+Records parse node/mark representation and serialized markdown for
+<details>, <summary>, <kbd>, <sub>, and <sup>.
+
+[details-summary] collapsible details block with summary and hidden body
+  input: "<details>\n<summary>More</summary>\n\nHidden\n\n</details>"
+  parsed: node=details attrs={"open":false}
+  parsed: node=detailsSummary
+  parsed: node=text text="More"
+  parsed: node=text text="Hidden"
+  serialized: "<details>\n<summary>More</summary>\n\nHidden\n\n</details>"
+
+[kbd-simple] keyboard key tag parsed as mark
+  input: "<kbd>Ctrl</kbd>"
+  parsed: node=text text="Ctrl" marks=[kbd]
+  serialized: "<kbd>Ctrl</kbd>"
+
+[sub-simple] subscript tag parsed as mark
+  input: "<sub>2</sub>"
+  parsed: node=text text="2" marks=[subscript]
+  serialized: "<sub>2</sub>"
+
+[sup-simple] superscript tag parsed as mark
+  input: "<sup>2</sup>"
+  parsed: node=text text="2" marks=[superscript]
+  serialized: "<sup>2</sup>"
+
+[linked-kbd-with-text] link wrapping kbd and text (upstream mark-around-atom test)
+  input: "[<kbd>Ctrl</kbd> docs](https://example.com)"
+  parsed: node=text text="Ctrl" marks=[link:{"href":"https://example.com","target":"_blank","rel":"noopener noreferrer nofollow","class":null,"title":null}, kbd]
+  parsed: node=text text=" docs" marks=[link:{"href":"https://example.com","target":"_blank","rel":"noopener noreferrer nofollow","class":null,"title":null}]
+  serialized: "[<kbd>Ctrl</kbd> docs](https://example.com)"
+
+[linked-kbd-only] link wrapping kbd alone
+  input: "[<kbd>Ctrl</kbd>](https://example.com)"
+  parsed: node=text text="Ctrl" marks=[link:{"href":"https://example.com","target":"_blank","rel":"noopener noreferrer nofollow","class":null,"title":null}, kbd]
+  serialized: "[<kbd>Ctrl</kbd>](https://example.com)"
+
+[inline-sentence] inline sentence with multiple kbd caps and formula sub/sup
+  input: "Press <kbd>Ctrl</kbd>+<kbd>C</kbd> now. H<sub>2</sub>O and x<sup>2</sup>."
+  parsed: node=text text="Press "
+  parsed: node=text text="Ctrl" marks=[kbd]
+  parsed: node=text text="+"
+  parsed: node=text text="C" marks=[kbd]
+  parsed: node=text text=" now. H"
+  parsed: node=text text="2" marks=[subscript]
+  parsed: node=text text="O and x"
+  parsed: node=text text="2" marks=[superscript]
+  parsed: node=text text="."
+  serialized: "Press <kbd>Ctrl</kbd>+<kbd>C</kbd> now. H<sub>2</sub>O and x<sup>2</sup>."

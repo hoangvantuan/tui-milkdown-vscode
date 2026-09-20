@@ -295,6 +295,9 @@ function freePort() {
   });
 }
 
+/** How long one DevTools command may go unanswered before the run gives up. */
+const SEND_TIMEOUT_MS = 30000;
+
 /** Minimal DevTools-protocol client over one WebSocket. */
 class DevToolsSession {
   constructor(url) {
@@ -307,6 +310,17 @@ class DevToolsSession {
       this.socket.onopen = resolve;
       this.socket.onerror = reject;
     });
+    // A pending `send` is settled ONLY by a reply carrying its id, so without
+    // this every in-flight command hangs forever the moment the socket goes
+    // away, and a hung await is invisible: node empties its event loop and
+    // exits 0, printing nothing, so a run that verified NOTHING reports
+    // success. That is how this was found.
+    this.socket.onclose = () => {
+      const closed = new Error("devtools socket closed with the command still in flight");
+      for (const { reject } of this.pending.values()) reject(closed);
+      this.pending.clear();
+      this.isClosed = true;
+    };
     this.socket.onmessage = (event) => {
       const message = JSON.parse(event.data);
       if (message.id && this.pending.has(message.id)) {
@@ -332,9 +346,21 @@ class DevToolsSession {
   }
 
   send(method, params = {}) {
+    if (this.isClosed) return Promise.reject(new Error(`devtools socket already closed: ${method}`));
     const id = ++this.nextId;
     this.socket.send(JSON.stringify({ id, method, params }));
-    return new Promise((resolve, reject) => this.pending.set(id, { resolve, reject }));
+    return new Promise((resolve, reject) => {
+      // Named, bounded failure beats a silent stall. A command that never gets
+      // an answer used to wedge the whole run; now it says which one it was.
+      // The budget is deliberately far above any real command here: the
+      // slowest, an export click, answers in well under a second.
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`devtools command timed out after ${SEND_TIMEOUT_MS}ms: ${method}`));
+      }, SEND_TIMEOUT_MS);
+      const settle = (fn) => (value) => { clearTimeout(timer); fn(value); };
+      this.pending.set(id, { resolve: settle(resolve), reject: settle(reject) });
+    });
   }
 
   close() {
@@ -367,6 +393,15 @@ async function probeWebview(session) {
     // not rendered means slow; not even scheduled means the callback never
     // ran, which no timeout can fix (#112).
     mermaidScheduled: document.querySelectorAll('.mermaid-preview[data-mermaid-src]').length,
+    // --- 3.0 lazy artifacts and rendering (#85). KaTeX has the same failure
+    // surface as mermaid: a nonce-bearing <script>, plus a stylesheet whose
+    // font URLs are relative, so it can fail in ways jsdom cannot see. The
+    // math NODES existing while katexRendered is 0 separates "the parser
+    // worked and the renderer did not" from "neither ran".
+    katexRendered: document.querySelectorAll('.tiptap .katex').length,
+    mathNodes: document.querySelectorAll('.tiptap .inline-math, .tiptap .block-math').length,
+    kbdMarks: document.querySelectorAll('.tiptap kbd').length,
+    detailsNodes: document.querySelectorAll('.tiptap details').length,
     hidden: document.hidden,
     visibility: document.visibilityState,
     metadataPanel: !!document.querySelector('#metadata-panel'),
@@ -532,11 +567,182 @@ async function driveTransientKeystroke(base, session, contextId) {
  * run AFTER the read-only phase has recorded its checks, for the same reason
  * the typing probe does.
  */
-async function driveSurfaces(evaluate, session, sessions) {
+/**
+ * Put the pointer on a plain paragraph and report where the drag handle ended
+ * up, re-measuring before EVERY move.
+ *
+ * Measuring once and then hovering in a loop is what made this probe report
+ * working code as broken: earlier probes leave the caret near the end of the
+ * document, ProseMirror scrolls the caret back into view on its next
+ * transaction, and the coordinates captured before that scroll then land on
+ * whatever block slid under them. A mermaid preview is the usual winner, and
+ * the handle does not attach to one, so the probe compared a handle beside a
+ * paragraph against a diagram nobody was pointing at.
+ *
+ * The loop therefore re-reads the rect each attempt and only accepts a reading
+ * where the pointer is genuinely over a `.tiptap > p`. What the caller asserts
+ * is unchanged: the handle must line up with the block under the pointer.
+ */
+async function hoverParagraphForHandle(evaluate, session, sleepShort, beat = () => {}, attempts = 14) {
+  let spot = null;
+  let handle = { present: false, inContainer: false };
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    // The host measures patience against the heartbeat, and a retry loop this
+    // long is exactly where a probe goes quiet for minutes when the window is
+    // covered and every evaluate is throttled. Beat per attempt, not per check.
+    beat();
+    spot = await evaluate(`(() => {
+      // Direct children of .tiptap only. A nested <p> can sit inside a mermaid
+      // preview or an alert, and hovering its centre then lands on the wrapper
+      // rather than on the paragraph.
+      const paragraphs = Array.from(document.querySelectorAll('.tiptap > p'));
+      if (paragraphs.length === 0) return null;
+      const fits = (r) =>
+        r.top >= 0 && r.left >= 0 && r.height > 0 &&
+        r.bottom <= (window.innerHeight || 0) && r.right <= (window.innerWidth || 0);
+      let target = paragraphs.find((el) => fits(el.getBoundingClientRect()));
+      const scrolled = !target;
+      if (!target) {
+        target = paragraphs[0];
+        target.scrollIntoView({ block: 'center' });
+      }
+      const r = target.getBoundingClientRect();
+      const container = document.getElementById('editor-container');
+      return {
+        x: Math.round(r.left + r.width / 2),
+        y: Math.round(r.top + r.height / 2),
+        blockTop: Math.round(r.top),
+        blockHeight: Math.round(r.height),
+        label: 'P:' + (target.textContent || '').trim().slice(0, 18),
+        scrollTop: container ? Math.round(container.scrollTop) : 0,
+        scrolled,
+      };
+    })()`);
+    if (!spot) throw new Error("no paragraph to hover");
+    if (spot.y < 0 || spot.x < 0) throw new Error(`paragraph off screen at ${spot.x},${spot.y}`);
+    // Upstream listens to `mousemove` through handleDOMEvents, and one event at
+    // a standstill is not a move, so the pointer crosses the block.
+    await session.send("Input.dispatchMouseEvent", {
+      type: "mouseMoved", x: spot.x - 12, y: spot.y, button: "none", clickCount: 0,
+    });
+    await session.send("Input.dispatchMouseEvent", {
+      type: "mouseMoved", x: spot.x, y: spot.y, button: "none", clickCount: 0,
+    });
+    await sleepShort();
+    handle = await evaluate(`(() => {
+      const POINTER_X = ${spot.x};
+      const POINTER_Y = ${spot.y};
+      const el = document.querySelector('.drag-handle');
+      const container = document.getElementById('editor-container');
+      const root = document.querySelector('.tiptap');
+      if (!el) return { present: false, inContainer: false, top: null };
+      const r = el.getBoundingClientRect();
+      const cs = getComputedStyle(el);
+      const describe = (b) => b ? b.tagName + ':' + (b.textContent || '').trim().slice(0, 18) : null;
+      const hit = document.elementFromPoint(POINTER_X, POINTER_Y);
+      const mid = r.top + r.height / 2;
+      let best = null; let bestD = Infinity;
+      for (const b of Array.from(document.querySelectorAll('.tiptap > *'))) {
+        const br = b.getBoundingClientRect();
+        const d = Math.abs(br.top + br.height / 2 - mid);
+        if (d < bestD) { bestD = d; best = b; }
+      }
+      return {
+        present: true,
+        top: Math.round(r.top),
+        left: Math.round(r.left),
+        zoom: root ? getComputedStyle(root).zoom : null,
+        // Upstream coalesces its mousemove handler into requestAnimationFrame
+        // AND latches the id until that frame runs, so a window nothing is
+        // painting leaves the handle frozen wherever it last stood, and no
+        // number of retries can move it. Reported, not asserted: the run is
+        // then measuring the window manager, and this is what says so.
+        visibility: document.visibilityState,
+        handlePosition: cs.position,
+        handleStyleTop: cs.top,
+        // floating-ui writes a TRANSFORM by default and leaves the top style at
+        // 0, so waiting for that to change waits forever. This is what says the
+        // handle has actually been placed. (No backticks in here: they end the
+        // template literal, which AGENTS.md warns about.)
+        placed: cs.top !== "auto" && cs.top !== "0px",
+        containerScrollTop: container ? Math.round(container.scrollTop) : null,
+        offsetParent: el.offsetParent ? (el.offsetParent.id || el.offsetParent.tagName) : null,
+        underPointer: describe(hit && hit.closest ? hit.closest('.tiptap > *') : null),
+        handleRow: describe(best),
+        // AGENTS.md: CSS zoom on .tiptap is transparent to the coordinate APIs,
+        // so anything positioned by script must sit outside the zoomed element.
+        inContainer: !!el.closest('#editor-container') && !el.closest('.tiptap'),
+      };
+    })()`);
+    // Accept only a reading taken with the pointer genuinely on a paragraph AND
+    // with the view still where it was when the pointer moved. The handle is
+    // placed once, in an animation frame after the move; if the editor scrolls
+    // in between (ProseMirror pulling the caret back into view is the usual
+    // cause) the handle is left beside whatever block has moved into its old
+    // row, and the reading measures the scroll, not the handle.
+    const onParagraph = typeof handle.underPointer === "string" && handle.underPointer.startsWith("P:");
+    const stillSteady = handle.containerScrollTop === spot.scrollTop;
+    // The handle is placed in an animation frame AFTER the move, so a reading
+    // taken the instant the pointer is right can still show it at its previous
+    // block. Waiting for the pointer alone accepted exactly that and the check
+    // then failed on a handle that was merely one frame behind. Keep hovering
+    // until it lines up; a handle that never does exhausts the attempts and the
+    // caller reports the last reading, which is the red that matters.
+    const linesUp = handle.underPointer != null && handle.underPointer === handle.handleRow;
+    if (handle.present && handle.placed && onParagraph && stillSteady && linesUp) break;
+    // A window that lost the front mid-run gets no animation frames, the
+    // placement never runs and no number of retries can fix it: the gate at the
+    // top of driveSurfaces measures once and something took the front after it.
+    // Raise it again here rather than spending the remaining attempts measuring
+    // the window manager.
+    if (handle.visibility && handle.visibility !== "visible") {
+      await raiseWindow(floorPid);
+      await sleep(600);
+    }
+  }
+  return { spot, handle };
+}
+
+async function driveSurfaces(evaluate, session, sessions, beat = () => {}) {
   const results = [];
-  const add = (name, ok, detail) => results.push({ name, ok, detail });
+  // Every recorded check is also a heartbeat. The host waits on THIS, not on a
+  // fixed clock, so adding probes here can never again push the drive past the
+  // other side's patience and lose every check after the tipping point.
+  const add = (name, ok, detail) => {
+    results.push({ name, ok, detail });
+    beat();
+  };
 
   const sleepShort = () => sleep(400);
+
+  // --- The window is actually on screen -------------------------------------
+  // Chromium runs no animation frames for a window it considers not visible,
+  // and half these surfaces are positioned from inside one. A covered window
+  // therefore does not produce a few odd readings, it produces a dozen reds
+  // that all look like product defects and none of which are: that is exactly
+  // what a run with another window on top printed while this check was being
+  // written. The window is raised at launch, but anything can take the front
+  // in the minutes since, so this raises it again and, either way, SAYS what
+  // it found before the first surface is touched.
+  try {
+    let visibility = await evaluate(`document.visibilityState`);
+    let reraise = "not needed";
+    if (visibility !== "visible") {
+      reraise = await raiseWindow(floorPid);
+      await sleep(1000);
+      visibility = await evaluate(`document.visibilityState`);
+    }
+    add(
+      "the VS Code window is on screen when the surfaces start",
+      visibility === "visible",
+      `visibility=${visibility} reraise=${reraise}; measured ONCE, here: the front ` +
+        `can be taken again later, which is why each drag-handle check reports its own ` +
+        `visibility. Red here means every position-dependent check below is measuring ` +
+        `the window manager rather than the editor`,
+    );
+  } catch (err) {
+    add("the VS Code window is on screen when the surfaces start", false, `threw: ${err.message}`);
+  }
 
   // --- Table context menu, keyboard path (#118) -----------------------------
   // Runs FIRST among the surfaces, because it is the only one that needs the
@@ -754,6 +960,100 @@ async function driveSurfaces(evaluate, session, sessions) {
     add("slash command opens a filtered block menu", false, `threw: ${err.message}`);
   }
 
+  // --- Emoji picker (#133) --------------------------------------------------
+  // Same shape as the slash probe, and the same reason for Input.insertText:
+  // the suggestion plugin watches ProseMirror transactions, not the DOM. This
+  // is also the only automated proof the emoji ARTIFACT loads, because the
+  // dataset is fetched on the first ':' and nothing else in this run triggers
+  // it.
+  try {
+    const placed = await evaluate(`(() => {
+      const root = document.querySelector('.tiptap');
+      if (!root) return 'no .tiptap';
+      const last = root.lastElementChild;
+      if (!last) return 'empty doc';
+      root.focus();
+      const range = document.createRange();
+      range.selectNodeContents(last);
+      range.collapse(false);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      return 'ok';
+    })()`);
+    if (placed !== "ok") throw new Error(`caret: ${placed}`);
+    for (const type of ["keyDown", "keyUp"]) {
+      await session.send("Input.dispatchKeyEvent", {
+        type, key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13,
+      });
+    }
+    await sleepShort();
+    await session.send("Input.insertText", { text: ":smi" });
+    // The dataset is a 529 KB lazy artifact, so the popup cannot appear on the
+    // same tick the way the slash menu does. Poll instead of guessing a delay.
+    let menu = { open: false, items: 0, inContainer: false };
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      await sleepShort();
+      menu = await evaluate(`(() => {
+        const popup = document.querySelector('.emoji-popup');
+        if (!popup) return { open: false, items: 0, inContainer: false };
+        return {
+          open: true,
+          items: popup.querySelectorAll('.suggestion-item, .emoji-item').length,
+          inContainer: !!popup.closest('#editor-container') && !popup.closest('.tiptap'),
+        };
+      })()`);
+      if (menu.open && menu.items > 0) break;
+    }
+    add(
+      "emoji picker loads its lazy dataset and lists matches",
+      menu.open && menu.items >= 1 && menu.inContainer,
+      `open=${menu.open} items=${menu.items} attachedToEditorContainer=${menu.inContainer}`,
+    );
+    for (const type of ["keyDown", "keyUp"]) {
+      await session.send("Input.dispatchKeyEvent", {
+        type, key: "Escape", code: "Escape", windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27,
+      });
+    }
+    await sleepShort();
+  } catch (err) {
+    add("emoji picker loads its lazy dataset and lists matches", false, `threw: ${err.message}`);
+  }
+
+  // --- Drag handle (#133) ---------------------------------------------------
+  // A hover overlay needs a `mousemove` with coordinates INSIDE the target's
+  // rect; a `mouseover` dispatched at the element does not move the pointer and
+  // the handle never appears. That mistake cost this harness a false red once
+  // already, which is why the coordinates come from the rect, and why they are
+  // re-read before every move (see hoverParagraphForHandle).
+  try {
+    const { spot, handle } = await hoverParagraphForHandle(evaluate, session, sleepShort, beat);
+    // Position is asserted, not just presence. A handle that exists but sits a
+    // thousand pixels from its block is not a drag handle, and the
+    // existence-only version of this check could not tell the difference.
+    const dyHandle = handle.present && handle.top != null ? Math.abs(handle.top - spot.blockTop) : null;
+    // The claim is "the handle follows the block you are pointing at", so the
+    // comparison is against the block UNDER THE POINTER, not against the one
+    // this probe picked out of the DOM. Those differ the moment anything
+    // overlays the pick, and that difference is a probe bug, not a product bug.
+    const followsPointer =
+      handle.underPointer != null && handle.handleRow != null && handle.underPointer === handle.handleRow;
+    add(
+      "drag handle loads lazily and follows the block under the pointer",
+      handle.present && handle.inContainer && followsPointer,
+      `present=${handle.present} attachedToEditorContainer=${handle.inContainer} ` +
+        `hoveredAt=${spot.x},${spot.y} handleTop=${handle.top ?? null} dy(vs hovered block)=${dyHandle} ` +
+        `scrolledIntoView=${spot.scrolled} placed=${handle.placed} ` +
+        `styleTop=${handle.handleStyleTop} position=${handle.handlePosition} ` +
+        `offsetParent=${handle.offsetParent} containerScrollTop=${handle.containerScrollTop} ` +
+        `visibility=${handle.visibility} underPointer=${JSON.stringify(handle.underPointer)} ` +
+        `handleLinesUpWith=${JSON.stringify(handle.handleRow)}`,
+    );
+  } catch (err) {
+    add("drag handle loads lazily and follows the block under the pointer", false, `threw: ${err.message}`);
+  }
+
+
   // --- Bubble menu (#116) ---------------------------------------------------
   try {
     const selected = await evaluate(`(() => {
@@ -889,27 +1189,39 @@ async function driveSurfaces(evaluate, session, sessions) {
     // clientX/clientY fall inside an image's bounding rect, not by a mouseover
     // on the image. A synthetic event with no coordinates lands at 0,0 and
     // matches nothing, which is what the first version of this probe sent.
-    const hovered = await evaluate(`(() => {
-      const editorEl = document.querySelector('.tiptap');
-      const img = editorEl?.querySelector('img');
-      if (!img) return 'no image';
-      const r = img.getBoundingClientRect();
-      if (r.width === 0 || r.height === 0) return 'image has no layout box';
-      const at = { bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 };
-      editorEl.dispatchEvent(new MouseEvent('mousemove', at));
-      return 'ok';
-    })()`);
-    if (hovered !== "ok") throw new Error(hovered);
-    await sleep(500);
-    const opened = await evaluate(`(() => {
-      const overlay = document.querySelector('.image-edit-overlay');
-      if (!overlay) return 'no hover overlay';
-      if (!overlay.classList.contains('visible')) return 'hover overlay never became visible';
-      const btn = overlay.querySelector('.image-expand-btn');
-      if (!btn) return 'no expand button in the overlay';
-      btn.click();
-      return 'ok';
-    })()`);
+    // Re-dispatch and re-read rather than hovering once and judging: earlier
+    // probes scroll and relayout the document, the overlay is shown from a
+    // handler that runs after the move, and a single shot 500ms later reported
+    // "hover overlay never became visible" on a release run for no other
+    // reason. The rect is re-measured every attempt for the same reason the
+    // drag-handle helper does it.
+    let hovered = "no image";
+    let opened = "hover overlay never became visible";
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      hovered = await evaluate(`(() => {
+        const editorEl = document.querySelector('.tiptap');
+        const img = editorEl?.querySelector('img');
+        if (!img) return 'no image';
+        const r = img.getBoundingClientRect();
+        if (r.width === 0 || r.height === 0) return 'image has no layout box';
+        const at = { bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 };
+        editorEl.dispatchEvent(new MouseEvent('mousemove', at));
+        return 'ok';
+      })()`);
+      if (hovered !== "ok") throw new Error(hovered);
+      await sleep(400);
+      opened = await evaluate(`(() => {
+        const overlay = document.querySelector('.image-edit-overlay');
+        if (!overlay) return 'no hover overlay';
+        if (!overlay.classList.contains('visible')) return 'hover overlay never became visible';
+        const btn = overlay.querySelector('.image-expand-btn');
+        if (!btn) return 'no expand button in the overlay';
+        btn.click();
+        return 'ok';
+      })()`);
+      if (opened === "ok") break;
+      beat();
+    }
     if (opened !== "ok") throw new Error(opened);
     // Poll rather than read once at a fixed delay. The focus is scheduled by
     // whichever of an animation frame and a 50ms timer arrives first, and a
@@ -1188,7 +1500,448 @@ async function driveSurfaces(evaluate, session, sessions) {
   }
 
 
+
+  // --- Drag handle at a zoom other than 1.0 (#133) ---------------------------
+  // The handle is positioned by script and lives outside the zoomed .tiptap. If
+  // the plugin ever read a coordinate from inside the zoomed subtree the handle
+  // would drift from its block BY A FACTOR, so the error is invisible at zoom
+  // 1.0. Same shape as the bubble-menu zoom check, and the same reason it
+  // exists.
+  try {
+    await evaluate(`(() => {
+      const btn = document.getElementById('btn-zoom-in');
+      btn?.click(); btn?.click();
+      return 'ok';
+    })()`);
+    await sleep(500);
+    const { spot, handle } = await hoverParagraphForHandle(evaluate, session, sleepShort, beat);
+    // The handle sits beside the block, so a vertical offset within one block
+    // height is correct placement; a zoom bug moves it by a multiple of that.
+    const dy = handle.present && handle.top != null ? Math.abs(handle.top - spot.blockTop) : null;
+    const followsAtZoom =
+      handle.underPointer != null && handle.handleRow != null && handle.underPointer === handle.handleRow;
+    add(
+      "drag handle still tracks its block at a non-100% zoom",
+      handle.present && handle.inContainer && followsAtZoom,
+      `zoom=${handle.zoom} present=${handle.present} attachedToEditorContainer=${handle.inContainer} ` +
+        `blockTop=${spot.blockTop} handleTop=${handle.top ?? null} dy=${dy} ` +
+        `blockHeight=${spot.blockHeight} placed=${handle.placed} styleTop=${handle.handleStyleTop} ` +
+        `visibility=${handle.visibility} underPointer=${JSON.stringify(handle.underPointer)} ` +
+        `handleLinesUpWith=${JSON.stringify(handle.handleRow)}`,
+    );
+    await evaluate(`(() => { document.getElementById('btn-zoom-reset')?.click(); return 'ok'; })()`);
+    await sleep(400);
+  } catch (err) {
+    add("drag handle still tracks its block at a non-100% zoom", false, `threw: ${err.message}`);
+  }
+
+
+  // --- KaTeX fonts actually load (#131) -------------------------------------
+  // The render check proves the artifact ran and produced .katex elements. It
+  // cannot prove the GLYPHS drew: katex.min.css references its fonts by
+  // relative URL, so a wrong asWebviewUri leaves the markup intact and the
+  // formula rendered in a fallback face. document.fonts is the honest witness,
+  // and a width comparison backs it up, because a font that failed to load
+  // silently falls back and the two measurements then agree.
+  try {
+    const fonts = await evaluate(`(async () => {
+      const family = 'KaTeX_Main';
+      try { await document.fonts.load('16px "' + family + '"'); } catch (e) { /* ignore */ }
+      const loaded = Array.from(document.fonts).filter((f) => f.family.indexOf('KaTeX') === 0);
+      const measure = (css) => {
+        const el = document.createElement('span');
+        el.style.position = 'absolute';
+        el.style.visibility = 'hidden';
+        el.style.fontSize = '64px';
+        el.style.whiteSpace = 'pre';
+        el.style.fontFamily = css;
+        el.textContent = 'xfgq0123';
+        document.body.appendChild(el);
+        const w = el.getBoundingClientRect().width;
+        el.remove();
+        return Math.round(w);
+      };
+      const katexWidth = measure('"' + family + '"');
+      const fallbackWidth = measure('"TuiNoSuchFontFamily"');
+      return {
+        check: document.fonts.check('16px "' + family + '"'),
+        status: document.fonts.status,
+        faces: loaded.length,
+        families: Array.from(new Set(loaded.map((f) => f.family))).slice(0, 4).join(','),
+        anyLoaded: loaded.some((f) => f.status === 'loaded'),
+        katexWidth,
+        fallbackWidth,
+      };
+    })()`);
+    add(
+      "KaTeX fonts load and the glyphs are not a fallback face",
+      fonts.check && fonts.anyLoaded && fonts.katexWidth !== fonts.fallbackWidth,
+      `check=${fonts.check} anyLoaded=${fonts.anyLoaded} faces=${fonts.faces} ` +
+        `families=${fonts.families} status=${fonts.status} ` +
+        `width(KaTeX_Main)=${fonts.katexWidth} width(missing font)=${fonts.fallbackWidth}`,
+    );
+  } catch (err) {
+    add("KaTeX fonts load and the glyphs are not a fallback face", false, `threw: ${err.message}`);
+  }
+
+  // --- <details> opens and closes on a click (#132) --------------------------
+  // The structure check counts the element; this drives the disclosure, which
+  // is the thing a reader of #85 actually asked for ("collapse in the editor as
+  // it does on GitHub").
+  try {
+    const before = await evaluate(`(() => {
+      const d = document.querySelector('.tiptap details');
+      if (!d) return null;
+      const s = d.querySelector('summary');
+      if (!s) return null;
+      const wasOpen = d.open;
+      s.click();
+      return { wasOpen, afterFirst: d.open };
+    })()`);
+    if (!before) throw new Error("no <details><summary> in the document");
+    // Does the open state SURVIVE, or does ProseMirror redraw the node from a
+    // state that still says closed? A disclosure that springs shut on its own
+    // looks the same as one that never opened, one click later.
+    await sleep(900);
+    const settled = await evaluate(`(() => {
+      const d = document.querySelector('.tiptap details');
+      return { stillOpen: d.open, attr: d.hasAttribute('open') };
+    })()`);
+    await sleepShort();
+    const after = await evaluate(`(() => {
+      const d = document.querySelector('.tiptap details');
+      const s = d.querySelector('summary');
+      s.click();
+      return { afterSecond: d.open, bodyText: (d.textContent || '').slice(0, 40) };
+    })()`);
+    add(
+      "a click on <summary> opens and closes the disclosure",
+      before.afterFirst !== before.wasOpen && after.afterSecond === before.wasOpen,
+      `wasOpen=${before.wasOpen} afterFirstClick=${before.afterFirst} ` +
+        `stillOpenAfter900ms=${settled.stillOpen} attr=${settled.attr} ` +
+        `afterSecondClick=${after.afterSecond} text=${JSON.stringify(after.bodyText)}`,
+    );
+  } catch (err) {
+    add("a click on <summary> opens and closes the disclosure", false, `threw: ${err.message}`);
+  }
+
+  // --- Footnote hover preview (#131) ----------------------------------------
+  // The tooltip is bound to `mouseenter`, which does not bubble and is not
+  // produced by dispatching an event AT the element: the pointer has to move
+  // into its rect. That is the same mistake this harness made once with a
+  // hover overlay, so the coordinates come from the rect.
+  try {
+    const spot = await evaluate(`(() => {
+      const ref = document.querySelector('.tiptap .footnote-reference');
+      if (!ref) return null;
+      ref.scrollIntoView({ block: 'center' });
+      const r = ref.getBoundingClientRect();
+      if (r.width === 0 || r.top < 0) return null;
+      return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+    })()`);
+    if (!spot) throw new Error("no footnote reference on screen");
+    // Move in from somewhere else first, so the pointer genuinely ENTERS.
+    await session.send("Input.dispatchMouseEvent", {
+      type: "mouseMoved", x: 5, y: 5, button: "none", clickCount: 0,
+    });
+    await session.send("Input.dispatchMouseEvent", {
+      type: "mouseMoved", x: spot.x, y: spot.y, button: "none", clickCount: 0,
+    });
+    let tip = { present: false, text: "", visible: false };
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      await sleepShort();
+      tip = await evaluate(`(() => {
+        const el = document.querySelector('.footnote-tooltip');
+        if (!el) return { present: false, text: '', visible: false };
+        const style = window.getComputedStyle(el);
+        return {
+          present: true,
+          visible: style.display !== 'none' && style.visibility !== 'hidden',
+          text: (el.textContent || '').trim().slice(0, 60),
+        };
+      })()`);
+      if (tip.present && tip.text) break;
+    }
+    add(
+      "hovering a footnote reference previews its definition",
+      tip.present && tip.visible && tip.text.indexOf("hover preview must show") !== -1,
+      `present=${tip.present} visible=${tip.visible} text=${JSON.stringify(tip.text)} ` +
+        `hoveredAt=${spot.x},${spot.y}`,
+    );
+    await session.send("Input.dispatchMouseEvent", {
+      type: "mouseMoved", x: 5, y: 5, button: "none", clickCount: 0,
+    });
+    await sleepShort();
+  } catch (err) {
+    add("hovering a footnote reference previews its definition", false, `threw: ${err.message}`);
+  }
+
+  // --- Backlinks panel (#134) -----------------------------------------------
+  // The panel's content arrives over a host message round trip, so this is the
+  // only automated proof that the new message kind and its handler are wired.
+  // The sample workspace holds no document linking to sample.md, so an EMPTY
+  // panel is the correct result; what is asserted is that the panel opened and
+  // the host answered, not a count.
+  try {
+    const opened = await evaluate(`(() => {
+      const btn = document.getElementById('btn-backlinks');
+      if (!btn) return 'no #btn-backlinks';
+      btn.click();
+      return 'ok';
+    })()`);
+    if (opened !== "ok") throw new Error(opened);
+    let panel = { present: false, visible: false, answered: false };
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      await sleepShort();
+      panel = await evaluate(`(() => {
+        const el = document.getElementById('backlinks-panel');
+        if (!el) return { present: false, visible: false, answered: false };
+        const style = window.getComputedStyle(el);
+        return {
+          present: true,
+          visible: !el.classList.contains('hidden') &&
+            style.display !== 'none' && style.visibility !== 'hidden',
+          // Either a list of results or an explicit empty state counts as an
+          // answer; a panel still showing its loading state does not.
+          answered: !el.textContent.includes('Loading') && el.textContent.trim().length > 0,
+        };
+      })()`);
+      if (panel.present && panel.answered) break;
+    }
+    // links-here.md is staged in the workspace pointing at sample.md, so the
+    // panel must list exactly that, and clicking it must ask the host to open
+    // it. The host asserts the open on its side; this side asserts the entry
+    // existed and was clickable.
+    // Where it sits is asserted, not eyeballed: the panel opens on the RIGHT of
+    // the editor, the mirror of #toc-sidebar on the left. DOM order in the
+    // #main-layout flex row is what decides it, so a future insertBefore that
+    // put it back on the left would pass every other assertion here.
+    const entry = await evaluate(`(() => {
+      const el = document.getElementById('backlinks-panel');
+      const editor = document.getElementById('editor-container');
+      const toc = document.getElementById('toc-sidebar');
+      const btn = document.getElementById('btn-backlinks');
+      const panelRect = el ? el.getBoundingClientRect() : null;
+      const editorRect = editor ? editor.getBoundingClientRect() : null;
+      const side = {
+        panelLeft: panelRect ? Math.round(panelRect.left) : null,
+        editorRight: editorRect ? Math.round(editorRect.right) : null,
+        rightOfEditor: !!(panelRect && editorRect) && panelRect.left >= editorRect.right - 1,
+        borderLeftPx: el ? window.getComputedStyle(el).borderLeftWidth : null,
+        borderRightPx: el ? window.getComputedStyle(el).borderRightWidth : null,
+        toggleAfterPanel: !!(el && btn) &&
+          (el.compareDocumentPosition(btn) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
+        // The TOC is hidden here, so its rect is all zeros and any "is it still
+        // on the left" comparison is vacuously true. Report which side it is on
+        // when it is actually laid out, and assert nothing from it.
+        tocSide: (() => {
+          if (!toc || !editorRect) return "absent";
+          const r = toc.getBoundingClientRect();
+          if (r.width === 0 && r.height === 0) return "hidden";
+          return r.left <= editorRect.left ? "left" : "right";
+        })(),
+      };
+      const first = el ? el.querySelector('.backlink-entry') : null;
+      if (!first) return Object.assign({ entries: 0, label: null, clicked: false }, side);
+      const label = (first.textContent || '').trim().slice(0, 40);
+      first.click();
+      return Object.assign({
+        entries: el.querySelectorAll('.backlink-entry').length,
+        label,
+        clicked: true,
+      }, side);
+    })()`);
+    add(
+      "backlinks panel lists the linking document and opens it on click",
+      panel.present && panel.visible && panel.answered && entry.entries >= 1 && entry.clicked &&
+        (entry.label || "").toLowerCase().indexOf("links-here") !== -1 &&
+        entry.rightOfEditor,
+      `present=${panel.present} visible=${panel.visible} hostAnswered=${panel.answered} ` +
+        `entries=${entry.entries} first=${JSON.stringify(entry.label)} clicked=${entry.clicked} ` +
+        `rightOfEditor=${entry.rightOfEditor} panelLeft=${entry.panelLeft} editorRight=${entry.editorRight} ` +
+        `borderLeft=${entry.borderLeftPx} borderRight=${entry.borderRightPx} ` +
+        `toggleAfterPanel=${entry.toggleAfterPanel} tocSide=${entry.tocSide}`,
+    );
+    await sleep(600);
+    await evaluate(`(() => { document.getElementById('btn-backlinks')?.click(); return 'ok'; })()`);
+    await sleepShort();
+  } catch (err) {
+    add("backlinks panel lists the linking document and opens it on click", false, `threw: ${err.message}`);
+  }
+
+  // --- Focus mode (#134) ----------------------------------------------------
+  // Toggled last, and toggled back off, because it hides the chrome every
+  // probe above depends on.
+  try {
+    const clicked = await evaluate(`(() => {
+      const btn = document.getElementById('btn-focus');
+      if (!btn) return 'no #btn-focus';
+      btn.click();
+      return 'ok';
+    })()`);
+    if (clicked !== "ok") throw new Error(clicked);
+    await sleepShort();
+    const on = await evaluate(`(() => {
+      const hiddenNow = (id) => {
+        const el = document.getElementById(id);
+        if (!el) return 'absent';
+        const style = window.getComputedStyle(el);
+        return style.display === 'none' || style.visibility === 'hidden' ||
+          parseFloat(style.opacity || '1') === 0 ? 'hidden' : style.display;
+      };
+      return {
+        bodyClass: document.body.className,
+        bodyFlag: document.body.classList.contains('focus-mode'),
+        toolbar: hiddenNow('toolbar'),
+        toolbarMatches: !!document.getElementById('toolbar')?.matches('body.focus-mode #toolbar'),
+        ruleCount: (() => {
+          let n = 0;
+          for (const sheet of Array.from(document.styleSheets)) {
+            try {
+              for (const rule of Array.from(sheet.cssRules)) {
+                if (rule.selectorText && rule.selectorText.indexOf('focus-mode #toolbar') !== -1) n += 1;
+              }
+            } catch (e) { /* cross-origin sheet */ }
+          }
+          return n;
+        })(),
+        toc: hiddenNow('toc-sidebar'),
+        progress: hiddenNow('reading-progress'),
+        exitButton: !!document.getElementById('btn-focus-exit'),
+      };
+    })()`);
+    await evaluate(`(() => {
+      const exit = document.getElementById('btn-focus-exit') || document.getElementById('btn-focus');
+      exit?.click();
+      return 'ok';
+    })()`);
+    await sleepShort();
+    const off = await evaluate(`(() => {
+      const toolbar = document.getElementById('toolbar');
+      const style = toolbar ? window.getComputedStyle(toolbar) : null;
+      return !!style && style.display !== 'none' && style.visibility !== 'hidden';
+    })()`);
+    add(
+      "focus mode hides the chrome and gives it back",
+      on.bodyFlag && on.toolbar === "hidden" && on.progress !== "block" && on.exitButton && off,
+      `bodyFlag=${on.bodyFlag} toolbar=${on.toolbar} matchesRule=${on.toolbarMatches} sheetRules=${on.ruleCount} toc=${on.toc} progress=${on.progress} ` +
+        `exitButton=${on.exitButton} restored=${off} bodyClass=${JSON.stringify(on.bodyClass.slice(0, 60))}`,
+    );
+  } catch (err) {
+    add("focus mode hides the chrome and gives it back", false, `threw: ${err.message}`);
+  }
+
+  // --- A drag actually reorders a block (#133) -------------------------------
+  // Runs LAST: it rewrites the document and leaves the pointer mid-gesture, and
+  // an earlier position for it broke the footnote hover probe that followed.
+  //
+  // CDP mouse events do not start a native drag: Chromium needs
+  // Input.dispatchDragEvent behind Input.setInterceptDrags for that. The
+  // handle is a draggable element and ProseMirror reads the DataTransfer, so
+  // the gesture is driven as DOM DragEvents instead, which is what both
+  // upstream's onDragStart and ProseMirror's own drop handler listen for.
+  try {
+    // Put the handle on a known block first. This probe used to read whatever
+    // position the previous one left behind, and a handle stranded by a covered
+    // window then named a source block the drag never touched: `moved=true`
+    // with `index 1->1`. The helper settles it, re-raising the window if that
+    // is what is in the way.
+    await evaluate(`(() => {
+      const container = document.getElementById('editor-container');
+      if (container) container.scrollTop = 0;
+      return 'ok';
+    })()`);
+    await hoverParagraphForHandle(evaluate, session, sleepShort, beat);
+    const result = await evaluate(`(() => {
+      const blocks = Array.from(document.querySelectorAll('.tiptap > *'))
+        .filter((b) => (b.textContent || '').trim().length > 0);
+      if (blocks.length < 2) return { ok: false, why: 'fewer than two non-empty blocks' };
+      const handle = document.querySelector('.drag-handle');
+      if (!handle) return { ok: false, why: 'no drag handle' };
+      const describe = () => blocks.length
+        ? Array.from(document.querySelectorAll('.tiptap > *'))
+            .map((b) => (b.textContent || '').trim().slice(0, 14)).join('|')
+        : '';
+      const before = describe();
+      // The handle points at whatever block the pointer last visited, and that
+      // is the block a drag will move. Reporting blocks[0] as the source named
+      // the wrong one while the drag itself was working.
+      const hr0 = handle.getBoundingClientRect();
+      const mid = hr0.top + hr0.height / 2;
+      let source = blocks[0]; let bestD = Infinity;
+      for (const b of blocks) {
+        const br = b.getBoundingClientRect();
+        const d = Math.abs(br.top + br.height / 2 - mid);
+        if (d < bestD) { bestD = d; source = b; }
+      }
+      // The FARTHEST block, not the first one that is not the source. The drop
+      // lands at the target's bottom edge, so an adjacent target means dropping
+      // the block exactly where it already sits: a correct no-op that reads as
+      // a broken drag. That is what "moved=false index 1->1" was.
+      const si = blocks.indexOf(source);
+      let target = blocks[0]; let farthest = -1;
+      for (let i = 0; i < blocks.length; i += 1) {
+        const d = Math.abs(i - si);
+        if (d > farthest) { farthest = d; target = blocks[i]; }
+      }
+      const tr = target.getBoundingClientRect();
+      const dt = new DataTransfer();
+      const at = (type, x, y, el) => el.dispatchEvent(new DragEvent(type, {
+        bubbles: true, cancelable: true, composed: true, dataTransfer: dt,
+        clientX: Math.round(x), clientY: Math.round(y),
+      }));
+      const hr = handle.getBoundingClientRect();
+      at('dragstart', hr.left + hr.width / 2, hr.top + hr.height / 2, handle);
+      at('dragover', tr.left + tr.width / 2, tr.bottom - 2, target);
+      at('drop', tr.left + tr.width / 2, tr.bottom - 2, target);
+      at('dragend', tr.left + tr.width / 2, tr.bottom - 2, handle);
+      return {
+        ok: true,
+        before,
+        sourceIndexBefore: blocks.indexOf(source),
+        sourceText: (source.textContent || '').trim().slice(0, 14),
+        targetText: (target.textContent || '').trim().slice(0, 14),
+        transferTypes: Array.from(dt.types || []).join(','),
+      };
+    })()`);
+    if (!result.ok) throw new Error(result.why);
+    await sleep(700);
+    const after = await evaluate(`(() => Array.from(document.querySelectorAll('.tiptap > *'))
+      .map((b) => (b.textContent || '').trim().slice(0, 14)).join('|'))()`);
+    // The dragged block must have CHANGED INDEX, not merely "something in the
+    // document is different", which a stray edit would also satisfy.
+    const beforeList = result.before.split("|");
+    const afterList = String(after).split("|");
+    const movedIndex =
+      beforeList.indexOf(result.sourceText) !== afterList.indexOf(result.sourceText);
+    add(
+      "dragging the handle reorders the block",
+      after !== result.before && movedIndex,
+      `moved=${after !== result.before} draggedBlockChangedIndex=${movedIndex} ` +
+        `index ${beforeList.indexOf(result.sourceText)}->${afterList.indexOf(result.sourceText)} ` +
+        `source=${JSON.stringify(result.sourceText)} ` +
+        `target=${JSON.stringify(result.targetText)} dataTransferTypes=${JSON.stringify(result.transferTypes)}` +
+        `\n      before: ${result.before.slice(0, 150)}\n      after:  ${String(after).slice(0, 150)}`,
+    );
+  } catch (err) {
+    add("dragging the handle reorders the block", false, `threw: ${err.message}`);
+  }
+
   // --- Export, both formats (#88 hand-test debt) ----------------------------
+  // MOVED here deliberately, and it must stay last. PDF export launches a real
+  // Chromium window, and ANY window covering the VS Code one stops its animation
+  // frames: a VS Code left running by an earlier failed run does it just as well,
+  // which is why "pkill the survivors" belongs in the routine. Upstream's
+  // drag-handle `mousemove` handler coalesces into requestAnimationFrame AND
+  // latches its rafId until that frame runs, so a probe driven while the window
+  // is covered finds the handle frozen in place for good, whatever it retries.
+  // That is one of the two things that made "drag handle still tracks its block
+  // at a non-100% zoom" fail on one run and pass on the next at the same SHA;
+  // the other was measuring the block once and hovering in a loop. Neither is a
+  // shipped defect: a user cannot hover a window they have covered. Both probes
+  // now report `visibility` so a future red says which of the two it was. Same
+  // rAF mechanism AGENTS.md records for #112, #128 and #121, reaching the
+  // harness instead of the product.
   // Two of the six #88 criteria read "needs a save dialog", which is why nobody
   // ran them. The host stubs `showSaveDialog` and the "Open the file?"
   // notification before this phase starts; all this side does is drive the real
@@ -1223,7 +1976,6 @@ async function driveSurfaces(evaluate, session, sessions) {
   } catch (err) {
     add("export button could be driven for both formats", false, `threw: ${err.message}`);
   }
-
 
   return results;
 }
@@ -1329,7 +2081,16 @@ async function driveInteractions(base, session, contextId, sessions) {
     // 2. Operate each 2.17 surface. These report as their own checks rather
     //    than folding into this one, so a broken lightbox does not read as a
     //    broken slash menu.
-    surfaces.push(...(await driveSurfaces(evaluate, session, sessions)));
+    const progressMarker = path.join(base, "phase-progress");
+    const beat = () => {
+      try {
+        fs.writeFileSync(progressMarker, String(Date.now()), "utf8");
+      } catch {
+        /* the base is gone; the run is over anyway */
+      }
+    };
+    beat();
+    surfaces.push(...(await driveSurfaces(evaluate, session, sessions, beat)));
 
     // 3. Click the view-source button, the cheapest host dispatch there is.
     const clicked = await evaluate(`(() => {
@@ -1412,6 +2173,11 @@ function tick(ok) {
 }
 
 async function main() {
+  // A stalled await leaves node with an empty event loop, and node then exits
+  // with whatever `process.exitCode` holds: 0 by default. Claiming success
+  // while having checked nothing is the worst thing this harness could do, so
+  // the default is failure and the value below is what earns a green.
+  process.exitCode = 1;
   const version = floorVersion();
   console.log(`VS Code floor check — target version ${version}`);
 
@@ -1439,6 +2205,14 @@ async function main() {
   // the webview's localResourceRoots rather than a broken <img>.
   fs.mkdirSync(path.join(workspace, "media"), { recursive: true });
   fs.copyFileSync(path.join(REPO, "media", "icon.png"), path.join(workspace, "media", "icon.png"));
+  // A document that LINKS to sample.md, so the backlinks panel has something
+  // real to list and something real to open. Without it the panel is correct
+  // when empty, and an empty panel cannot prove that clicking an entry works.
+  fs.writeFileSync(
+    path.join(workspace, "links-here.md"),
+    "# Links here\n\nThis one points at [[sample]] and also mentions @sample.md.\n",
+    "utf8",
+  );
 
   const child = spawn(
     executable,
@@ -1487,6 +2261,7 @@ async function main() {
   const probeStart = Date.now();
   let mountedAt = null;
   let mermaidReadyAt = null;
+  let katexReadyAt = null;
   // Two conditions, two budgets (#112). The mount is fast and MOUNT_TIMEOUT_MS
   // is generous for it; the mermaid artifact is a separate lazily-fetched
   // bundle carrying mermaid plus ELK, and its budget starts when the editor
@@ -1512,9 +2287,15 @@ async function main() {
       deadline = mountedAt + MERMAID_TIMEOUT_MS;
     }
     if (webview && webview.mermaidRendered >= 1 && webview.mermaidStuck === 0) {
-      mermaidReadyAt = Date.now();
-      break;
+      if (mermaidReadyAt === null) mermaidReadyAt = Date.now();
     }
+    // KaTeX is a second lazy artifact on the same budget. Waiting for BOTH
+    // means a mermaid that finishes first cannot end the loop while the
+    // formula is still loading and report a false red for KaTeX.
+    if (webview && webview.katexRendered >= 1) {
+      if (katexReadyAt === null) katexReadyAt = Date.now();
+    }
+    if (mermaidReadyAt !== null && katexReadyAt !== null) break;
   }
 
   // Captured here, not where the checks are built: by then `driveInteractions`
@@ -1618,6 +2399,33 @@ async function main() {
               ? `nothing was ever scheduled, so this is not the budget (see #112: a hidden window gets no animation frame)`
               : `scheduled but unfinished, so this one really is about the budget`)
           : `${counts}; ${sinceMount}ms after mount, nothing left loading, so the artifact did not render`,
+    });
+    // --- 3.0 lazy artifacts (#85) ------------------------------------------
+    // KaTeX renders synchronously once its artifact executes, so a formula
+    // still unrendered at the budget means the artifact never arrived, not
+    // that rendering is slow. mathNodes tells the two halves apart: nodes
+    // present with katexRendered 0 is a renderer failure; no nodes at all is
+    // a parser failure and the markdown side is what to look at.
+    const sinceMountKatex = (katexReadyAt ?? probeEnd) - mountedAt;
+    checks.push({
+      name: "lazy KaTeX artifact loads and renders a formula",
+      ok: webview.katexRendered >= 1 && webview.mathNodes >= 2,
+      detail:
+        `katexRendered=${webview.katexRendered} mathNodes=${webview.mathNodes} ` +
+        `visibility=${webview.visibility}; ` +
+        (katexReadyAt
+          ? `${sinceMountKatex}ms after mount, budget ${MERMAID_TIMEOUT_MS}ms`
+          : webview.mathNodes >= 2
+            ? `NOT RENDERED after ${sinceMountKatex}ms though the math nodes parsed, so the artifact or its stylesheet is what failed`
+            : `the math nodes never parsed, so this is the markdown side, not the artifact`),
+    });
+    // The HTML whitelist (#132) is not lazy, so this is a structure check
+    // only: the tags must be real elements in the live document, not the
+    // raw-HTML badges they were before 3.0.
+    checks.push({
+      name: "whitelisted HTML renders as real elements",
+      ok: webview.kbdMarks >= 1 && webview.detailsNodes >= 1,
+      detail: `kbd=${webview.kbdMarks} details=${webview.detailsNodes} rawHtmlBadges=${webview.rawHtmlBadges}`,
     });
     checks.push({
       name: "toolbar and metadata panel present",

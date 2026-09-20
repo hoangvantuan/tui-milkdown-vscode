@@ -389,6 +389,125 @@ kể cả con số tạm.
 **Phép đo đầu tiên của check mới quét quá rộng.** Xem mục "Phép thử răng cũng
 phải kiểm phép thử" ở phần kỷ luật.
 
+## LỖI VÀ BÀI HỌC CỦA SÓNG 8
+
+**Marker block trong hai file dùng chung: hiệu quả, nhưng câu chữ của tôi thiếu một câu.**
+Sóng 8 có HAI ticket markdown-relevant, nên luật cũ "chỉ một worker được chạm
+`harness/editor.ts`" không dùng được. Thay bằng marker block, mỗi worker một khối, trong
+cả `src/webview/main.ts` lẫn `harness/editor.ts`. Nó chạy: hai nhánh merge không xung đột
+một dòng nào trong hai file đó.
+
+Nhưng tôi viết "chỉ được thêm dòng BÊN TRONG marker block mang tên mình" mà quên nói dòng
+`import` đi đâu. Worker tuân thủ theo nghĩa đen và viết `...require("./html-marks")` ngay
+giữa mảng extension. esbuild nội tuyến `require()` tĩnh trong bundle IIFE nên không có
+`require` nào sống trong file phát hành (`grep -c "require(" out/webview/main.js` trả 0),
+tức là không hỏng, nhưng nó lệch với mọi import khác trong repo. **Câu phải thêm: "dòng
+import đi lên đầu file như bình thường".** Đã sửa vào chính comment của marker.
+
+**Một cơ chế lazy mới thì phải DỰNG NGUYÊN MẪU, đừng suy ra từ cái cũ.** Tôi suýt chép
+nguyên khuôn mermaid cho KaTeX, drag handle và emoji. Mermaid là một thư viện độc lập; ba
+thứ kia là extension cắm vào một editor đang sống, và một artifact mang theo bản
+`prosemirror-state` riêng sẽ có PluginKey riêng và lớp `EditorState` riêng, nên `instanceof`
+bên trong ProseMirror hỏng ở runtime mà không có gì hỏng lúc biên dịch. Nửa giờ dựng nguyên
+mẫu trong sandbox trả lời dứt điểm: externalize `@tiptap/core` và `@tiptap/pm/*` về global,
+`editor.registerPlugin()` chạy, plugin đếm 68 lên 69, `view.state instanceof EditorState`
+vẫn đúng. Nếu không dựng, con số đó đã là một giả định nằm trong bốn bản spec.
+
+Cùng phép đo đó còn bắt được một thứ spec suýt nói sai: `@tiptap/extension-emoji` khai một
+node `emoji` KÈM `renderMarkdown`, mà schema thì cố định lúc `new Editor()`. "Dùng upstream,
+lazy" là bất khả thi theo nghĩa đen, và tệ hơn, renderer đó có thể ghi `:smile:` đè lên ký
+tự unicode người dùng đã lưu. Spec phải nói thẳng: lazy phần DỮ LIỆU, UI dùng
+`suggestion-popup.ts`, chèn text unicode, không đụng schema.
+
+**Thân issue MẸ sai một chỗ lớn, và điều phối viên đo ra trước khi viết ticket con.** #85
+nói math "pass through but shows as source". Nửa đầu sai: `$\frac{a}{b}$` lưu ra
+`$\\frac{a}{b}$` và `$$\int_0^1$$` ra `$$\\int\_0^1$$`. Đó là mất dữ liệu đang ship,
+không phải thiếu renderer. Phát hiện bằng một probe 12 ca chạy qua `harness/editor.ts`
+TRƯỚC khi viết dòng spec đầu tiên, cùng cách sóng 7 làm với #84. Tỉ lệ luỹ kế giữ ở 10 trên
+28 ticket giao đi: cả bốn thân ticket con của sóng 8 đều đúng, vì cả bốn đều được đo lại.
+
+**Kiểm worker bằng phép đo CỦA MÌNH, và phép đo của mình sai hai lần.** Cả bốn worker đều
+được kiểm bằng probe độc lập chứ không đọc seam của họ: ca `kbd-in-link` thật sự khỏi, bug
+math thật sự khỏi, fixture `math-passthrough.md` thật sự đỏ trên develop và xanh trên nhánh.
+Nhưng hai phép đo của tôi sai: một lần `grep -c` đếm 0 ca đỏ trong khi seam đỏ thật (pattern
+sai), một lần grep khối mã trong báo cáo báo 26 dòng "bịa" mà phần lớn là output lệnh. Cả
+hai lần nghi phép đo của mình trước là đúng.
+
+**Check mới đỏ lần đầu vì phép đo, lần thứ ba liên tiếp trong harness này.** Probe drag
+handle hover vào `.tiptap p` đầu tiên và báo `hoveredAt=435,-526`: các probe chạy trước đã
+cuộn tài liệu, đoạn văn đó nằm trên khung nhìn, con trỏ không đi đâu cả. Mã sản phẩm đúng.
+Luật cũ của repo ("hover cần mousemove với toạ độ trong rect") vẫn đúng nhưng chưa đủ:
+**toạ độ trong rect của một phần tử ngoài khung nhìn là toạ độ âm.**
+
+**GIẢI XUNG ĐỘT CSS KIỂU "GIỮ CẢ HAI" LÀM RƠI MỘT DẤU `}`, VÀ KHÔNG GÌ BÁO.** Bốn nhánh
+sóng 8 đều append vào cuối `src/webview/editor.css`, nên `editor.css` xung đột hai lần.
+Tôi giải bằng cách xoá ba dòng marker và giữ cả hai bên, kiểm "có selector đầy đủ nào bị
+định nghĩa hai lần không" rồi commit. Sót một dấu `}` của `.footnote-tooltip`.
+
+Hậu quả không phải là lỗi cú pháp: **CSS lồng nhau là hợp lệ**, nên esbuild build sạch,
+`npm run build`, `npm test`, `npm run roundtrip` đều xanh, và toàn bộ CSS của W3 lẫn W4 sau
+điểm đó lặng lẽ trở thành rule LỒNG. `body.focus-mode #toolbar` thực chất là
+`.footnote-tooltip body.focus-mode #toolbar`, không khớp gì cả. Focus mode ra mắt mà không
+ẩn nổi toolbar.
+
+Hai điều rút ra, cả hai rẻ:
+
+```
+# chốt chặn mười giây, chạy TRƯỚC mỗi commit merge có đụng một file CSS
+python3 -c "s=open('src/webview/editor.css').read(); print(s.count('{'), s.count('}'))"
+# hai con số phải bằng nhau
+```
+
+Và: **đừng nhận một check xanh nhờ nửa điều kiện dễ.** Bản đầu của check focus mode là
+`bodyFlag || toolbarHidden`, và riêng cờ trên `body` đã đủ làm nó xanh trong khi chrome vẫn
+nằm nguyên trên màn hình. Chỉ khi ép nó khẳng định đúng cái chrome, nó mới đỏ và mới lộ ra
+bug. Một check có răng theo phép thử "phá cơ chế thì đỏ" VẪN có thể mù với chính thứ nó
+mang tên, nếu điều kiện của nó là một phép OR có nhánh rẻ tiền.
+
+Chẩn đoán cũng đáng giữ lại: dòng detail của check nay in `matchesRule=` và `sheetRules=`.
+Một rule KHÔNG ÁP và một rule KHÔNG CÓ trông giống hệt nhau từ phía `getComputedStyle`, và
+hai trường đó tách được chúng ra. Lưu ý `sheetRules` có thể bằng 0 chỉ vì webview chặn đọc
+`cssRules` của stylesheet, nên đọc nó cùng `matchesRule`, đừng đọc một mình.
+
+**Phá bốn cơ chế cùng lúc là phép thử răng rẻ hơn bốn lượt.** Một lượt floor check cho ra
+5 đỏ trên 40, và con số 5 chứ không phải 4 mới là thứ đáng giá: check cũ
+`an image with a width` cũng đỏ, vì gỡ whitelist HTML thì `<details>` và `<kbd>` quay về
+làm raw-HTML badge và nó đếm badge. Một ràng buộc ngầm giữa check cũ và nội dung
+`sample.md`, ghi lại thay vì để người sau tự vấp.
+
+## TRẢ NỢ KIỂM TRA TAY SÓNG 8, và ba lỗi của chính cái lưới
+
+Sáu tiêu chí sóng 8 đóng lại kèm câu "phải kiểm tra bằng mắt". Tự động hóa cả sáu, floor
+đi từ 42 lên **49 check, 49 passed**. Bốn bài học, tất cả đều đắt:
+
+**"0 đỏ" thường nghĩa là bạn quên build.** Teeth test đầu tiên của sáu check này báo 0 đỏ,
+và tôi suýt tin rằng check vô dụng. Tôi đã chạy `node harness/vscode-floor/run.mjs` thẳng,
+lệnh đó KHÔNG build, nên nó đo bundle cũ. Sau `npm run build && npm run build:floor-tests`:
+8 đỏ. Teeth test luôn phải qua `npm run verify:vscode-floor`, không bao giờ qua runner trần.
+
+**Backtick trong template literal của `Runtime.evaluate`: lần thứ ba.** AGENTS.md đã ghi,
+tôi vẫn dính. Nó không phải lỗi hiếm cần nhớ, nó là lỗi CHẮC CHẮN sẽ lặp: dùng nối chuỗi.
+
+**Probe đỏ bốn lần liên tiếp mà sản phẩm không hề có bug.** Cả bốn đều là lỗi đo của tôi:
+hover một khối mà probe trước đã cuộn đi; chờ `top` trên wrapper trong khi floating-ui ghi
+vào chính phần tử handle; chờ "đã đặt vị trí" khi probe trước đã đặt rồi; và so với một
+khối tôi tự chọn trong khi con trỏ đang nằm trên khối khác. Luật rút ra: **một probe đo vị
+trí phải đo lại trước MỖI lần di chuột, và phải từ chối số đọc lấy trong lúc khung nhìn
+vừa cuộn.** Khẳng định luôn phải là "handle thẳng hàng với khối DƯỚI CON TRỎ", không bao
+giờ là "thẳng hàng với khối probe đã chọn".
+
+**Cái lưới tự nó có ba lỗi, và một cái đủ sức che mọi lỗi tương lai.** Nặng nhất:
+`DevToolsSession.send` chỉ được giải quyết bởi message đúng id, không `onclose`, không
+timeout. VS Code thoát giữa pha drive thì mọi lệnh treo, node cạn event loop và **thoát 0
+mà không in một dòng nào**: `npm run verify:vscode-floor` báo thành công cho một lần chạy
+không kiểm tra gì, ba lần liên tiếp. Thứ duy nhất cứu là tôi thấy sự im lặng đó bất
+thường. Hai lỗi còn lại: host đua với runner bằng đồng hồ cố định 180 s mà bảy probe mới
+làm tràn (nay là nhịp tim), và probe đo một lần rồi hover nhiều lần.
+
+Luật cho mọi sóng sau: **một lần chạy không kiểm tra được gì thì PHẢI đỏ.** Nếu một
+harness có thể im lặng và thoát 0, mọi con số xanh nó từng in ra đều không còn là bằng
+chứng.
+
 ## Ràng buộc bắt buộc đưa vào spec mọi worker
 
 1. Cấm sửa MỌI `.md` ở GỐC repo, không riêng `CHANGELOG.md` và `AGENTS.md`:

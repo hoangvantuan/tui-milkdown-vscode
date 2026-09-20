@@ -176,6 +176,26 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       )
       .toString();
 
+    // The 3.0 lazy artifacts (see src/webview/artifact-bridge.ts). Same reason
+    // as mermaid: only the extension host can mint webview resource URIs.
+    // KaTeX additionally needs its stylesheet directory, because katex.min.css
+    // references its fonts by relative URL, so the URI must point at the
+    // FOLDER that holds both.
+    const artifactUri = (file: string) =>
+      webview
+        .asWebviewUri(
+          vscode.Uri.joinPath(this.context.extensionUri, "out", "webview", file),
+        )
+        .toString();
+    const katexScriptUri = artifactUri("katex-loader.js");
+    const dragHandleScriptUri = artifactUri("drag-handle-loader.js");
+    const emojiScriptUri = artifactUri("emoji-loader.js");
+    const katexAssetsUri = webview
+      .asWebviewUri(
+        vscode.Uri.joinPath(this.context.extensionUri, "out", "webview", "katex"),
+      )
+      .toString();
+
     const nonce = getNonce();
 
     const csp = `
@@ -479,6 +499,17 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
           window.__tuiMermaidBootstrap = {
             scriptUri: "${mermaidScriptUri}",
             nonce: "${nonce}",
+          };
+          // Same contract for the 3.0 artifacts, as one map rather than one
+          // global per renderer (src/webview/artifact-bridge.ts).
+          window.__tuiArtifacts = {
+            nonce: "${nonce}",
+            uris: {
+              katex: "${katexScriptUri}",
+              dragHandle: "${dragHandleScriptUri}",
+              emoji: "${emojiScriptUri}",
+            },
+            katexAssetsUri: "${katexAssetsUri}",
           };
           // Page CSP nonce for any nonce-gated style injection (see
           // search-plugin.ts: find-and-replace injectNonce option).

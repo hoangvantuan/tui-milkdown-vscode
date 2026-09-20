@@ -11,6 +11,9 @@
  * Recognized tags that have dedicated extensions keep working natively:
  *   - <br> -> HardBreak
  *   - <u>, <ins> -> Underline
+ *   - <kbd> -> Kbd
+ *   - <sub> -> Subscript
+ *   - <sup> -> Superscript
  *   - <table>, <thead>, <tbody>, <tr>, <th>, <td>, <colgroup>, <col> -> Table
  *   - <img> without unmodeled attributes -> Image (MarkdownImage)
  *
@@ -18,7 +21,7 @@
  * such as `<img align="left">` or `<a target="_blank">`) are preserved verbatim
  * as raw HTML nodes:
  *   - `rawHtmlBlock`: block-level HTML tokens (e.g. `<details>`, `<div>`, comments)
- *   - `rawHtmlInline`: inline HTML tokens (e.g. `<kbd>`, `<sub>`, `<a>`), where
+ *   - `rawHtmlInline`: inline HTML tokens (e.g. `<a>`), where
  *     opening and closing tags are distinct atom nodes so enclosed text remains
  *     fully editable.
  */
@@ -169,6 +172,7 @@ export const RawHtmlInline = Node.create({
       // Recognized tags handled natively by dedicated extensions:
       if (tagName === "br") return;
       if (tagName === "u" || tagName === "ins") return;
+      if (tagName === "kbd" || tagName === "sub" || tagName === "sup") return;
       if (/^(table|thead|tbody|tfoot|tr|th|td|colgroup|col)$/.test(tagName)) return;
 
       return {

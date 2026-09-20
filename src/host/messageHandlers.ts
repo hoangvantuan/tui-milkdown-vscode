@@ -37,6 +37,7 @@ import { openWikiLink } from "./openWikiLink";
 import { handleExport } from "./exportDocument";
 import { openLocalFileInEditor } from "./openLocalFile";
 import { buildExcludePattern, getDocFolder } from "./workspaceFiles";
+import { findBacklinks } from "./backlinks";
 
 /** What every handler is given: the session, and the provider-level things it cannot own. */
 export interface HandlerContext {
@@ -265,6 +266,14 @@ const handlers: HandlerTable = {
         ctx.session.exportInProgress = value;
       },
     );
+  },
+
+  requestBacklinks: async (_msg, ctx) => {
+    const links = await findBacklinks(ctx.document);
+    ctx.webview.postMessage({
+      type: "backlinks",
+      links,
+    });
   },
 
 };

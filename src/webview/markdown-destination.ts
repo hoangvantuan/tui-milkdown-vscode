@@ -74,11 +74,25 @@ export const MarkdownLink = Link.extend({
   parseMarkdown(token: any, helpers: any) {
     const rawTokens = token.tokens || [];
     const inlineNodes: any[] = [];
+    let currentBatch: any[] = [];
+
+    const flushBatch = () => {
+      if (currentBatch.length === 0) return;
+      const parsed = helpers.parseInline(currentBatch);
+      if (Array.isArray(parsed)) {
+        inlineNodes.push(...parsed);
+      } else if (parsed) {
+        inlineNodes.push(parsed);
+      }
+      currentBatch = [];
+    };
+
     for (const childToken of rawTokens) {
       if (
         (childToken.type === "html" || childToken.type === "rawHtmlInline") &&
         /^<img\b/i.test(childToken.text || childToken.raw || "")
       ) {
+        flushBatch();
         const raw = (childToken.text || childToken.raw || "").trim();
         const imgAttrs = parseHtmlImgAttrs(raw);
         if (imgAttrs && imgAttrs.src) {
@@ -94,13 +108,9 @@ export const MarkdownLink = Link.extend({
           continue;
         }
       }
-      const parsed = helpers.parseInline([childToken]);
-      if (Array.isArray(parsed)) {
-        inlineNodes.push(...parsed);
-      } else if (parsed) {
-        inlineNodes.push(parsed);
-      }
+      currentBatch.push(childToken);
     }
+    flushBatch();
     return applyMarkToNodes("link", inlineNodes, {
       href: token.href,
       title: token.title || null,

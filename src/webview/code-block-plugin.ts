@@ -13,6 +13,32 @@ const CHECK_SVG = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" s
 // Chevron-down SVG icon
 const CHEVRON_SVG = `<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
 
+// Word wrap SVG icon (Lucide-style)
+const WRAP_SVG = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M3 12h15a3 3 0 1 1 0 6h-4"/><polyline points="16 16 14 18 16 20"/><path d="M3 18h7"/></svg>`;
+
+// Line numbers (#) SVG icon
+const LINES_SVG = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>`;
+
+export interface CodeBlockViewState {
+  lineNumbers: boolean;
+  wrap: boolean;
+}
+
+const blockViewStates = new Map<string, CodeBlockViewState>();
+
+export function setCodeBlockViewState(blockKey: string, state: Partial<CodeBlockViewState>): void {
+  const current = blockViewStates.get(blockKey) || { lineNumbers: false, wrap: false };
+  blockViewStates.set(blockKey, { ...current, ...state });
+}
+
+export function getCodeBlockViewState(blockKey: string): CodeBlockViewState {
+  return blockViewStates.get(blockKey) || { lineNumbers: false, wrap: false };
+}
+
+export function resetCodeBlockViewStates(): void {
+  blockViewStates.clear();
+}
+
 // Languages available in the dropdown (matches registered lowlight languages)
 const LANGUAGES = [
   "text", "javascript", "typescript", "python", "html", "css", "json",
@@ -144,13 +170,51 @@ function showLangDropdown(badge: HTMLElement, header: HTMLElement, view: EditorV
 }
 
 /**
+ * Update or remove line numbers gutter inside codeBlock <pre>.
+ */
+function updateLineNumbersGutter(
+  pre: HTMLElement,
+  view: EditorView,
+  header: HTMLElement,
+  show: boolean,
+): void {
+  let gutter = pre.querySelector<HTMLElement>(".code-line-numbers");
+  if (!show) {
+    gutter?.remove();
+    return;
+  }
+
+  if (!gutter) {
+    gutter = document.createElement("div");
+    gutter.className = "code-line-numbers";
+    gutter.setAttribute("aria-hidden", "true");
+    gutter.setAttribute("contenteditable", "false");
+    if (header.nextSibling) {
+      pre.insertBefore(gutter, header.nextSibling);
+    } else {
+      pre.appendChild(gutter);
+    }
+  }
+
+  const nodePos = resolveCodeBlockPos(header, view);
+  const freshNode = nodePos !== null ? view.state.doc.nodeAt(nodePos) : null;
+  const lineCount = (freshNode?.textContent || "").split("\n").length;
+  let html = "";
+  for (let i = 1; i <= lineCount; i++) {
+    html += `<span>${i}</span>`;
+  }
+  gutter.innerHTML = html;
+}
+
+/**
  * Create the header widget DOM element for a code block.
- * Contains language badge (left, clickable) and copy button (right).
+ * Contains language badge (left, clickable), wrap toggle, line numbers toggle, and copy button (right).
  * NOTE: Does NOT capture node/pos — resolves fresh state at click time.
  */
 function createHeaderWidget(
   initialLang: string,
   view: EditorView,
+  blockKey: string,
 ): HTMLElement {
   const el = document.createElement("div");
   el.className = "code-block-header";
@@ -171,6 +235,49 @@ function createHeaderWidget(
     showLangDropdown(lang, el, view);
   });
   el.appendChild(lang);
+
+  // Actions group (wrap toggle, line numbers toggle, copy button)
+  const actions = document.createElement("div");
+  actions.className = "code-header-actions";
+
+  // Wrap button
+  const wrapBtn = document.createElement("button");
+  wrapBtn.className = "code-wrap-btn";
+  wrapBtn.innerHTML = WRAP_SVG;
+  wrapBtn.title = "Toggle line wrap";
+  wrapBtn.setAttribute("aria-label", "Toggle line wrap");
+  wrapBtn.tabIndex = -1;
+
+  wrapBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const pre = el.parentElement?.querySelector("pre") || el.closest("pre") || el.parentElement;
+    if (!pre) return;
+    const isWrap = pre.classList.toggle("code-wrap");
+    wrapBtn.classList.toggle("active", isWrap);
+    setCodeBlockViewState(blockKey, { wrap: isWrap });
+  });
+  actions.appendChild(wrapBtn);
+
+  // Line numbers button
+  const linesBtn = document.createElement("button");
+  linesBtn.className = "code-lines-btn";
+  linesBtn.innerHTML = LINES_SVG;
+  linesBtn.title = "Toggle line numbers";
+  linesBtn.setAttribute("aria-label", "Toggle line numbers");
+  linesBtn.tabIndex = -1;
+
+  linesBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const pre = el.parentElement?.querySelector("pre") || el.closest("pre") || el.parentElement;
+    if (!pre) return;
+    const hasLines = pre.classList.toggle("has-line-numbers");
+    linesBtn.classList.toggle("active", hasLines);
+    updateLineNumbersGutter(pre, view, el, hasLines);
+    setCodeBlockViewState(blockKey, { lineNumbers: hasLines });
+  });
+  actions.appendChild(linesBtn);
 
   // Copy button
   const copyBtn = document.createElement("button");
@@ -208,8 +315,30 @@ function createHeaderWidget(
       copyBtn.classList.remove("copied");
     }, 1500);
   });
+  actions.appendChild(copyBtn);
 
-  el.appendChild(copyBtn);
+  el.appendChild(actions);
+
+  // Restore active view state on render
+  const viewState = getCodeBlockViewState(blockKey);
+  if (viewState.wrap) {
+    wrapBtn.classList.add("active");
+    queueMicrotask(() => {
+      const pre = el.parentElement?.querySelector("pre") || el.closest("pre") || el.parentElement;
+      pre?.classList.add("code-wrap");
+    });
+  }
+  if (viewState.lineNumbers) {
+    linesBtn.classList.add("active");
+    queueMicrotask(() => {
+      const pre = el.parentElement?.querySelector("pre") || el.closest("pre") || el.parentElement;
+      if (pre) {
+        pre.classList.add("has-line-numbers");
+        updateLineNumbersGutter(pre, view, el, true);
+      }
+    });
+  }
+
   return el;
 }
 
@@ -222,17 +351,19 @@ function buildDecorations(
   view: EditorView,
 ): DecorationSet {
   const decorations: Decoration[] = [];
+  let blockIndex = 0;
 
   doc.descendants((node, pos) => {
     if (node.type.name === "codeBlock") {
       // Skip mermaid code blocks (handled by mermaid-plugin)
       if (node.attrs.language === "mermaid") return;
 
+      const blockKey = `cb-${blockIndex++}`;
       const langAttr = node.attrs.language || "";
       const widget = Decoration.widget(
         pos + 1,
-        () => createHeaderWidget(langAttr, view),
-        { side: -1, key: `cb-header-${langAttr}-${node.textContent.length}` }
+        () => createHeaderWidget(langAttr, view, blockKey),
+        { side: -1, key: `cb-header-${blockKey}-${langAttr}-${node.textContent.length}` }
       );
       decorations.push(widget);
     }

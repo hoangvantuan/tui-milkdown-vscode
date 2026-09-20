@@ -17,6 +17,7 @@
  * from Node. Persist webview state with `{ ...getState(), key }`.
  */
 import { Editor, Extension } from "@tiptap/core";
+import { publishTiptapGlobals } from "./tiptap-globals";
 import type {
   WebviewToHostMessage,
   HostToWebviewMessage,
@@ -92,6 +93,12 @@ import { escapeHtml } from "./file-search-utils";
 import { createBubbleMenuExtension } from "./bubble-menu";
 import { initLinkPopover, type LinkPopoverController } from "./link-popover";
 import { SlashCommand, setImageSrcProvider } from "./slash-command-plugin";
+import { EmojiSuggestion } from "./emoji-plugin";
+import { setupDragHandle } from "./drag-handle-plugin";
+import { setupBacklinksPanel, updateBacklinks, refreshBacklinksIfVisible } from "./backlinks-panel";
+import { setupFocusMode, handleFocusModeTransaction } from "./focus-mode";
+import { htmlMarkExtensions } from "./html-marks";
+import { detailsExtensions } from "./details-extension";
 
 // Install unified text escape overrides on MarkdownManager (#97, #99, #100, #101).
 installMarkdownTextEscape();
@@ -1159,6 +1166,11 @@ const customMarked = createCustomMarked();
 
 // Editor initialization
 function initEditor(initialContent: string = ""): Editor | null {
+  // Publish Tiptap and ProseMirror on window BEFORE any lazy artifact can be
+  // injected. An artifact that bundled its own ProseMirror would get its own
+  // PluginKey identities and its own EditorState class, and the mismatch only
+  // shows up at runtime (src/webview/tiptap-globals.ts).
+  publishTiptapGlobals();
 
   const editorEl = getEditorEl();
   if (!editorEl) {
@@ -1298,9 +1310,27 @@ function initEditor(initialContent: string = ""): Editor | null {
         WikiLink,
         WikiLinkSuggestion,
         SlashCommand,
+        EmojiSuggestion,
         RawHtmlBlock,
         RawHtmlInline,
         createBubbleMenuExtension({ onOpenLink: () => linkPopover?.open() }),
+        // --- wave 8 ownership markers (#85) ---------------------------------
+        // Two 3.0 workers add markdown-relevant extensions at the same time, and
+        // this list plus harness/editor.ts must stay mirror images of each other.
+        // Each worker appends INSIDE its own block and touches no other line, so
+        // the two branches merge without a conflict. The import line a block needs
+        // goes at the top of the file as usual; wave 8 forgot to say so and one
+        // worker reached for require() to obey the rule literally.
+        // the two branches merge without a conflict. Delete the markers once 3.0
+        // has shipped and the mirror is stable again.
+        // --- W1: math + footnotes ---
+        ...require("./math-extension").mathExtensions,
+        ...require("./footnote-extension").footnoteExtensions,
+        // --- end W1 ---
+        // --- W2: html whitelist (details / kbd / sub / sup) ---
+        ...htmlMarkExtensions,
+        ...detailsExtensions,
+        // --- end W2 ---
         ...conditionalExtensions,
       ],
       content: initialContent,
@@ -1379,10 +1409,12 @@ function initEditor(initialContent: string = ""): Editor | null {
       },
       onSelectionUpdate: ({ editor: ed }) => {
         updateToolbarActiveState(ed);
+        handleFocusModeTransaction(ed);
       },
       onTransaction: ({ editor: ed, transaction: tr }) => {
         updateToolbarActiveState(ed);
         updateTocFromEditor(ed, tr.docChanged);
+        handleFocusModeTransaction(ed);
         if (tr.docChanged) updateWordCount(ed);
         // Persist collapsed heading state on toggle only
         const collapseMeta = tr.getMeta(collapsePluginKey);
@@ -1394,6 +1426,8 @@ function initEditor(initialContent: string = ""): Editor | null {
     });
 
     hideLoading();
+
+    setupDragHandle(instance);
 
     return instance;
   } catch (error) {
@@ -2082,6 +2116,7 @@ window.addEventListener("message", async (event) => {
             if (editor) {
               linkPopover = initLinkPopover(editor);
               initTocSidebar();
+              setupFocusMode(editor, vscode);
               justInitialized = true;
               // Re-apply font after .tiptap element is created
               const savedFont = vscode.getState()?.fontFamily;
@@ -2128,6 +2163,7 @@ window.addEventListener("message", async (event) => {
             }
             // Update TOC after content change (skip if just initialized — initTocSidebar already did it)
             if (!justInitialized) updateTocFromEditor(editor, true);
+            refreshBacklinksIfVisible();
             // Update search result count if search bar is visible
             const searchBar = document.getElementById("search-bar");
             if (searchBar && !searchBar.classList.contains("hidden")) {
@@ -2282,6 +2318,11 @@ window.addEventListener("message", async (event) => {
         setWikiLinkFiles(message.files, message.currentDocFolder);
       }
       break;
+    case "backlinks":
+      if (Array.isArray(message.links)) {
+        updateBacklinks(message.links);
+      }
+      break;
   }
 });
 
@@ -2361,6 +2402,7 @@ function init() {
   setupSearchBar();
   setupMetadataHandlers();
   setupTocHandlers();
+  setupBacklinksPanel(vscode);
 
   const editorEl = document.getElementById("editor");
   if (editorEl) {

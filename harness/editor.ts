@@ -45,6 +45,8 @@ import { Document } from "@tiptap/extension-document";
 import { Blockquote } from "@tiptap/extension-blockquote";
 import { Markdown, MarkdownManager, extractAbsorbedBlankLines } from "@tiptap/markdown";
 import { Marked } from "marked";
+import { htmlMarkExtensions } from "../src/webview/html-marks";
+import { detailsExtensions } from "../src/webview/details-extension";
 import { createLowlight } from "lowlight";
 import javascript from "highlight.js/lib/languages/javascript";
 import typescript from "highlight.js/lib/languages/typescript";
@@ -368,6 +370,23 @@ function buildMarkdownExtensions(
     WikiLink,
     RawHtmlBlock,
     RawHtmlInline,
+    // --- wave 8 ownership markers (#85) ---------------------------------
+    // Two 3.0 workers add markdown-relevant extensions at the same time, and
+    // this list plus harness/editor.ts must stay mirror images of each other.
+    // Each worker appends INSIDE its own block and touches no other line, so
+    // the two branches merge without a conflict. The import line a block needs
+    // goes at the top of the file as usual; wave 8 forgot to say so and one
+    // worker reached for require() to obey the rule literally.
+    // the two branches merge without a conflict. Delete the markers once 3.0
+    // has shipped and the mirror is stable again.
+    // --- W1: math + footnotes ---
+    ...require("../src/webview/math-extension").mathExtensions,
+    ...require("../src/webview/footnote-extension").footnoteExtensions,
+    // --- end W1 ---
+    // --- W2: html whitelist (details / kbd / sub / sup) ---
+    ...htmlMarkExtensions,
+    ...detailsExtensions,
+    // --- end W2 ---
   ];
 }
 

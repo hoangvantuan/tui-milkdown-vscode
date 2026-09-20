@@ -186,6 +186,22 @@ export const workspace = {
     return [{ uri: Uri.file(currentWorkspaceRoot), name: "root", index: 0 }];
   },
 
+  getWorkspaceFolder(uri: Uri) {
+    if (!currentWorkspaceRoot) return undefined;
+    const folderPath = path.resolve(currentWorkspaceRoot);
+    if (path.resolve(uri.fsPath).startsWith(folderPath)) {
+      return { uri: Uri.file(folderPath), name: "root", index: 0 };
+    }
+    return undefined;
+  },
+
+  asRelativePath(pathOrUri: string | Uri, _includeWorkspaceFolder?: boolean): string {
+    const filePath = typeof pathOrUri === "string" ? pathOrUri : pathOrUri.fsPath;
+    if (!currentWorkspaceRoot) return filePath;
+    const rel = path.relative(currentWorkspaceRoot, filePath).split(path.sep).join("/");
+    return rel;
+  },
+
   getConfiguration(section?: string) {
     const settingsPath = currentWorkspaceRoot
       ? path.join(currentWorkspaceRoot, ".vscode", "settings.json")
