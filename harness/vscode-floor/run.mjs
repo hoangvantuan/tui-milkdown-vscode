@@ -367,6 +367,15 @@ async function probeWebview(session) {
     // not rendered means slow; not even scheduled means the callback never
     // ran, which no timeout can fix (#112).
     mermaidScheduled: document.querySelectorAll('.mermaid-preview[data-mermaid-src]').length,
+    // --- 3.0 lazy artifacts and rendering (#85). KaTeX has the same failure
+    // surface as mermaid: a nonce-bearing <script>, plus a stylesheet whose
+    // font URLs are relative, so it can fail in ways jsdom cannot see. The
+    // math NODES existing while katexRendered is 0 separates "the parser
+    // worked and the renderer did not" from "neither ran".
+    katexRendered: document.querySelectorAll('.tiptap .katex').length,
+    mathNodes: document.querySelectorAll('.tiptap .inline-math, .tiptap .block-math').length,
+    kbdMarks: document.querySelectorAll('.tiptap kbd').length,
+    detailsNodes: document.querySelectorAll('.tiptap details').length,
     hidden: document.hidden,
     visibility: document.visibilityState,
     metadataPanel: !!document.querySelector('#metadata-panel'),
@@ -752,6 +761,127 @@ async function driveSurfaces(evaluate, session, sessions) {
     await sleepShort();
   } catch (err) {
     add("slash command opens a filtered block menu", false, `threw: ${err.message}`);
+  }
+
+  // --- Emoji picker (#133) --------------------------------------------------
+  // Same shape as the slash probe, and the same reason for Input.insertText:
+  // the suggestion plugin watches ProseMirror transactions, not the DOM. This
+  // is also the only automated proof the emoji ARTIFACT loads, because the
+  // dataset is fetched on the first ':' and nothing else in this run triggers
+  // it.
+  try {
+    const placed = await evaluate(`(() => {
+      const root = document.querySelector('.tiptap');
+      if (!root) return 'no .tiptap';
+      const last = root.lastElementChild;
+      if (!last) return 'empty doc';
+      root.focus();
+      const range = document.createRange();
+      range.selectNodeContents(last);
+      range.collapse(false);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      return 'ok';
+    })()`);
+    if (placed !== "ok") throw new Error(`caret: ${placed}`);
+    for (const type of ["keyDown", "keyUp"]) {
+      await session.send("Input.dispatchKeyEvent", {
+        type, key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13,
+      });
+    }
+    await sleepShort();
+    await session.send("Input.insertText", { text: ":smi" });
+    // The dataset is a 529 KB lazy artifact, so the popup cannot appear on the
+    // same tick the way the slash menu does. Poll instead of guessing a delay.
+    let menu = { open: false, items: 0, inContainer: false };
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      await sleepShort();
+      menu = await evaluate(`(() => {
+        const popup = document.querySelector('.emoji-popup');
+        if (!popup) return { open: false, items: 0, inContainer: false };
+        return {
+          open: true,
+          items: popup.querySelectorAll('.suggestion-item, .emoji-item').length,
+          inContainer: !!popup.closest('#editor-container') && !popup.closest('.tiptap'),
+        };
+      })()`);
+      if (menu.open && menu.items > 0) break;
+    }
+    add(
+      "emoji picker loads its lazy dataset and lists matches",
+      menu.open && menu.items >= 1 && menu.inContainer,
+      `open=${menu.open} items=${menu.items} attachedToEditorContainer=${menu.inContainer}`,
+    );
+    for (const type of ["keyDown", "keyUp"]) {
+      await session.send("Input.dispatchKeyEvent", {
+        type, key: "Escape", code: "Escape", windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27,
+      });
+    }
+    await sleepShort();
+  } catch (err) {
+    add("emoji picker loads its lazy dataset and lists matches", false, `threw: ${err.message}`);
+  }
+
+  // --- Drag handle (#133) ---------------------------------------------------
+  // A hover overlay needs a `mousemove` with coordinates INSIDE the target's
+  // rect; a `mouseover` dispatched at the element does not move the pointer
+  // and the handle never appears. That mistake cost this harness a false red
+  // once already, which is why the coordinates are computed from the rect.
+  try {
+    // Earlier probes scroll the document, so the FIRST paragraph is usually
+    // above the viewport by now and a hover at its rect lands at a negative y,
+    // which moves the pointer nowhere. Pick a paragraph that is actually on
+    // screen, and only scroll as a fallback. The first version of this probe
+    // reported working code as broken for exactly that reason.
+    const rect = await evaluate(`(() => {
+      const paragraphs = Array.from(document.querySelectorAll('.tiptap p'));
+      if (paragraphs.length === 0) return null;
+      const fits = (r) =>
+        r.top >= 0 && r.left >= 0 && r.height > 0 &&
+        r.bottom <= (window.innerHeight || 0) && r.right <= (window.innerWidth || 0);
+      let target = paragraphs.find((el) => fits(el.getBoundingClientRect()));
+      if (!target) {
+        target = paragraphs[0];
+        target.scrollIntoView({ block: 'center' });
+      }
+      const r = target.getBoundingClientRect();
+      return {
+        x: Math.round(r.left + r.width / 2),
+        y: Math.round(r.top + r.height / 2),
+        scrolled: !fits(paragraphs[0].getBoundingClientRect()),
+      };
+    })()`);
+    if (!rect) throw new Error("no paragraph to hover");
+    if (rect.y < 0 || rect.x < 0) throw new Error(`paragraph off screen at ${rect.x},${rect.y}`);
+    await session.send("Input.dispatchMouseEvent", {
+      type: "mouseMoved", x: rect.x, y: rect.y, button: "none", clickCount: 0,
+    });
+    // Loading the artifact is a fetch, so poll rather than assume one tick.
+    let handle = { present: false, inContainer: false };
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      await sleepShort();
+      handle = await evaluate(`(() => {
+        const el = document.querySelector('.drag-handle');
+        if (!el) return { present: false, inContainer: false };
+        return {
+          present: true,
+          // AGENTS.md: CSS zoom on .tiptap is transparent to the coordinate
+          // APIs, so anything positioned by script belongs to the unzoomed
+          // #editor-container. Upstream does NOT do this by itself; the
+          // plugin moves it, and this is what proves the move happened.
+          inContainer: !!el.closest('#editor-container') && !el.closest('.tiptap'),
+        };
+      })()`);
+      if (handle.present) break;
+    }
+    add(
+      "drag handle loads lazily and attaches to #editor-container",
+      handle.present && handle.inContainer,
+      `present=${handle.present} attachedToEditorContainer=${handle.inContainer} hoveredAt=${rect.x},${rect.y} scrolledIntoView=${rect.scrolled}`,
+    );
+  } catch (err) {
+    add("drag handle loads lazily and attaches to #editor-container", false, `threw: ${err.message}`);
   }
 
   // --- Bubble menu (#116) ---------------------------------------------------
@@ -1487,6 +1617,7 @@ async function main() {
   const probeStart = Date.now();
   let mountedAt = null;
   let mermaidReadyAt = null;
+  let katexReadyAt = null;
   // Two conditions, two budgets (#112). The mount is fast and MOUNT_TIMEOUT_MS
   // is generous for it; the mermaid artifact is a separate lazily-fetched
   // bundle carrying mermaid plus ELK, and its budget starts when the editor
@@ -1512,9 +1643,15 @@ async function main() {
       deadline = mountedAt + MERMAID_TIMEOUT_MS;
     }
     if (webview && webview.mermaidRendered >= 1 && webview.mermaidStuck === 0) {
-      mermaidReadyAt = Date.now();
-      break;
+      if (mermaidReadyAt === null) mermaidReadyAt = Date.now();
     }
+    // KaTeX is a second lazy artifact on the same budget. Waiting for BOTH
+    // means a mermaid that finishes first cannot end the loop while the
+    // formula is still loading and report a false red for KaTeX.
+    if (webview && webview.katexRendered >= 1) {
+      if (katexReadyAt === null) katexReadyAt = Date.now();
+    }
+    if (mermaidReadyAt !== null && katexReadyAt !== null) break;
   }
 
   // Captured here, not where the checks are built: by then `driveInteractions`
@@ -1618,6 +1755,33 @@ async function main() {
               ? `nothing was ever scheduled, so this is not the budget (see #112: a hidden window gets no animation frame)`
               : `scheduled but unfinished, so this one really is about the budget`)
           : `${counts}; ${sinceMount}ms after mount, nothing left loading, so the artifact did not render`,
+    });
+    // --- 3.0 lazy artifacts (#85) ------------------------------------------
+    // KaTeX renders synchronously once its artifact executes, so a formula
+    // still unrendered at the budget means the artifact never arrived, not
+    // that rendering is slow. mathNodes tells the two halves apart: nodes
+    // present with katexRendered 0 is a renderer failure; no nodes at all is
+    // a parser failure and the markdown side is what to look at.
+    const sinceMountKatex = (katexReadyAt ?? probeEnd) - mountedAt;
+    checks.push({
+      name: "lazy KaTeX artifact loads and renders a formula",
+      ok: webview.katexRendered >= 1 && webview.mathNodes >= 2,
+      detail:
+        `katexRendered=${webview.katexRendered} mathNodes=${webview.mathNodes} ` +
+        `visibility=${webview.visibility}; ` +
+        (katexReadyAt
+          ? `${sinceMountKatex}ms after mount, budget ${MERMAID_TIMEOUT_MS}ms`
+          : webview.mathNodes >= 2
+            ? `NOT RENDERED after ${sinceMountKatex}ms though the math nodes parsed, so the artifact or its stylesheet is what failed`
+            : `the math nodes never parsed, so this is the markdown side, not the artifact`),
+    });
+    // The HTML whitelist (#132) is not lazy, so this is a structure check
+    // only: the tags must be real elements in the live document, not the
+    // raw-HTML badges they were before 3.0.
+    checks.push({
+      name: "whitelisted HTML renders as real elements",
+      ok: webview.kbdMarks >= 1 && webview.detailsNodes >= 1,
+      detail: `kbd=${webview.kbdMarks} details=${webview.detailsNodes} rawHtmlBadges=${webview.rawHtmlBadges}`,
     });
     checks.push({
       name: "toolbar and metadata panel present",
