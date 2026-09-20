@@ -2,7 +2,7 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
-## [Unreleased]
+## [3.0.0] - 2026-09-20
 
 Release 3.0 (#85) extends what the editor RENDERS without extending what it writes to disk. Every heavy renderer is a lazy artifact, the way mermaid has been since 2.15, and the webview startup bundle now has a build gate rather than a convention. Four `agy` workers ran in parallel on four worktrees; every issue below was closed against the coordinator's own measurements, not the worker's report.
 
