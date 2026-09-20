@@ -312,9 +312,9 @@ class DevToolsSession {
     });
     // A pending `send` is settled ONLY by a reply carrying its id, so without
     // this every in-flight command hangs forever the moment the socket goes
-    // away — and a hung await is invisible: node empties its event loop and
+    // away, and a hung await is invisible: node empties its event loop and
     // exits 0, printing nothing, so a run that verified NOTHING reports
-    // success. That is how this was found (#135).
+    // success. That is how this was found.
     this.socket.onclose = () => {
       const closed = new Error("devtools socket closed with the command still in flight");
       for (const { reject } of this.pending.values()) reject(closed);
@@ -583,10 +583,14 @@ async function driveTransientKeystroke(base, session, contextId) {
  * where the pointer is genuinely over a `.tiptap > p`. What the caller asserts
  * is unchanged: the handle must line up with the block under the pointer.
  */
-async function hoverParagraphForHandle(evaluate, session, sleepShort, attempts = 14) {
+async function hoverParagraphForHandle(evaluate, session, sleepShort, beat = () => {}, attempts = 14) {
   let spot = null;
   let handle = { present: false, inContainer: false };
   for (let attempt = 0; attempt < attempts; attempt += 1) {
+    // The host measures patience against the heartbeat, and a retry loop this
+    // long is exactly where a probe goes quiet for minutes when the window is
+    // covered and every evaluate is throttled. Beat per attempt, not per check.
+    beat();
     spot = await evaluate(`(() => {
       // Direct children of .tiptap only. A nested <p> can sit inside a mermaid
       // preview or an alert, and hovering its centre then lands on the wrapper
@@ -648,6 +652,12 @@ async function hoverParagraphForHandle(evaluate, session, sleepShort, attempts =
         top: Math.round(r.top),
         left: Math.round(r.left),
         zoom: root ? getComputedStyle(root).zoom : null,
+        // Upstream coalesces its mousemove handler into requestAnimationFrame
+        // AND latches the id until that frame runs, so a window nothing is
+        // painting leaves the handle frozen wherever it last stood, and no
+        // number of retries can move it. Reported, not asserted: the run is
+        // then measuring the window manager, and this is what says so.
+        visibility: document.visibilityState,
         handlePosition: cs.position,
         handleStyleTop: cs.top,
         // floating-ui writes a TRANSFORM by default and leaves the top style at
@@ -688,6 +698,35 @@ async function driveSurfaces(evaluate, session, sessions, beat = () => {}) {
   };
 
   const sleepShort = () => sleep(400);
+
+  // --- The window is actually on screen -------------------------------------
+  // Chromium runs no animation frames for a window it considers not visible,
+  // and half these surfaces are positioned from inside one. A covered window
+  // therefore does not produce a few odd readings, it produces a dozen reds
+  // that all look like product defects and none of which are: that is exactly
+  // what a run with another window on top printed while this check was being
+  // written. The window is raised at launch, but anything can take the front
+  // in the minutes since, so this raises it again and, either way, SAYS what
+  // it found before the first surface is touched.
+  try {
+    let visibility = await evaluate(`document.visibilityState`);
+    let reraise = "not needed";
+    if (visibility !== "visible") {
+      reraise = await raiseWindow(floorPid);
+      await sleep(1000);
+      visibility = await evaluate(`document.visibilityState`);
+    }
+    add(
+      "the VS Code window is on screen when the surfaces start",
+      visibility === "visible",
+      `visibility=${visibility} reraise=${reraise}; measured ONCE, here: the front ` +
+        `can be taken again later, which is why each drag-handle check reports its own ` +
+        `visibility. Red here means every position-dependent check below is measuring ` +
+        `the window manager rather than the editor`,
+    );
+  } catch (err) {
+    add("the VS Code window is on screen when the surfaces start", false, `threw: ${err.message}`);
+  }
 
   // --- Table context menu, keyboard path (#118) -----------------------------
   // Runs FIRST among the surfaces, because it is the only one that needs the
@@ -972,7 +1011,7 @@ async function driveSurfaces(evaluate, session, sessions, beat = () => {}) {
   // already, which is why the coordinates come from the rect, and why they are
   // re-read before every move (see hoverParagraphForHandle).
   try {
-    const { spot, handle } = await hoverParagraphForHandle(evaluate, session, sleepShort);
+    const { spot, handle } = await hoverParagraphForHandle(evaluate, session, sleepShort, beat);
     // Position is asserted, not just presence. A handle that exists but sits a
     // thousand pixels from its block is not a drag handle, and the
     // existence-only version of this check could not tell the difference.
@@ -991,7 +1030,7 @@ async function driveSurfaces(evaluate, session, sessions, beat = () => {}) {
         `scrolledIntoView=${spot.scrolled} placed=${handle.placed} ` +
         `styleTop=${handle.handleStyleTop} position=${handle.handlePosition} ` +
         `offsetParent=${handle.offsetParent} containerScrollTop=${handle.containerScrollTop} ` +
-        `underPointer=${JSON.stringify(handle.underPointer)} ` +
+        `visibility=${handle.visibility} underPointer=${JSON.stringify(handle.underPointer)} ` +
         `handleLinesUpWith=${JSON.stringify(handle.handleRow)}`,
     );
   } catch (err) {
@@ -1447,7 +1486,7 @@ async function driveSurfaces(evaluate, session, sessions, beat = () => {}) {
       return 'ok';
     })()`);
     await sleep(500);
-    const { spot, handle } = await hoverParagraphForHandle(evaluate, session, sleepShort);
+    const { spot, handle } = await hoverParagraphForHandle(evaluate, session, sleepShort, beat);
     // The handle sits beside the block, so a vertical offset within one block
     // height is correct placement; a zoom bug moves it by a multiple of that.
     const dy = handle.present && handle.top != null ? Math.abs(handle.top - spot.blockTop) : null;
@@ -1459,7 +1498,7 @@ async function driveSurfaces(evaluate, session, sessions, beat = () => {}) {
       `zoom=${handle.zoom} present=${handle.present} attachedToEditorContainer=${handle.inContainer} ` +
         `blockTop=${spot.blockTop} handleTop=${handle.top ?? null} dy=${dy} ` +
         `blockHeight=${spot.blockHeight} placed=${handle.placed} styleTop=${handle.handleStyleTop} ` +
-        `underPointer=${JSON.stringify(handle.underPointer)} ` +
+        `visibility=${handle.visibility} underPointer=${JSON.stringify(handle.underPointer)} ` +
         `handleLinesUpWith=${JSON.stringify(handle.handleRow)}`,
     );
     await evaluate(`(() => { document.getElementById('btn-zoom-reset')?.click(); return 'ok'; })()`);
@@ -1664,8 +1703,15 @@ async function driveSurfaces(evaluate, session, sessions, beat = () => {}) {
         borderRightPx: el ? window.getComputedStyle(el).borderRightWidth : null,
         toggleAfterPanel: !!(el && btn) &&
           (el.compareDocumentPosition(btn) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
-        tocStillLeft: !!(toc && editorRect) &&
-          toc.getBoundingClientRect().left <= editorRect.left,
+        // The TOC is hidden here, so its rect is all zeros and any "is it still
+        // on the left" comparison is vacuously true. Report which side it is on
+        // when it is actually laid out, and assert nothing from it.
+        tocSide: (() => {
+          if (!toc || !editorRect) return "absent";
+          const r = toc.getBoundingClientRect();
+          if (r.width === 0 && r.height === 0) return "hidden";
+          return r.left <= editorRect.left ? "left" : "right";
+        })(),
       };
       const first = el ? el.querySelector('.backlink-entry') : null;
       if (!first) return Object.assign({ entries: 0, label: null, clicked: false }, side);
@@ -1681,12 +1727,12 @@ async function driveSurfaces(evaluate, session, sessions, beat = () => {}) {
       "backlinks panel lists the linking document and opens it on click",
       panel.present && panel.visible && panel.answered && entry.entries >= 1 && entry.clicked &&
         (entry.label || "").toLowerCase().indexOf("links-here") !== -1 &&
-        entry.rightOfEditor && entry.tocStillLeft,
+        entry.rightOfEditor,
       `present=${panel.present} visible=${panel.visible} hostAnswered=${panel.answered} ` +
         `entries=${entry.entries} first=${JSON.stringify(entry.label)} clicked=${entry.clicked} ` +
         `rightOfEditor=${entry.rightOfEditor} panelLeft=${entry.panelLeft} editorRight=${entry.editorRight} ` +
         `borderLeft=${entry.borderLeftPx} borderRight=${entry.borderRightPx} ` +
-        `toggleAfterPanel=${entry.toggleAfterPanel} tocStillLeft=${entry.tocStillLeft}`,
+        `toggleAfterPanel=${entry.toggleAfterPanel} tocSide=${entry.tocSide}`,
     );
     await sleep(600);
     await evaluate(`(() => { document.getElementById('btn-backlinks')?.click(); return 'ok'; })()`);
@@ -1837,14 +1883,18 @@ async function driveSurfaces(evaluate, session, sessions, beat = () => {}) {
 
   // --- Export, both formats (#88 hand-test debt) ----------------------------
   // MOVED here deliberately, and it must stay last. PDF export launches a real
-  // Chromium window, which can end up covering the VS Code window, and a covered
-  // window gets no animation frames. Upstream's drag-handle `mousemove` handler
-  // coalesces into requestAnimationFrame AND latches its rafId until that frame
-  // runs, so a probe driven after this phase can find the handle frozen in place
-  // forever. That is what made "drag handle still tracks its block at a non-100%
-  // zoom" fail on one run and pass on the next, at the same SHA. It is not a
-  // shipped defect: a user cannot hover a window they have covered. It is the
-  // same rAF mechanism AGENTS.md records for #112, #128 and #121, reaching the
+  // Chromium window, and ANY window covering the VS Code one stops its animation
+  // frames: a VS Code left running by an earlier failed run does it just as well,
+  // which is why "pkill the survivors" belongs in the routine. Upstream's
+  // drag-handle `mousemove` handler coalesces into requestAnimationFrame AND
+  // latches its rafId until that frame runs, so a probe driven while the window
+  // is covered finds the handle frozen in place for good, whatever it retries.
+  // That is one of the two things that made "drag handle still tracks its block
+  // at a non-100% zoom" fail on one run and pass on the next at the same SHA;
+  // the other was measuring the block once and hovering in a loop. Neither is a
+  // shipped defect: a user cannot hover a window they have covered. Both probes
+  // now report `visibility` so a future red says which of the two it was. Same
+  // rAF mechanism AGENTS.md records for #112, #128 and #121, reaching the
   // harness instead of the product.
   // Two of the six #88 criteria read "needs a save dialog", which is why nobody
   // ran them. The host stubs `showSaveDialog` and the "Open the file?"
