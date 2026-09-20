@@ -439,6 +439,36 @@ cuộn tài liệu, đoạn văn đó nằm trên khung nhìn, con trỏ không 
 Luật cũ của repo ("hover cần mousemove với toạ độ trong rect") vẫn đúng nhưng chưa đủ:
 **toạ độ trong rect của một phần tử ngoài khung nhìn là toạ độ âm.**
 
+**GIẢI XUNG ĐỘT CSS KIỂU "GIỮ CẢ HAI" LÀM RƠI MỘT DẤU `}`, VÀ KHÔNG GÌ BÁO.** Bốn nhánh
+sóng 8 đều append vào cuối `src/webview/editor.css`, nên `editor.css` xung đột hai lần.
+Tôi giải bằng cách xoá ba dòng marker và giữ cả hai bên, kiểm "có selector đầy đủ nào bị
+định nghĩa hai lần không" rồi commit. Sót một dấu `}` của `.footnote-tooltip`.
+
+Hậu quả không phải là lỗi cú pháp: **CSS lồng nhau là hợp lệ**, nên esbuild build sạch,
+`npm run build`, `npm test`, `npm run roundtrip` đều xanh, và toàn bộ CSS của W3 lẫn W4 sau
+điểm đó lặng lẽ trở thành rule LỒNG. `body.focus-mode #toolbar` thực chất là
+`.footnote-tooltip body.focus-mode #toolbar`, không khớp gì cả. Focus mode ra mắt mà không
+ẩn nổi toolbar.
+
+Hai điều rút ra, cả hai rẻ:
+
+```
+# chốt chặn mười giây, chạy TRƯỚC mỗi commit merge có đụng một file CSS
+python3 -c "s=open('src/webview/editor.css').read(); print(s.count('{'), s.count('}'))"
+# hai con số phải bằng nhau
+```
+
+Và: **đừng nhận một check xanh nhờ nửa điều kiện dễ.** Bản đầu của check focus mode là
+`bodyFlag || toolbarHidden`, và riêng cờ trên `body` đã đủ làm nó xanh trong khi chrome vẫn
+nằm nguyên trên màn hình. Chỉ khi ép nó khẳng định đúng cái chrome, nó mới đỏ và mới lộ ra
+bug. Một check có răng theo phép thử "phá cơ chế thì đỏ" VẪN có thể mù với chính thứ nó
+mang tên, nếu điều kiện của nó là một phép OR có nhánh rẻ tiền.
+
+Chẩn đoán cũng đáng giữ lại: dòng detail của check nay in `matchesRule=` và `sheetRules=`.
+Một rule KHÔNG ÁP và một rule KHÔNG CÓ trông giống hệt nhau từ phía `getComputedStyle`, và
+hai trường đó tách được chúng ra. Lưu ý `sheetRules` có thể bằng 0 chỉ vì webview chặn đọc
+`cssRules` của stylesheet, nên đọc nó cùng `matchesRule`, đừng đọc một mình.
+
 **Phá bốn cơ chế cùng lúc là phép thử răng rẻ hơn bốn lượt.** Một lượt floor check cho ra
 5 đỏ trên 40, và con số 5 chứ không phải 4 mới là thứ đáng giá: check cũ
 `an image with a width` cũng đỏ, vì gỡ whitelist HTML thì `<details>` và `<kbd>` quay về
