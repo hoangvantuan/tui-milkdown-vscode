@@ -1,7 +1,8 @@
 /**
  * Backlinks Panel: displays documents that link to the current one.
  *
- * Modeled after `src/webview/toc-sidebar.ts`.
+ * Modeled after `src/webview/toc-sidebar.ts`, and placed as its mirror: the TOC
+ * opens on the left of the editor, this opens on the right.
  * Renders in `#main-layout`, requests references from extension host via
  * `requestBacklinks`, and navigates to referring documents via `openLink`.
  */
@@ -28,20 +29,13 @@ export function setupBacklinksPanel(vscode: ReturnType<typeof acquireVsCodeApi>)
   const mainLayout = document.getElementById("main-layout");
   if (!mainLayout) return;
 
-  // Create toggle button in main layout (beside TOC toggle)
-  const btnToc = document.getElementById("btn-toc");
+  // Create the toggle button. It is appended at the END of #main-layout, below.
   toggleBtnEl = document.createElement("button");
   toggleBtnEl.id = "btn-backlinks";
   toggleBtnEl.className = "backlinks-toggle-btn";
   toggleBtnEl.title = "Backlinks";
   toggleBtnEl.setAttribute("aria-label", "Toggle Backlinks");
   toggleBtnEl.innerHTML = BACKLINK_ICON_SVG;
-
-  if (btnToc && btnToc.nextSibling) {
-    mainLayout.insertBefore(toggleBtnEl, btnToc.nextSibling);
-  } else {
-    mainLayout.appendChild(toggleBtnEl);
-  }
 
   // Create aside panel container
   panelEl = document.createElement("aside");
@@ -66,13 +60,12 @@ export function setupBacklinksPanel(vscode: ReturnType<typeof acquireVsCodeApi>)
   entriesEl.id = "backlinks-entries";
   panelEl.appendChild(entriesEl);
 
-  // Insert panel after TOC sidebar
-  const tocSidebar = document.getElementById("toc-sidebar");
-  if (tocSidebar && tocSidebar.nextSibling) {
-    mainLayout.insertBefore(panelEl, tocSidebar.nextSibling);
-  } else {
-    mainLayout.appendChild(panelEl);
-  }
+  // #main-layout is a flex row, so DOM order IS left-to-right order. Appending
+  // both at the end puts the panel on the right of the editor and its toggle at
+  // the far right edge, mirroring #btn-toc and #toc-sidebar on the left. The
+  // panel's border is therefore border-LEFT, the mirror of the TOC's.
+  mainLayout.appendChild(panelEl);
+  mainLayout.appendChild(toggleBtnEl);
 
   // Toggle button click handler
   toggleBtnEl.addEventListener("click", () => {

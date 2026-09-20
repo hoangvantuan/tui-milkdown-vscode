@@ -2778,7 +2778,9 @@ body.theme-midnight { --overlay-bg: #c9d1d9; --overlay-fg: #0d1117; }
 #backlinks-panel {
   width: clamp(200px, 18vw, 320px);
   min-width: 200px;
-  border-right: 1px solid rgba(var(--border-rgb, 0, 0, 0), 0.08);
+  /* border-LEFT, not right: this panel sits to the RIGHT of the editor, so the
+     edge that faces the text is its left one. #toc-sidebar is the mirror. */
+  border-left: 1px solid rgba(var(--border-rgb, 0, 0, 0), 0.08);
   overflow-y: auto;
   background: rgba(var(--toolbar-bg-rgb, 255, 255, 255), 0.6);
   color: var(--toolbar-fg, var(--vscode-editor-foreground));
@@ -2788,7 +2790,7 @@ body.theme-midnight { --overlay-bg: #c9d1d9; --overlay-fg: #0d1117; }
 }
 body.dark-theme #backlinks-panel {
   background: rgba(var(--toolbar-bg-rgb, 30, 30, 30), 0.6);
-  border-right-color: rgba(255, 255, 255, 0.08);
+  border-left-color: rgba(255, 255, 255, 0.08);
 }
 #backlinks-panel.hidden { display: none; }
 .backlinks-header {

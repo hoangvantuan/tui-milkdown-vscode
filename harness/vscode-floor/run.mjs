@@ -295,6 +295,9 @@ function freePort() {
   });
 }
 
+/** How long one DevTools command may go unanswered before the run gives up. */
+const SEND_TIMEOUT_MS = 30000;
+
 /** Minimal DevTools-protocol client over one WebSocket. */
 class DevToolsSession {
   constructor(url) {
@@ -307,6 +310,17 @@ class DevToolsSession {
       this.socket.onopen = resolve;
       this.socket.onerror = reject;
     });
+    // A pending `send` is settled ONLY by a reply carrying its id, so without
+    // this every in-flight command hangs forever the moment the socket goes
+    // away — and a hung await is invisible: node empties its event loop and
+    // exits 0, printing nothing, so a run that verified NOTHING reports
+    // success. That is how this was found (#135).
+    this.socket.onclose = () => {
+      const closed = new Error("devtools socket closed with the command still in flight");
+      for (const { reject } of this.pending.values()) reject(closed);
+      this.pending.clear();
+      this.isClosed = true;
+    };
     this.socket.onmessage = (event) => {
       const message = JSON.parse(event.data);
       if (message.id && this.pending.has(message.id)) {
@@ -332,9 +346,21 @@ class DevToolsSession {
   }
 
   send(method, params = {}) {
+    if (this.isClosed) return Promise.reject(new Error(`devtools socket already closed: ${method}`));
     const id = ++this.nextId;
     this.socket.send(JSON.stringify({ id, method, params }));
-    return new Promise((resolve, reject) => this.pending.set(id, { resolve, reject }));
+    return new Promise((resolve, reject) => {
+      // Named, bounded failure beats a silent stall. A command that never gets
+      // an answer used to wedge the whole run; now it says which one it was.
+      // The budget is deliberately far above any real command here: the
+      // slowest, an export click, answers in well under a second.
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`devtools command timed out after ${SEND_TIMEOUT_MS}ms: ${method}`));
+      }, SEND_TIMEOUT_MS);
+      const settle = (fn) => (value) => { clearTimeout(timer); fn(value); };
+      this.pending.set(id, { resolve: settle(resolve), reject: settle(reject) });
+    });
   }
 
   close() {
@@ -541,9 +567,125 @@ async function driveTransientKeystroke(base, session, contextId) {
  * run AFTER the read-only phase has recorded its checks, for the same reason
  * the typing probe does.
  */
-async function driveSurfaces(evaluate, session, sessions) {
+/**
+ * Put the pointer on a plain paragraph and report where the drag handle ended
+ * up, re-measuring before EVERY move.
+ *
+ * Measuring once and then hovering in a loop is what made this probe report
+ * working code as broken: earlier probes leave the caret near the end of the
+ * document, ProseMirror scrolls the caret back into view on its next
+ * transaction, and the coordinates captured before that scroll then land on
+ * whatever block slid under them. A mermaid preview is the usual winner, and
+ * the handle does not attach to one, so the probe compared a handle beside a
+ * paragraph against a diagram nobody was pointing at.
+ *
+ * The loop therefore re-reads the rect each attempt and only accepts a reading
+ * where the pointer is genuinely over a `.tiptap > p`. What the caller asserts
+ * is unchanged: the handle must line up with the block under the pointer.
+ */
+async function hoverParagraphForHandle(evaluate, session, sleepShort, attempts = 14) {
+  let spot = null;
+  let handle = { present: false, inContainer: false };
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    spot = await evaluate(`(() => {
+      // Direct children of .tiptap only. A nested <p> can sit inside a mermaid
+      // preview or an alert, and hovering its centre then lands on the wrapper
+      // rather than on the paragraph.
+      const paragraphs = Array.from(document.querySelectorAll('.tiptap > p'));
+      if (paragraphs.length === 0) return null;
+      const fits = (r) =>
+        r.top >= 0 && r.left >= 0 && r.height > 0 &&
+        r.bottom <= (window.innerHeight || 0) && r.right <= (window.innerWidth || 0);
+      let target = paragraphs.find((el) => fits(el.getBoundingClientRect()));
+      const scrolled = !target;
+      if (!target) {
+        target = paragraphs[0];
+        target.scrollIntoView({ block: 'center' });
+      }
+      const r = target.getBoundingClientRect();
+      const container = document.getElementById('editor-container');
+      return {
+        x: Math.round(r.left + r.width / 2),
+        y: Math.round(r.top + r.height / 2),
+        blockTop: Math.round(r.top),
+        blockHeight: Math.round(r.height),
+        label: 'P:' + (target.textContent || '').trim().slice(0, 18),
+        scrollTop: container ? Math.round(container.scrollTop) : 0,
+        scrolled,
+      };
+    })()`);
+    if (!spot) throw new Error("no paragraph to hover");
+    if (spot.y < 0 || spot.x < 0) throw new Error(`paragraph off screen at ${spot.x},${spot.y}`);
+    // Upstream listens to `mousemove` through handleDOMEvents, and one event at
+    // a standstill is not a move, so the pointer crosses the block.
+    await session.send("Input.dispatchMouseEvent", {
+      type: "mouseMoved", x: spot.x - 12, y: spot.y, button: "none", clickCount: 0,
+    });
+    await session.send("Input.dispatchMouseEvent", {
+      type: "mouseMoved", x: spot.x, y: spot.y, button: "none", clickCount: 0,
+    });
+    await sleepShort();
+    handle = await evaluate(`(() => {
+      const POINTER_X = ${spot.x};
+      const POINTER_Y = ${spot.y};
+      const el = document.querySelector('.drag-handle');
+      const container = document.getElementById('editor-container');
+      const root = document.querySelector('.tiptap');
+      if (!el) return { present: false, inContainer: false, top: null };
+      const r = el.getBoundingClientRect();
+      const cs = getComputedStyle(el);
+      const describe = (b) => b ? b.tagName + ':' + (b.textContent || '').trim().slice(0, 18) : null;
+      const hit = document.elementFromPoint(POINTER_X, POINTER_Y);
+      const mid = r.top + r.height / 2;
+      let best = null; let bestD = Infinity;
+      for (const b of Array.from(document.querySelectorAll('.tiptap > *'))) {
+        const br = b.getBoundingClientRect();
+        const d = Math.abs(br.top + br.height / 2 - mid);
+        if (d < bestD) { bestD = d; best = b; }
+      }
+      return {
+        present: true,
+        top: Math.round(r.top),
+        left: Math.round(r.left),
+        zoom: root ? getComputedStyle(root).zoom : null,
+        handlePosition: cs.position,
+        handleStyleTop: cs.top,
+        // floating-ui writes a TRANSFORM by default and leaves the top style at
+        // 0, so waiting for that to change waits forever. This is what says the
+        // handle has actually been placed. (No backticks in here: they end the
+        // template literal, which AGENTS.md warns about.)
+        placed: cs.top !== "auto" && cs.top !== "0px",
+        containerScrollTop: container ? Math.round(container.scrollTop) : null,
+        offsetParent: el.offsetParent ? (el.offsetParent.id || el.offsetParent.tagName) : null,
+        underPointer: describe(hit && hit.closest ? hit.closest('.tiptap > *') : null),
+        handleRow: describe(best),
+        // AGENTS.md: CSS zoom on .tiptap is transparent to the coordinate APIs,
+        // so anything positioned by script must sit outside the zoomed element.
+        inContainer: !!el.closest('#editor-container') && !el.closest('.tiptap'),
+      };
+    })()`);
+    // Accept only a reading taken with the pointer genuinely on a paragraph AND
+    // with the view still where it was when the pointer moved. The handle is
+    // placed once, in an animation frame after the move; if the editor scrolls
+    // in between (ProseMirror pulling the caret back into view is the usual
+    // cause) the handle is left beside whatever block has moved into its old
+    // row, and the reading measures the scroll, not the handle.
+    const onParagraph = typeof handle.underPointer === "string" && handle.underPointer.startsWith("P:");
+    const stillSteady = handle.containerScrollTop === spot.scrollTop;
+    if (handle.present && handle.placed && onParagraph && stillSteady) break;
+  }
+  return { spot, handle };
+}
+
+async function driveSurfaces(evaluate, session, sessions, beat = () => {}) {
   const results = [];
-  const add = (name, ok, detail) => results.push({ name, ok, detail });
+  // Every recorded check is also a heartbeat. The host waits on THIS, not on a
+  // fixed clock, so adding probes here can never again push the drive past the
+  // other side's patience and lose every check after the tipping point.
+  const add = (name, ok, detail) => {
+    results.push({ name, ok, detail });
+    beat();
+  };
 
   const sleepShort = () => sleep(400);
 
@@ -825,141 +967,37 @@ async function driveSurfaces(evaluate, session, sessions) {
 
   // --- Drag handle (#133) ---------------------------------------------------
   // A hover overlay needs a `mousemove` with coordinates INSIDE the target's
-  // rect; a `mouseover` dispatched at the element does not move the pointer
-  // and the handle never appears. That mistake cost this harness a false red
-  // once already, which is why the coordinates are computed from the rect.
+  // rect; a `mouseover` dispatched at the element does not move the pointer and
+  // the handle never appears. That mistake cost this harness a false red once
+  // already, which is why the coordinates come from the rect, and why they are
+  // re-read before every move (see hoverParagraphForHandle).
   try {
-    // Earlier probes scroll the document, so the FIRST paragraph is usually
-    // above the viewport by now and a hover at its rect lands at a negative y,
-    // which moves the pointer nowhere. Pick a paragraph that is actually on
-    // screen, and only scroll as a fallback. The first version of this probe
-    // reported working code as broken for exactly that reason.
-    const rect = await evaluate(`(() => {
-      // Direct children of .tiptap only. A nested <p> can sit inside a mermaid
-      // preview or an alert, and hovering its centre then lands on the wrapper
-      // rather than on the paragraph, which is what made the first version of
-      // this probe compare the handle against a block the pointer was never on.
-      const paragraphs = Array.from(document.querySelectorAll('.tiptap > p'));
-      if (paragraphs.length === 0) return null;
-      const fits = (r) =>
-        r.top >= 0 && r.left >= 0 && r.height > 0 &&
-        r.bottom <= (window.innerHeight || 0) && r.right <= (window.innerWidth || 0);
-      let target = paragraphs.find((el) => fits(el.getBoundingClientRect()));
-      if (!target) {
-        target = paragraphs[0];
-        target.scrollIntoView({ block: 'center' });
-      }
-      const r = target.getBoundingClientRect();
-      return {
-        x: Math.round(r.left + r.width / 2),
-        y: Math.round(r.top + r.height / 2),
-        blockTop: Math.round(r.top),
-        blockHeight: Math.round(r.height),
-        scrolled: !fits(paragraphs[0].getBoundingClientRect()),
-      };
-    })()`);
-    if (!rect) throw new Error("no paragraph to hover");
-    if (rect.y < 0 || rect.x < 0) throw new Error(`paragraph off screen at ${rect.x},${rect.y}`);
-    // Upstream listens to `mousemove` through handleDOMEvents. One event at a
-    // standstill is not a move, and the handle EXISTS in the DOM from the
-    // moment the plugin registers, so waiting for it to appear proves nothing:
-    // the first version of this probe measured a handle still sitting at its
-    // default top:0, which read as a 1,085px error that was really "never
-    // positioned". Move across the block, then wait for a position to be
-    // WRITTEN, not for the element to exist.
-    // The handle may already be placed against a block some earlier probe
-    // hovered, so "is it placed" is satisfied before this probe does anything.
-    // Record where it starts and wait for it to MOVE.
-    const startTop = await evaluate(`(() => {
-      const el = document.querySelector('.drag-handle');
-      return el ? getComputedStyle(el).top : null;
-    })()`);
-    let handle = { present: false, inContainer: false };
-    for (let attempt = 0; attempt < 12; attempt += 1) {
-      await session.send("Input.dispatchMouseEvent", {
-        type: "mouseMoved", x: rect.x - 12 + attempt * 3, y: rect.y, button: "none", clickCount: 0,
-      });
-      await sleepShort();
-      handle = await evaluate(`(() => {
-        const POINTER_X = ${rect.x};
-        const POINTER_Y = ${rect.y};
-        const el = document.querySelector('.drag-handle');
-        if (!el) return { present: false, inContainer: false, top: null };
-        const r = el.getBoundingClientRect();
-        const wrapper = el.parentElement;
-        const container = document.getElementById('editor-container');
-        // Upstream assigns left/top to the HANDLE element itself, not to any
-        // wrapper, so that is what says it has been placed.
-        const cs = getComputedStyle(el);
-        return {
-          present: true,
-          top: Math.round(r.top),
-          left: Math.round(r.left),
-          wrapperParent: wrapper?.parentElement?.id || wrapper?.parentElement?.className || null,
-          handlePosition: cs.position,
-          handleStyleTop: cs.top,
-          // floating-ui writes a TRANSFORM by default and leaves the top
-          // style at 0, so waiting for that to change waits forever. This is
-          // what says the handle has actually been placed. (No backticks in
-          // here: they end the template literal, which AGENTS.md warns about
-          // and which this comment cost on its first draft.)
-          placed: cs.top !== "auto" && cs.top !== "0px",
-          containerScrollTop: container ? Math.round(container.scrollTop) : null,
-          // What is actually under the pointer, and which block the handle
-          // lines up with. Comparing those two is the only way to tell "the
-          // handle is misplaced" from "the probe hovered the wrong block".
-          underPointer: (() => {
-            const hit = document.elementFromPoint(POINTER_X, POINTER_Y);
-            const block = hit && hit.closest ? hit.closest('.tiptap > *') : null;
-            return block ? block.tagName + ':' + (block.textContent || '').trim().slice(0, 18) : null;
-          })(),
-          handleRow: (() => {
-            const mid = r.top + r.height / 2;
-            const blocks = Array.from(document.querySelectorAll('.tiptap > *'));
-            let best = null; let bestD = Infinity;
-            for (const b of blocks) {
-              const br = b.getBoundingClientRect();
-              const d = Math.abs(br.top + br.height / 2 - mid);
-              if (d < bestD) { bestD = d; best = b; }
-            }
-            return best ? best.tagName + ':' + (best.textContent || '').trim().slice(0, 18) : null;
-          })(),
-          offsetParent: wrapper?.offsetParent?.id || wrapper?.offsetParent?.tagName || null,
-          // AGENTS.md: CSS zoom on .tiptap is transparent to the coordinate
-          // APIs, so anything positioned by script must sit outside the
-          // zoomed element. Upstream already puts the wrapper in #editor,
-          // which is inside #editor-container and is not the zoomed one.
-          inContainer: !!el.closest('#editor-container') && !el.closest('.tiptap'),
-        };
-      })()`);
-      if (handle.present && handle.placed && handle.handleStyleTop !== startTop) break;
-    }
+    const { spot, handle } = await hoverParagraphForHandle(evaluate, session, sleepShort);
     // Position is asserted, not just presence. A handle that exists but sits a
-    // thousand pixels away from its block is not a drag handle, and the
+    // thousand pixels from its block is not a drag handle, and the
     // existence-only version of this check could not tell the difference.
-    const dyHandle = handle.present && handle.top != null ? Math.abs(handle.top - rect.blockTop) : null;
+    const dyHandle = handle.present && handle.top != null ? Math.abs(handle.top - spot.blockTop) : null;
     // The claim is "the handle follows the block you are pointing at", so the
     // comparison is against the block UNDER THE POINTER, not against the one
     // this probe picked out of the DOM. Those differ the moment anything
-    // overlays the pick, and the difference is a probe bug, not a product bug.
+    // overlays the pick, and that difference is a probe bug, not a product bug.
     const followsPointer =
       handle.underPointer != null && handle.handleRow != null && handle.underPointer === handle.handleRow;
     add(
       "drag handle loads lazily and follows the block under the pointer",
       handle.present && handle.inContainer && followsPointer,
       `present=${handle.present} attachedToEditorContainer=${handle.inContainer} ` +
-        `hoveredAt=${rect.x},${rect.y} handleTop=${handle.top ?? null} dy(vs picked block)=${dyHandle} ` +
-        `scrolledIntoView=${rect.scrolled} ` +
-        `parent=${handle.wrapperParent} placed=${handle.placed} ` +
-        `styleTop=${startTop}->${handle.handleStyleTop} ` +
-        `position=${handle.handlePosition} offsetParent=${handle.offsetParent} ` +
-        `containerScrollTop=${handle.containerScrollTop} ` +
+        `hoveredAt=${spot.x},${spot.y} handleTop=${handle.top ?? null} dy(vs hovered block)=${dyHandle} ` +
+        `scrolledIntoView=${spot.scrolled} placed=${handle.placed} ` +
+        `styleTop=${handle.handleStyleTop} position=${handle.handlePosition} ` +
+        `offsetParent=${handle.offsetParent} containerScrollTop=${handle.containerScrollTop} ` +
         `underPointer=${JSON.stringify(handle.underPointer)} ` +
         `handleLinesUpWith=${JSON.stringify(handle.handleRow)}`,
     );
   } catch (err) {
     add("drag handle loads lazily and follows the block under the pointer", false, `threw: ${err.message}`);
   }
+
 
   // --- Bubble menu (#116) ---------------------------------------------------
   try {
@@ -1397,11 +1435,11 @@ async function driveSurfaces(evaluate, session, sessions) {
 
 
   // --- Drag handle at a zoom other than 1.0 (#133) ---------------------------
-  // The handle is positioned by script and lives in #editor-container, which is
-  // NOT zoomed, while .tiptap is. If the plugin ever reads a coordinate from
-  // inside the zoomed subtree the handle drifts away from its block, and it
-  // drifts by a factor, so the error is invisible at zoom 1.0. Same shape as
-  // the bubble-menu zoom check, and the same reason it exists.
+  // The handle is positioned by script and lives outside the zoomed .tiptap. If
+  // the plugin ever read a coordinate from inside the zoomed subtree the handle
+  // would drift from its block BY A FACTOR, so the error is invisible at zoom
+  // 1.0. Same shape as the bubble-menu zoom check, and the same reason it
+  // exists.
   try {
     await evaluate(`(() => {
       const btn = document.getElementById('btn-zoom-in');
@@ -1409,82 +1447,27 @@ async function driveSurfaces(evaluate, session, sessions) {
       return 'ok';
     })()`);
     await sleep(500);
-    const spot = await evaluate(`(() => {
-      const paragraphs = Array.from(document.querySelectorAll('.tiptap > p'));
-      const fits = (r) => r.top >= 0 && r.height > 0 && r.bottom <= (window.innerHeight || 0);
-      let target = paragraphs.find((el) => fits(el.getBoundingClientRect()));
-      if (!target) {
-        target = paragraphs[0];
-        if (!target) return null;
-        target.scrollIntoView({ block: 'center' });
-      }
-      const r = target.getBoundingClientRect();
-      return {
-        x: Math.round(r.left + r.width / 2),
-        y: Math.round(r.top + r.height / 2),
-        blockTop: Math.round(r.top),
-        blockLeft: Math.round(r.left),
-        blockHeight: Math.round(r.height),
-      };
-    })()`);
-    if (!spot) throw new Error("no paragraph to hover at zoom");
-    const startTopZoom = await evaluate(`(() => {
-      const el = document.querySelector('.drag-handle');
-      return el ? getComputedStyle(el).top : null;
-    })()`);
-    let z = { present: false };
-    for (let attempt = 0; attempt < 12; attempt += 1) {
-      await session.send("Input.dispatchMouseEvent", {
-        type: "mouseMoved", x: spot.x - 12 + attempt * 3, y: spot.y, button: "none", clickCount: 0,
-      });
-      await sleepShort();
-      z = await evaluate(`(() => {
-        const POINTER_X = ${spot.x};
-        const POINTER_Y = ${spot.y};
-        const el = document.querySelector('.drag-handle');
-        const root = document.querySelector('.tiptap');
-        if (!el) return { present: false, zoom: getComputedStyle(root).zoom };
-        const r = el.getBoundingClientRect();
-        const describe = (b) => b ? b.tagName + ':' + (b.textContent || '').trim().slice(0, 18) : null;
-        const hit = document.elementFromPoint(POINTER_X, POINTER_Y);
-        const mid = r.top + r.height / 2;
-        let best = null; let bestD = Infinity;
-        for (const b of Array.from(document.querySelectorAll('.tiptap > *'))) {
-          const br = b.getBoundingClientRect();
-          const d = Math.abs(br.top + br.height / 2 - mid);
-          if (d < bestD) { bestD = d; best = b; }
-        }
-        return {
-          present: true,
-          zoom: getComputedStyle(root).zoom,
-          handleTop: Math.round(r.top),
-          handleLeft: Math.round(r.left),
-          placed: getComputedStyle(el).top !== 'auto' && getComputedStyle(el).top !== '0px',
-          styleTop: getComputedStyle(el).top,
-          underPointer: describe(hit && hit.closest ? hit.closest('.tiptap > *') : null),
-          handleRow: describe(best),
-          inContainer: !!el.closest('#editor-container') && !el.closest('.tiptap'),
-        };
-      })()`);
-      if (z.present && z.placed && z.styleTop !== startTopZoom) break;
-    }
+    const { spot, handle } = await hoverParagraphForHandle(evaluate, session, sleepShort);
     // The handle sits beside the block, so a vertical offset within one block
     // height is correct placement; a zoom bug moves it by a multiple of that.
-    const dy = z.present ? Math.abs(z.handleTop - spot.blockTop) : null;
-    const followsAtZoom = z.underPointer != null && z.handleRow != null && z.underPointer === z.handleRow;
+    const dy = handle.present && handle.top != null ? Math.abs(handle.top - spot.blockTop) : null;
+    const followsAtZoom =
+      handle.underPointer != null && handle.handleRow != null && handle.underPointer === handle.handleRow;
     add(
       "drag handle still tracks its block at a non-100% zoom",
-      z.present && z.inContainer && followsAtZoom,
-      `zoom=${z.zoom} present=${z.present} attachedToEditorContainer=${z.inContainer ?? false} ` +
-        `blockTop=${spot.blockTop} handleTop=${z.handleTop ?? null} dy=${dy} ` +
-        `blockHeight=${spot.blockHeight} placed=${z.placed} styleTop=${startTopZoom}->${z.styleTop} ` +
-        `underPointer=${JSON.stringify(z.underPointer)} handleLinesUpWith=${JSON.stringify(z.handleRow)}`,
+      handle.present && handle.inContainer && followsAtZoom,
+      `zoom=${handle.zoom} present=${handle.present} attachedToEditorContainer=${handle.inContainer} ` +
+        `blockTop=${spot.blockTop} handleTop=${handle.top ?? null} dy=${dy} ` +
+        `blockHeight=${spot.blockHeight} placed=${handle.placed} styleTop=${handle.handleStyleTop} ` +
+        `underPointer=${JSON.stringify(handle.underPointer)} ` +
+        `handleLinesUpWith=${JSON.stringify(handle.handleRow)}`,
     );
     await evaluate(`(() => { document.getElementById('btn-zoom-reset')?.click(); return 'ok'; })()`);
     await sleep(400);
   } catch (err) {
     add("drag handle still tracks its block at a non-100% zoom", false, `threw: ${err.message}`);
   }
+
 
   // --- KaTeX fonts actually load (#131) -------------------------------------
   // The render check proves the artifact ran and produced .katex elements. It
@@ -1662,24 +1645,48 @@ async function driveSurfaces(evaluate, session, sessions) {
     // panel must list exactly that, and clicking it must ask the host to open
     // it. The host asserts the open on its side; this side asserts the entry
     // existed and was clickable.
+    // Where it sits is asserted, not eyeballed: the panel opens on the RIGHT of
+    // the editor, the mirror of #toc-sidebar on the left. DOM order in the
+    // #main-layout flex row is what decides it, so a future insertBefore that
+    // put it back on the left would pass every other assertion here.
     const entry = await evaluate(`(() => {
       const el = document.getElementById('backlinks-panel');
+      const editor = document.getElementById('editor-container');
+      const toc = document.getElementById('toc-sidebar');
+      const btn = document.getElementById('btn-backlinks');
+      const panelRect = el ? el.getBoundingClientRect() : null;
+      const editorRect = editor ? editor.getBoundingClientRect() : null;
+      const side = {
+        panelLeft: panelRect ? Math.round(panelRect.left) : null,
+        editorRight: editorRect ? Math.round(editorRect.right) : null,
+        rightOfEditor: !!(panelRect && editorRect) && panelRect.left >= editorRect.right - 1,
+        borderLeftPx: el ? window.getComputedStyle(el).borderLeftWidth : null,
+        borderRightPx: el ? window.getComputedStyle(el).borderRightWidth : null,
+        toggleAfterPanel: !!(el && btn) &&
+          (el.compareDocumentPosition(btn) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
+        tocStillLeft: !!(toc && editorRect) &&
+          toc.getBoundingClientRect().left <= editorRect.left,
+      };
       const first = el ? el.querySelector('.backlink-entry') : null;
-      if (!first) return { entries: 0, label: null, clicked: false };
+      if (!first) return Object.assign({ entries: 0, label: null, clicked: false }, side);
       const label = (first.textContent || '').trim().slice(0, 40);
       first.click();
-      return {
+      return Object.assign({
         entries: el.querySelectorAll('.backlink-entry').length,
         label,
         clicked: true,
-      };
+      }, side);
     })()`);
     add(
       "backlinks panel lists the linking document and opens it on click",
       panel.present && panel.visible && panel.answered && entry.entries >= 1 && entry.clicked &&
-        (entry.label || "").toLowerCase().indexOf("links-here") !== -1,
+        (entry.label || "").toLowerCase().indexOf("links-here") !== -1 &&
+        entry.rightOfEditor && entry.tocStillLeft,
       `present=${panel.present} visible=${panel.visible} hostAnswered=${panel.answered} ` +
-        `entries=${entry.entries} first=${JSON.stringify(entry.label)} clicked=${entry.clicked}`,
+        `entries=${entry.entries} first=${JSON.stringify(entry.label)} clicked=${entry.clicked} ` +
+        `rightOfEditor=${entry.rightOfEditor} panelLeft=${entry.panelLeft} editorRight=${entry.editorRight} ` +
+        `borderLeft=${entry.borderLeftPx} borderRight=${entry.borderRightPx} ` +
+        `toggleAfterPanel=${entry.toggleAfterPanel} tocStillLeft=${entry.tocStillLeft}`,
     );
     await sleep(600);
     await evaluate(`(() => { document.getElementById('btn-backlinks')?.click(); return 'ok'; })()`);
@@ -1978,7 +1985,16 @@ async function driveInteractions(base, session, contextId, sessions) {
     // 2. Operate each 2.17 surface. These report as their own checks rather
     //    than folding into this one, so a broken lightbox does not read as a
     //    broken slash menu.
-    surfaces.push(...(await driveSurfaces(evaluate, session, sessions)));
+    const progressMarker = path.join(base, "phase-progress");
+    const beat = () => {
+      try {
+        fs.writeFileSync(progressMarker, String(Date.now()), "utf8");
+      } catch {
+        /* the base is gone; the run is over anyway */
+      }
+    };
+    beat();
+    surfaces.push(...(await driveSurfaces(evaluate, session, sessions, beat)));
 
     // 3. Click the view-source button, the cheapest host dispatch there is.
     const clicked = await evaluate(`(() => {
@@ -2061,6 +2077,11 @@ function tick(ok) {
 }
 
 async function main() {
+  // A stalled await leaves node with an empty event loop, and node then exits
+  // with whatever `process.exitCode` holds: 0 by default. Claiming success
+  // while having checked nothing is the worst thing this harness could do, so
+  // the default is failure and the value below is what earns a green.
+  process.exitCode = 1;
   const version = floorVersion();
   console.log(`VS Code floor check — target version ${version}`);
 

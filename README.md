@@ -55,7 +55,7 @@ Resizable tables with multi-line cell content. Right-click context menu for row/
 - **Search and Replace** (`Cmd/Ctrl+F`): find with match highlighting, next/prev navigation and a match counter; the replace row adds replace, replace all and a case-sensitive toggle
 - **Link Navigation** — `Cmd+Click` / `Ctrl+Click` to follow links, scroll to headings, open files, or launch URLs
 - **Table of Contents** — Sidebar with click-to-scroll, active heading tracking, collapse/expand
-- **Backlinks**: panel listing every workspace document that links here through `[[wiki links]]` or `@` mentions; click one to open it
+- **Backlinks**: a panel on the right listing every workspace document that links here through `[[wiki links]]` or `@` mentions; click one to open it
 - **Wiki Links** — Type `[[` for autocomplete over the workspace's Markdown files; `[[Page]]` links resolve on click, and following one that does not exist offers to create it next to the current document
 - **File Mentions** — Type `@` to search any file in the workspace and insert a relative link
 
