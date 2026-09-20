@@ -682,7 +682,23 @@ async function hoverParagraphForHandle(evaluate, session, sleepShort, beat = () 
     // row, and the reading measures the scroll, not the handle.
     const onParagraph = typeof handle.underPointer === "string" && handle.underPointer.startsWith("P:");
     const stillSteady = handle.containerScrollTop === spot.scrollTop;
-    if (handle.present && handle.placed && onParagraph && stillSteady) break;
+    // The handle is placed in an animation frame AFTER the move, so a reading
+    // taken the instant the pointer is right can still show it at its previous
+    // block. Waiting for the pointer alone accepted exactly that and the check
+    // then failed on a handle that was merely one frame behind. Keep hovering
+    // until it lines up; a handle that never does exhausts the attempts and the
+    // caller reports the last reading, which is the red that matters.
+    const linesUp = handle.underPointer != null && handle.underPointer === handle.handleRow;
+    if (handle.present && handle.placed && onParagraph && stillSteady && linesUp) break;
+    // A window that lost the front mid-run gets no animation frames, the
+    // placement never runs and no number of retries can fix it: the gate at the
+    // top of driveSurfaces measures once and something took the front after it.
+    // Raise it again here rather than spending the remaining attempts measuring
+    // the window manager.
+    if (handle.visibility && handle.visibility !== "visible") {
+      await raiseWindow(floorPid);
+      await sleep(600);
+    }
   }
   return { spot, handle };
 }
@@ -1173,27 +1189,39 @@ async function driveSurfaces(evaluate, session, sessions, beat = () => {}) {
     // clientX/clientY fall inside an image's bounding rect, not by a mouseover
     // on the image. A synthetic event with no coordinates lands at 0,0 and
     // matches nothing, which is what the first version of this probe sent.
-    const hovered = await evaluate(`(() => {
-      const editorEl = document.querySelector('.tiptap');
-      const img = editorEl?.querySelector('img');
-      if (!img) return 'no image';
-      const r = img.getBoundingClientRect();
-      if (r.width === 0 || r.height === 0) return 'image has no layout box';
-      const at = { bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 };
-      editorEl.dispatchEvent(new MouseEvent('mousemove', at));
-      return 'ok';
-    })()`);
-    if (hovered !== "ok") throw new Error(hovered);
-    await sleep(500);
-    const opened = await evaluate(`(() => {
-      const overlay = document.querySelector('.image-edit-overlay');
-      if (!overlay) return 'no hover overlay';
-      if (!overlay.classList.contains('visible')) return 'hover overlay never became visible';
-      const btn = overlay.querySelector('.image-expand-btn');
-      if (!btn) return 'no expand button in the overlay';
-      btn.click();
-      return 'ok';
-    })()`);
+    // Re-dispatch and re-read rather than hovering once and judging: earlier
+    // probes scroll and relayout the document, the overlay is shown from a
+    // handler that runs after the move, and a single shot 500ms later reported
+    // "hover overlay never became visible" on a release run for no other
+    // reason. The rect is re-measured every attempt for the same reason the
+    // drag-handle helper does it.
+    let hovered = "no image";
+    let opened = "hover overlay never became visible";
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      hovered = await evaluate(`(() => {
+        const editorEl = document.querySelector('.tiptap');
+        const img = editorEl?.querySelector('img');
+        if (!img) return 'no image';
+        const r = img.getBoundingClientRect();
+        if (r.width === 0 || r.height === 0) return 'image has no layout box';
+        const at = { bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 };
+        editorEl.dispatchEvent(new MouseEvent('mousemove', at));
+        return 'ok';
+      })()`);
+      if (hovered !== "ok") throw new Error(hovered);
+      await sleep(400);
+      opened = await evaluate(`(() => {
+        const overlay = document.querySelector('.image-edit-overlay');
+        if (!overlay) return 'no hover overlay';
+        if (!overlay.classList.contains('visible')) return 'hover overlay never became visible';
+        const btn = overlay.querySelector('.image-expand-btn');
+        if (!btn) return 'no expand button in the overlay';
+        btn.click();
+        return 'ok';
+      })()`);
+      if (opened === "ok") break;
+      beat();
+    }
     if (opened !== "ok") throw new Error(opened);
     // Poll rather than read once at a fixed delay. The focus is scheduled by
     // whichever of an animation frame and a 50ms timer arrives first, and a
@@ -1813,9 +1841,18 @@ async function driveSurfaces(evaluate, session, sessions, beat = () => {}) {
   // the gesture is driven as DOM DragEvents instead, which is what both
   // upstream's onDragStart and ProseMirror's own drop handler listen for.
   try {
-    const result = await evaluate(`(() => {
+    // Put the handle on a known block first. This probe used to read whatever
+    // position the previous one left behind, and a handle stranded by a covered
+    // window then named a source block the drag never touched: `moved=true`
+    // with `index 1->1`. The helper settles it, re-raising the window if that
+    // is what is in the way.
+    await evaluate(`(() => {
       const container = document.getElementById('editor-container');
       if (container) container.scrollTop = 0;
+      return 'ok';
+    })()`);
+    await hoverParagraphForHandle(evaluate, session, sleepShort, beat);
+    const result = await evaluate(`(() => {
       const blocks = Array.from(document.querySelectorAll('.tiptap > *'))
         .filter((b) => (b.textContent || '').trim().length > 0);
       if (blocks.length < 2) return { ok: false, why: 'fewer than two non-empty blocks' };
@@ -1837,7 +1874,16 @@ async function driveSurfaces(evaluate, session, sessions, beat = () => {}) {
         const d = Math.abs(br.top + br.height / 2 - mid);
         if (d < bestD) { bestD = d; source = b; }
       }
-      const target = blocks.find((b) => b !== source) || blocks[1];
+      // The FARTHEST block, not the first one that is not the source. The drop
+      // lands at the target's bottom edge, so an adjacent target means dropping
+      // the block exactly where it already sits: a correct no-op that reads as
+      // a broken drag. That is what "moved=false index 1->1" was.
+      const si = blocks.indexOf(source);
+      let target = blocks[0]; let farthest = -1;
+      for (let i = 0; i < blocks.length; i += 1) {
+        const d = Math.abs(i - si);
+        if (d > farthest) { farthest = d; target = blocks[i]; }
+      }
       const tr = target.getBoundingClientRect();
       const dt = new DataTransfer();
       const at = (type, x, y, el) => el.dispatchEvent(new DragEvent(type, {
