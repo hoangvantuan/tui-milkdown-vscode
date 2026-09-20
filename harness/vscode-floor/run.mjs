@@ -1354,6 +1354,110 @@ async function driveSurfaces(evaluate, session, sessions) {
     add("export button could be driven for both formats", false, `threw: ${err.message}`);
   }
 
+  // --- Backlinks panel (#134) -----------------------------------------------
+  // The panel's content arrives over a host message round trip, so this is the
+  // only automated proof that the new message kind and its handler are wired.
+  // The sample workspace holds no document linking to sample.md, so an EMPTY
+  // panel is the correct result; what is asserted is that the panel opened and
+  // the host answered, not a count.
+  try {
+    const opened = await evaluate(`(() => {
+      const btn = document.getElementById('btn-backlinks');
+      if (!btn) return 'no #btn-backlinks';
+      btn.click();
+      return 'ok';
+    })()`);
+    if (opened !== "ok") throw new Error(opened);
+    let panel = { present: false, visible: false, answered: false };
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      await sleepShort();
+      panel = await evaluate(`(() => {
+        const el = document.getElementById('backlinks-panel');
+        if (!el) return { present: false, visible: false, answered: false };
+        const style = window.getComputedStyle(el);
+        return {
+          present: true,
+          visible: !el.classList.contains('hidden') &&
+            style.display !== 'none' && style.visibility !== 'hidden',
+          // Either a list of results or an explicit empty state counts as an
+          // answer; a panel still showing its loading state does not.
+          answered: !el.textContent.includes('Loading') && el.textContent.trim().length > 0,
+        };
+      })()`);
+      if (panel.present && panel.answered) break;
+    }
+    add(
+      "backlinks panel opens and the host answers",
+      panel.present && panel.visible && panel.answered,
+      `present=${panel.present} visible=${panel.visible} hostAnswered=${panel.answered}`,
+    );
+    await evaluate(`(() => { document.getElementById('btn-backlinks')?.click(); return 'ok'; })()`);
+    await sleepShort();
+  } catch (err) {
+    add("backlinks panel opens and the host answers", false, `threw: ${err.message}`);
+  }
+
+  // --- Focus mode (#134) ----------------------------------------------------
+  // Toggled last, and toggled back off, because it hides the chrome every
+  // probe above depends on.
+  try {
+    const clicked = await evaluate(`(() => {
+      const btn = document.getElementById('btn-focus');
+      if (!btn) return 'no #btn-focus';
+      btn.click();
+      return 'ok';
+    })()`);
+    if (clicked !== "ok") throw new Error(clicked);
+    await sleepShort();
+    const on = await evaluate(`(() => {
+      const hiddenNow = (id) => {
+        const el = document.getElementById(id);
+        if (!el) return 'absent';
+        const style = window.getComputedStyle(el);
+        return style.display === 'none' || style.visibility === 'hidden' ||
+          parseFloat(style.opacity || '1') === 0 ? 'hidden' : style.display;
+      };
+      return {
+        bodyClass: document.body.className,
+        bodyFlag: document.body.classList.contains('focus-mode'),
+        toolbar: hiddenNow('toolbar'),
+        toolbarMatches: !!document.getElementById('toolbar')?.matches('body.focus-mode #toolbar'),
+        ruleCount: (() => {
+          let n = 0;
+          for (const sheet of Array.from(document.styleSheets)) {
+            try {
+              for (const rule of Array.from(sheet.cssRules)) {
+                if (rule.selectorText && rule.selectorText.indexOf('focus-mode #toolbar') !== -1) n += 1;
+              }
+            } catch (e) { /* cross-origin sheet */ }
+          }
+          return n;
+        })(),
+        toc: hiddenNow('toc-sidebar'),
+        progress: hiddenNow('reading-progress'),
+        exitButton: !!document.getElementById('btn-focus-exit'),
+      };
+    })()`);
+    await evaluate(`(() => {
+      const exit = document.getElementById('btn-focus-exit') || document.getElementById('btn-focus');
+      exit?.click();
+      return 'ok';
+    })()`);
+    await sleepShort();
+    const off = await evaluate(`(() => {
+      const toolbar = document.getElementById('toolbar');
+      const style = toolbar ? window.getComputedStyle(toolbar) : null;
+      return !!style && style.display !== 'none' && style.visibility !== 'hidden';
+    })()`);
+    add(
+      "focus mode hides the chrome and gives it back",
+      on.bodyFlag && on.toolbar === "hidden" && on.progress !== "block" && on.exitButton && off,
+      `bodyFlag=${on.bodyFlag} toolbar=${on.toolbar} matchesRule=${on.toolbarMatches} sheetRules=${on.ruleCount} toc=${on.toc} progress=${on.progress} ` +
+        `exitButton=${on.exitButton} restored=${off} bodyClass=${JSON.stringify(on.bodyClass.slice(0, 60))}`,
+    );
+  } catch (err) {
+    add("focus mode hides the chrome and gives it back", false, `threw: ${err.message}`);
+  }
 
   return results;
 }

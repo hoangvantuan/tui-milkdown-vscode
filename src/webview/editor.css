@@ -2677,6 +2677,8 @@ body.theme-midnight { --overlay-bg: #c9d1d9; --overlay-fg: #0d1117; }
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
   pointer-events: none;
   word-break: break-word;
+}
+
 /* Drag handle (#133) */
 .drag-handle {
   display: flex;
