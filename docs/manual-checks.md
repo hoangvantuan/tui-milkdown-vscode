@@ -209,34 +209,57 @@ Cần `tuiMarkdown.autoRenameImages` đang bật (mặc định bật).
 - [ ] Đổi cả THƯ MỤC (không chỉ tên file): thao tác này cố ý bị từ chối, chỉ đổi tên
       trong cùng thư mục mới tự động.
 
-### C4. Xoá ảnh khỏi markdown thì file vào Thùng rác (#88): MỘT NỬA ĐÃ TỰ ĐỘNG
+### C4. Xoá ảnh khỏi markdown thì file vào Thùng rác (#88, #126): GẦN NHƯ ĐÃ TỰ ĐỘNG
 
-Floor check `removing an image from the markdown deletes the file on save` dựng hai ảnh
-PNG 1 pixel, lưu một lần để chúng vào `originalImagePaths`, rồi bỏ cả hai tham chiếu và
-lưu lại. Nó báo:
+Bốn floor check đứng ở mục này. Ba cái đo ba nhánh của `autoDeleteImages`, một cái tách
+bạch API khỏi mã của extension:
 
 ```
-baselined=true loneImageDeleted=true foundIn~/.Trash=no;
-imageStillUsedByFloorOther.mdDeleted=true
+vscode.workspace.fs.delete accepts useTrash in this host
+  deleted=true threw=no landedIn=nowhere found (HOME=/Users/tuanhv, ~/.Trash:1entries ...)
+
+removing an image from the markdown deletes the file on save
+  baselined=true loneImageDeleted=true trashedTo=nowhere found (...);
+  sharedImageSurvived=true prompts=1 namedOther=true loneAlreadyGoneWhenAsked=true
+
+answering the prompt deletes the shared image after all
+  prompts=1 sharedImageDeleted=true
+
+an image put back while the prompt is open survives the answer
+  prompts=1 referencePutBackDuringPrompt=true imageSurvivedTheYes=true
 ```
 
-Hai điều rút ra. Một, `#126` nay được ĐO chứ không phải đọc từ mã: tài liệu thứ hai
-tham chiếu cùng ảnh không ngăn được việc xoá. Hai, file rời khỏi workspace nhưng
-**không thấy trong `~/.Trash`**, nên phần "vào Thùng rác" vẫn là việc của anh, trên máy
-anh. Một extension-test host không phải bằng chứng về desktop của ai cả.
+**Câu hỏi Thùng rác nay đã quy được trách nhiệm, không còn là cái nhún vai.** Probe thứ
+nhất gọi thẳng `vscode.workspace.fs.delete(..., { useTrash: true })` trên một file mà
+extension chưa từng nghe tên, và nó cũng rơi vào `nowhere found`, y hệt số đo của ảnh.
+Cùng một kết quả từ cả hai phép đo nghĩa là nửa "vào Thùng rác" thuộc về VS Code như
+floor khởi chạy nó, không phải lời gọi của extension. Chưa chứng minh được đó là do chế
+độ extension-test hay do bản 1.85 tải về, và cũng chưa thử. Đã kiểm riêng ngoài VS Code: `NSFileManager.trashItem` trash được file từ
+cả `/private/tmp` lẫn `os.tmpdir()` về `~/.Trash`, nên hệ điều hành không phải nguyên
+nhân, mà là extension-test host.
+
+Vì vậy mục Thùng rác vẫn là việc của anh, trên máy anh, với VS Code thường ngày chứ
+không phải host kiểm thử. Đó là mục đáng kiểm nhất trong cả bản.
 
 Cần `tuiMarkdown.autoDeleteImages` đang bật (mặc định bật).
 
 - [x] ~~Xoá dòng ảnh khỏi tài liệu, lưu, file biến mất.~~ floor
+- [x] ~~Ảnh còn được dùng ở file `.md` khác: hiện lời nhắc nêu tên file kia, `Keep` thì
+      ảnh còn nguyên.~~ floor (`#126`)
+- [x] ~~Bấm `Delete Anyway` trên lời nhắc đó thì ảnh mới thật sự bị xoá.~~ floor
+- [x] ~~Ảnh không ai khác dùng bị xoá NGAY, không xếp hàng chờ lời nhắc về ảnh khác.~~
+      floor (`loneAlreadyGoneWhenAsked=true`)
+- [x] ~~Bỏ ảnh trở lại tài liệu trong lúc lời nhắc đang mở, rồi bấm `Delete Anyway`:
+      ảnh sống sót.~~ floor
+- [x] ~~Đổi ảnh sang THƯ MỤC khác (cùng tên file) rồi lưu: KHÔNG bị xoá, vì đó là thao
+      tác di chuyển chứ không phải xoá.~~ unit (`detectImageDeletes`)
 - [ ] File ảnh vào Thùng rác (Trash), KHÔNG bị xoá vĩnh viễn. **Floor đo được là KHÔNG
-      thấy nó trong `~/.Trash`.** Đây là mục đáng kiểm nhất trong cả bản.
+      thấy nó ở đâu cả, và đã chứng minh đó là hành vi của extension-test host chứ không
+      phải của extension.** Kiểm trên VS Code thường ngày của anh.
 - [ ] Khôi phục từ Thùng rác được (đây là điểm khác nhau giữa "xoá" và "chuyển vào
       thùng rác", và là lý do thiết kế như vậy).
-- [ ] Đổi ảnh sang THƯ MỤC khác (cùng tên file) rồi lưu: KHÔNG bị xoá, vì đó là thao
-      tác di chuyển chứ không phải xoá.
-- [ ] Ảnh còn được dùng ở file `.md` khác: hiện tại nó vẫn bị chuyển vào Thùng rác
-      **không hỏi gì**, và link ở file kia gãy im lặng. Đây là hành vi đang có, không
-      phải lỗi anh vừa gây ra: xem `#126`. Ghi lại quan sát thật vào bảng.
+- [ ] Lời nhắc nhìn bằng mắt: câu chữ có xuôi không, hai nút có đọc ra nghĩa không.
+      Floor chỉ đọc chuỗi, không đọc được cái người ta thấy.
 
 ---
 

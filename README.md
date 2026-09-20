@@ -118,7 +118,7 @@ WYSIWYG export via headless Chromium (`puppeteer-core`). Requires Chrome, Edge, 
 | `tuiMarkdown.highlightCurrentLine` | `true` | Enable cursor line highlight |
 | `tuiMarkdown.imageSaveFolder` | `images` | Folder for pasted images (relative to document) |
 | `tuiMarkdown.autoRenameImages` | `true` | Auto-rename image files when path changes |
-| `tuiMarkdown.autoDeleteImages` | `true` | Auto-delete images removed from markdown (Trash) |
+| `tuiMarkdown.autoDeleteImages` | `true` | Auto-delete images removed from markdown (Trash); asks first if another document still uses the image |
 | `tuiMarkdown.autoHideToolbar` | `false` | Auto-hide toolbar when typing |
 | `tuiMarkdown.listIndent` | `"editor"` | List and code block indent: `editor` follows VS Code, or `2`, `4`, `tab` |
 | `tuiMarkdown.chromiumPath` | `""` | Chrome/Chromium path for PDF export |

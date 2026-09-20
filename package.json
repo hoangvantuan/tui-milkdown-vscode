@@ -102,7 +102,7 @@
         "tuiMarkdown.autoDeleteImages": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically delete image files when removed from markdown (moves to trash)"
+          "description": "Automatically delete image files when removed from markdown (moves to trash). Asks for confirmation first when another document still references the image."
         },
         "tuiMarkdown.autoHideToolbar": {
           "type": "boolean",
