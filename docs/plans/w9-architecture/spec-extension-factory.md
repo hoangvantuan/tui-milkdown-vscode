@@ -6,19 +6,21 @@ Twelve markdown-relevant definitions (EscapeToken, BlankLineHandler, CustomUnder
 MarkdownManager prototype patch, expandPrefixTabsInText, createCustomMarked, Blockquote
 alert extend, Document serializer extend, CodeBlockLowlight fence extend, StarterKit
 configure flags, language registration, and Markdown indentation config) exist as
-byte-for-byte copies in `src/webview/main.ts` and `harness/editor.ts`. AGENTS.md
-acknowledges "the two can disagree" and wave 8 ownership markers (main.ts 1317-1325,
-harness 373-381) are scaffolding for exactly this problem.
+byte-for-byte copies in the main webview module and the harness editor module. AGENTS.md
+acknowledges "the two can disagree" and wave 8 ownership markers are scaffolding for
+exactly this problem.
 
 When a definition is changed in one editor and not the other, the harness measures
 something that does not ship. This violates a core promise of the roundtrip harness.
 
+Evidence: see `docs/plans/w9-architecture/00-verification.md`, Candidate 1.
+
 ## Solution
 
 Extract all markdown-relevant extension definitions into a single Node-safe module
-(no DOM, no `acquireVsCodeApi`, no browser globals). Both `initEditor()` in main.ts
-and `createHarnessEditor()` in harness/editor.ts import from this module. Each side
-retains only what touches DOM or UI (main.ts) or harness-specific config (editor.ts).
+(no DOM, no `acquireVsCodeApi`, no browser globals). Both `initEditor()` and the
+harness editor import from this module. Each side retains only what touches DOM or
+UI (webview) or harness-specific config (harness).
 
 The wave 8 ownership markers are deleted once the factory is in place.
 
@@ -35,20 +37,23 @@ The wave 8 ownership markers are deleted once the factory is in place.
 
 ## Implementation Decisions
 
-- The new module is Node-safe: no `document`, `window`, `navigator`, or `acquireVsCodeApi`.
-  esbuild must bundle it into both the CJS extension bundle and the IIFE webview bundle.
+- The new module is Node-safe: no `document`, `window`, `navigator`, or
+  `acquireVsCodeApi`. The webview esbuild config bundles it into the IIFE webview
+  bundle; the harness esbuild config bundles it into the harness; node:test imports
+  it. It does NOT go into the CJS extension bundle (the host has no reason to import
+  markdown extensions).
 - The `MarkdownManager.prototype` patch (#95) is a side effect of import. The factory
-  module owns it. `main.ts` removes its copy. The patch must run exactly once per
-  process; if both editors ever live in the same process (they don't today), a guard
-  prevents double patching.
-- `IMAGE_IS_INLINE` remains a module-level constant, not from `editor.options`.
-- `installMarkdownTextEscape()` stays in its current module (`markdown-text-escape.ts`)
-  and remains the ONE place for text escaping. The factory does not duplicate it.
+  module owns it. The main webview module removes its copy. The patch must run exactly
+  once per process; if both editors ever live in the same process (they don't today),
+  a guard prevents double patching.
+- `IMAGE_IS_INLINE` remains a module-level constant.
+- `installMarkdownTextEscape()` stays in its current module and remains the ONE place
+  for text escaping. The factory does not duplicate it.
 - The factory exports a function (not a list constant) so it can accept config
-  parameters: `indentation`, `tabSize`, `lowlight` instance (browser vs Node have
-  different lowlight registrations in the future, though currently identical).
-- `harness/editor.ts` reduces to: import factory, call it, wrap in `new Editor()`.
+  parameters: `indentation`, `tabSize`, `lowlight` instance.
+- The harness editor module reduces to: import factory, call it, wrap in `new Editor()`.
   Its `buildMarkdownExtensions` function is replaced by the factory.
+- The wave 8 `require()` calls inside marker blocks are replaced by normal `import`.
 - The expand-then-contract pattern is NOT needed here: the factory is additive (new
   module beside old code), then a single commit switches both callers, then dead code
   is removed.
@@ -85,9 +90,9 @@ The wave 8 ownership markers are deleted once the factory is in place.
 
 ## Further Notes
 
-- The `require("./math-extension")` and `require("./footnote-extension")` inside the
-  wave 8 marker blocks use a static `require` that esbuild inlines. The factory should
-  use a normal `import` instead.
-- `src/webview/markdown-destination.ts` (MarkdownParagraph, MarkdownImage) is already
-  imported by both editors. The factory can re-export it for convenience but it is
-  already proof that the pattern works.
+- The wave 8 `require()` calls inside marker blocks (for math extension, footnote
+  extension) use a static `require` that esbuild inlines. The factory should use a
+  normal `import` instead.
+- The MarkdownParagraph and MarkdownImage extensions from the markdown-destination
+  module are already imported by both editors. They prove the shared-import pattern
+  works. The factory can re-export them for convenience.

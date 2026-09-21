@@ -179,7 +179,7 @@ pattern" (`currentImageMap = ...; imageMapVersion++; setImageMap(...)`) is elimi
 
 **Ownership (wave 2):** Same functions as Ticket 1 ownership.
 
-**Parent spec:** spec-image-registry.md (now spec-image-path-translation)
+**Parent spec:** spec-image-path-translation.md
 
 ---
 

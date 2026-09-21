@@ -2,26 +2,26 @@
 
 ## Problem Statement
 
-The host-side image path management is spread across five files with a structural
+The host-side image path management is spread across five modules with a structural
 rule repeated at every call site:
 
-1. `markdownEditorProvider.ts` (lines 78-82, 106, 112, 141): holds
-   `originalImagePaths` as a `Map<string, Map<string, string>>`, passes it with
-   `docKey` to every handler.
-2. `session.ts` (lines 95-162): `applyEdit` reads the inner map, detects renames,
-   mutates the map during an `await`, reverts on failure.
-3. `documentSave.ts` (lines 66-69): REPLACES the inner map synchronously on every
-   save, before the delete prompt's `await`.
-4. `requestImageRename.ts`: receives the outer map + docKey + closure for
-   `setPendingEdit`, manipulates the inner map after async rename.
-5. `messageHandlers.ts` (lines 88, 200-210, 259-268): writes `session.inFlightEdit`,
-   `session.pendingEdit`, `session.exportInProgress` from outside the class via
-   closures.
+1. The provider holds `originalImagePaths` as a `Map<string, Map<string, string>>`,
+   passes it with `docKey` to every handler.
+2. `EditorSession.applyEdit` reads the inner map, detects renames, mutates the map
+   during an `await`, reverts on failure.
+3. The document-save handler REPLACES the inner map synchronously on every save,
+   before the delete prompt's `await`.
+4. The rename handler receives the outer map + docKey + closure for `setPendingEdit`,
+   manipulates the inner map after async rename.
+5. The message handler table writes `session.inFlightEdit`, `session.pendingEdit`,
+   `session.exportInProgress` from outside the class via closures.
 
 AGENTS.md documents the trap: "always pass the outer map + docKey, never the inner
 map" and says "no automated check catches this". Three session flags are written from
 outside the class, contradicting the header comment that argues about their
 interdependence.
+
+Evidence: see `docs/plans/w9-architecture/00-verification.md`, Candidate 4.
 
 ## Solution
 
@@ -50,20 +50,21 @@ become private to the session with behaviour methods:
 
 ## Implementation Decisions
 
-- The ledger lives under `src/host/` (Node-side only).
+- The ledger is Node-side only.
 - `originalImagePaths` map is replaced by a `Map<string, ImageLedger>` held by the
   provider.
 - The provider creates a ledger on `resolveCustomTextEditor` and disposes it on
   panel close.
-- `requestImageRename.ts` receives the ledger, not the raw map + docKey + closure.
-- `messageHandlers.ts` calls session methods instead of writing flags directly.
-- `documentSave.ts` calls `ledger.setBaseline()` instead of `originalImagePaths.set()`.
+- The rename handler receives the ledger, not the raw map + docKey + closure.
+- The message handler table calls session methods instead of writing flags directly.
+- The document-save handler calls `ledger.setBaseline()` instead of
+  `originalImagePaths.set()`.
 
 ## Testing Decisions
 
-- **Unit tests** (in `test/`): the ledger is pure Node code. Uses `test/vscode-stub.ts`
-  as precedent (existing tests: `test/image-rename-handler.test.ts`,
-  `test/image-usage.test.ts`; `esbuild.harness.config.js` auto-scans, no config edit).
+- **Unit tests**: the ledger is pure Node code. Uses the existing VS Code stub as
+  precedent (existing tests for image rename handler and image usage;
+  the harness esbuild config auto-scans, no config edit needed).
   Mandatory cases:
   1. `setBaseline` then `detectRenames` with a path change: returns the rename
   2. `setBaseline` after save: old inner map is discarded
@@ -81,7 +82,7 @@ become private to the session with behaviour methods:
 
 - The webview-side image map (candidate 3).
 - The HTML template extraction from the provider (a pure move, not deepening).
-- The message protocol (candidate 5).
+- The message protocol (candidate 5, deferred per ADR-0001).
 
 ## Further Notes
 

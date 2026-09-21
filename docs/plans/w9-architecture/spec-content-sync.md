@@ -6,7 +6,7 @@ _Blocked by: Candidate 1 (Extension Factory) must merge first._
 
 The webview's document synchronization state, the set of variables that track "what
 the host is holding" and "what the webview has promised", lives as nine flat `let`
-declarations at module scope in `main.ts` (lines 328-374). These variables
+declarations at module scope in the main webview module. These variables
 (`currentBody`, `currentFrontmatter`, `currentFormat`, `currentRawBlock`,
 `contentBaseline`, `lastSentState`, `isUpdatingFromExtension`, `debounceTimer`,
 `blobRetryCount`) are read and written together, but their invariants are maintained
@@ -14,10 +14,11 @@ by convention. The invariant "baseline equals what the host holds" has no enforc
 code: the `#111` bug class (edit ghost dirtying file) was only caught by floor check,
 and floor check has no probe for the sync state machine.
 
-`isUpdatingFromExtension` has two microtask latches (main.ts lines 465/474 and
-2101/2194) in separate code paths that must behave identically. `currentBody` has
-three conditional writes and one unconditional write (line 657 in
-`replaceImageUrlWithSavedPath`).
+`isUpdatingFromExtension` has two microtask latches in separate code paths that must
+behave identically. `currentBody` has three conditional writes and one unconditional
+write in `replaceImageUrlWithSavedPath`.
+
+Evidence: see `docs/plans/w9-architecture/00-verification.md`, Candidate 2.
 
 ## Solution
 
@@ -82,8 +83,8 @@ read/write `currentBody` for callers that need it (image save, metadata edit).
 
 - This candidate is explicitly BLOCKED by candidate 1. The sync module must be
   importable by the harness, which requires `acquireVsCodeApi` to be out of the
-  import path. Candidate 1 achieves this by moving markdown definitions out of
-  main.ts.
+  import path. The Extension Factory achieves this by moving markdown definitions
+  into a shared module.
 - The microtask pattern for `isUpdatingFromExtension` is load-bearing: ProseMirror's
   `dispatchTransaction` is synchronous, but the `onUpdate` callback fires within the
   same microtask. The guard must be cleared on the NEXT microtask, not synchronously.
