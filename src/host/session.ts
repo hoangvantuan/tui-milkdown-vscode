@@ -15,22 +15,23 @@
  * - `inFlightEdit` is the promise of the edit being applied, kept so teardown
  *   can wait for it.
  * - `renameInProgress` stops two overlapping rename batches racing on the map.
+ *   Now owned by the ImageLedger, not the session.
  * - `exportInProgress` stops two save dialogs racing to one output path.
  *
- * `originalImagePaths` is the PROVIDER's map, not session state: it is keyed by
- * docKey and belongs to no session in particular. The session holds a reference
- * so `applyEdit` and `dispose` can reach it.
+ * The image baseline (original paths for rename/delete detection) is owned by
+ * the ImageLedger. The session holds a reference to the ledger so `applyEdit`
+ * can call into it for rename detection.
  */
 import * as vscode from "vscode";
 import type { TypedWebview } from "./typedWebview";
-import { buildImageMap, extractImagePaths, isRemoteUrl } from "./imagePaths";
+import { buildImageMap } from "./imagePaths";
 import { buildConfigMessage } from "./config";
 import { normalizeLineEndings } from "./lineEndings";
 import {
-  detectImageRenames,
   executeImageRenames,
   updateWorkspaceReferences,
 } from "../utils/image-rename-handler";
+import type { ImageLedger } from "./imageLedger";
 
 function getThemeKind(): "dark" | "light" {
   const kind = vscode.window.activeColorTheme.kind;
@@ -46,7 +47,6 @@ export class EditorSession {
   isDisposed = false;
   inFlightEdit: Promise<void> | null = null;
   pendingEdit = false;
-  renameInProgress = false;
   exportInProgress = false;
   private updateDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   readonly disposables: vscode.Disposable[] = [];
@@ -54,7 +54,7 @@ export class EditorSession {
   constructor(
     private readonly document: vscode.TextDocument,
     webviewPanel: vscode.WebviewPanel,
-    private readonly originalImagePaths: Map<string, Map<string, string>>,
+    readonly ledger: ImageLedger,
   ) {
     this.docKey = document.uri.toString();
     this.webview = webviewPanel.webview as TypedWebview;
@@ -101,63 +101,54 @@ export class EditorSession {
     // Rename files first so webviewUri resolves correctly after edit
     // Skip if another rename is already in progress to prevent race conditions
     const config = vscode.workspace.getConfiguration("tuiMarkdown");
-    if (config.get<boolean>("autoRenameImages", true) && !this.renameInProgress) {
-      const originalMap = this.originalImagePaths.get(this.docKey);
-      if (originalMap && originalMap.size > 0) {
-        const newPaths = extractImagePaths(normalizedContent).filter(
-          (p) => !isRemoteUrl(p),
-        );
-        const renames = detectImageRenames(
-          originalMap,
-          newPaths,
+    if (config.get<boolean>("autoRenameImages", true) && this.ledger.acquireRenameLock()) {
+      try {
+        const renames = this.ledger.detectRenames(
+          normalizedContent,
           this.document.uri,
         );
 
         if (renames.length > 0) {
-          this.renameInProgress = true;
-          try {
-            // Optimistic locking: Update map BEFORE async rename to prevent race conditions
-            // Store original values to revert on failure
-            const originalValues = new Map<string, string>();
-            for (const rename of renames) {
-              const origValue = originalMap.get(rename.oldRelative);
-              if (origValue) originalValues.set(rename.oldRelative, origValue);
-              originalMap.delete(rename.oldRelative);
-              originalMap.set(rename.newRelative, rename.newAbsolute);
-            }
+          // Optimistic locking: Update map BEFORE async rename to prevent race conditions
+          // Store original values to revert on failure
+          const originalValues = new Map<string, string | undefined>();
+          for (const rename of renames) {
+            originalValues.set(
+              rename.oldRelative,
+              this.ledger.applyRenameToBaseline(rename),
+            );
+          }
 
-            const { succeeded, failed } = await executeImageRenames(renames);
+          const { succeeded, failed } = await executeImageRenames(renames);
 
-            // Revert failed renames in the map
-            if (failed.length > 0) {
-              for (const { rename } of failed) {
-                originalMap.delete(rename.newRelative);
-                const origValue = originalValues.get(rename.oldRelative);
-                if (origValue) {
-                  originalMap.set(rename.oldRelative, origValue);
-                }
-              }
-              console.warn("[Image Rename] Failed:", failed);
-              vscode.window.showWarningMessage(
-                `Failed to rename ${failed.length} image(s).`,
+          // Revert failed renames in the map
+          if (failed.length > 0) {
+            for (const { rename } of failed) {
+              this.ledger.revertRenameInBaseline(
+                rename,
+                originalValues.get(rename.oldRelative),
               );
             }
+            console.warn("[Image Rename] Failed:", failed);
+            vscode.window.showWarningMessage(
+              `Failed to rename ${failed.length} image(s).`,
+            );
+          }
 
-            if (succeeded.length > 0) {
-              // Update workspace references (other .md files)
-              const updatedFiles = await updateWorkspaceReferences(
-                succeeded,
-                this.document.uri,
-              );
+          if (succeeded.length > 0) {
+            // Update workspace references (other .md files)
+            const updatedFiles = await updateWorkspaceReferences(
+              succeeded,
+              this.document.uri,
+            );
 
-              vscode.window.showInformationMessage(
-                `Renamed ${succeeded.length} image(s). Updated ${updatedFiles} file(s).`,
-              );
-            }
-          } finally {
-            this.renameInProgress = false;
+            vscode.window.showInformationMessage(
+              `Renamed ${succeeded.length} image(s). Updated ${updatedFiles} file(s).`,
+            );
           }
         }
+      } finally {
+        this.ledger.releaseRenameLock();
       }
     }
 
@@ -201,7 +192,6 @@ export class EditorSession {
         }
       }
       this.isDisposed = true;
-      this.originalImagePaths.delete(this.docKey);
       this.disposables.forEach((d) => d.dispose());
     });
   }

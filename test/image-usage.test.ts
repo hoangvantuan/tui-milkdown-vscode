@@ -16,7 +16,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { populateImageUsage } from "../src/host/imageUsage";
 import { handleDocumentSave } from "../src/host/documentSave";
-import { buildOriginalImageMap } from "../src/host/imagePaths";
+import { ImageLedger } from "../src/host/imageLedger";
 import type { ImageDelete } from "../src/utils/image-rename-handler";
 import {
   setWorkspaceRoot,
@@ -121,10 +121,9 @@ describe("image usage across documents (#126)", () => {
       textAfterSave: string,
       textBefore: string,
     ): Promise<void> {
-      const originalImagePaths = new Map<string, Map<string, string>>();
-      originalImagePaths.set(docUri.toString(), buildOriginalImageMap(textBefore, docUri));
+      const ledger = new ImageLedger(textBefore, docUri);
       const doc = fakeDoc(docUri, () => textAfterSave);
-      await handleDocumentSave(doc, doc, docUri.toString(), originalImagePaths);
+      await handleDocumentSave(doc, doc, ledger);
     }
 
     it("deletes an image nothing else references, with no warning", async () => {
@@ -205,17 +204,12 @@ describe("image usage across documents (#126)", () => {
       fs.writeFileSync(path.join(tmpDir, "b.md"), "![shared](images/shared.png)\n", "utf8");
       setWarningChoice("Keep");
 
-      const originalImagePaths = new Map<string, Map<string, string>>();
-      const docKey = docUri.toString();
-      originalImagePaths.set(
-        docKey,
-        buildOriginalImageMap("# a\n\n![shared](images/shared.png)\n", docUri),
-      );
+      const ledger = new ImageLedger("# a\n\n![shared](images/shared.png)\n", docUri);
       const doc = fakeDoc(docUri, () => "# a\n");
 
       await Promise.all([
-        handleDocumentSave(doc, doc, docKey, originalImagePaths),
-        handleDocumentSave(doc, doc, docKey, originalImagePaths),
+        handleDocumentSave(doc, doc, ledger),
+        handleDocumentSave(doc, doc, ledger),
       ]);
 
       assert.equal(getWarningCalls().length, 1);
@@ -235,15 +229,10 @@ describe("image usage across documents (#126)", () => {
         return DELETE_ANYWAY;
       });
 
-      const originalImagePaths = new Map<string, Map<string, string>>();
-      const docKey = docUri.toString();
-      originalImagePaths.set(
-        docKey,
-        buildOriginalImageMap("# a\n\n![shared](images/shared.png)\n", docUri),
-      );
+      const ledger = new ImageLedger("# a\n\n![shared](images/shared.png)\n", docUri);
       const doc = fakeDoc(docUri, () => text);
 
-      await handleDocumentSave(doc, doc, docKey, originalImagePaths);
+      await handleDocumentSave(doc, doc, ledger);
 
       assert.equal(getWarningCalls().length, 1);
       assert.equal(fs.existsSync(shared), true);
