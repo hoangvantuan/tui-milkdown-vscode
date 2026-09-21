@@ -4,7 +4,11 @@ All notable changes to "TUI Markdown Editor" extension.
 
 ## \[Unreleased\]
 
-Wave 10 (#149) turned the architecture review of 2026-09-21 into code. All seven tickets are merged, each closed against the coordinator's own measurements rather than the worker's report: seven `agy` workers on seven worktrees, in three waves, with the ticket that fixes a bug landing before the refactor that moves the code it fixed.
+## \[3.0.2\] - 2026-09-21
+
+Wave 10 (#149) turned the architecture review of 2026-09-21 into code. All seven tickets are merged, each closed against the coordinator's own measurements rather than the worker's report: seven `agy` workers on seven worktrees, in three waves, with the ticket that fixes a bug landing before the refactor that moves the code it fixed. #150 is the eighth, opened during the wave and closed after it: the one bridge the parallel branches had to leave standing, plus the three checks that had no teeth until it was removed.
+
+One user-visible fix, #142. Everything else is internal: `src/webview/main.ts` went from 2,442 lines to 1,925, and what left it went into modules that own their own state (`extension-factory.ts`, `image-path-translation.ts`, `content-sync.ts`) rather than into a second copy of it. Each new boundary came with the check that makes it measurable.
 
 ### Fixed
 
