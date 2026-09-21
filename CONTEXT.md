@@ -65,3 +65,23 @@ _Avoid_: inline HTML, embedded HTML, HTML passthrough
 **Metadata panel**:
 The collapsible YAML frontmatter editor shown above the document body.
 _Avoid_: frontmatter editor, properties, header panel
+
+### Architecture
+
+These name the modules the 2026-09 architecture review deepened (`docs/plans/w9-architecture/`). They are module names, not user-facing concepts.
+
+**Extension factory**:
+The one place that decides which Markdown rules the editor knows. Both the rich text view and the roundtrip harness build their editor from it, so a rule changed in one place is tested and shipped as the same rule.
+_Avoid_: shared extensions, common editor, extension builder
+
+**Content sync**:
+What the host holds versus what the rich text view has promised. Owns the baseline, the debounce, and the gate that prevents an edit from being posted when the document has not actually changed.
+_Avoid_: sync module, state manager, document state
+
+**Image path translation**:
+The bridge between the path written in the Markdown file and the address the rich text view displays. Translates relative paths to webview addresses for display, and back for save.
+_Avoid_: image registry, image cache, image map
+
+**Image ledger**:
+The host's record of which images a document referenced when it was last saved. Detects renames and deletes on save, and owns the rule that the record is replaced synchronously before any prompt that can wait on a person.
+_Avoid_: image manager, rename handler, image tracker

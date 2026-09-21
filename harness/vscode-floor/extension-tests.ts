@@ -534,6 +534,85 @@ function stubExportDialogs(docFolder: string): void {
   (vscode.window as any).showInformationMessage = quiet;
 }
 
+/** What the image-rename input box was shown, and how often it was asked (#142). */
+const renameInput = { asked: 0, shownValue: "" };
+
+/**
+ * Answer the image URL edit box without a human, so the double-click rename
+ * path can be driven at all (#142, #149). Keyed on the prompt text: any other
+ * input box passes through to the real one. The value the box was shown is
+ * RECORDED, because a pre-cbf5b5e regression would show the whole webview
+ * address instead of `media/icon.png`, the plugin would then take the
+ * non-local branch, write the typed path straight into the node and rename
+ * nothing on disk, and the document text would read clean. Installed next to
+ * the export stubs, before `phase-interact`.
+ */
+function stubImageRenameInput(): void {
+  const realInputBox = vscode.window.showInputBox;
+  (vscode.window as any).showInputBox = async (opts: any, ...rest: any[]) => {
+    const prompt = String(opts?.prompt ?? "");
+    if (!prompt.includes("Enter new image path")) {
+      return (realInputBox as any).call(vscode.window, opts, ...rest);
+    }
+    renameInput.asked += 1;
+    renameInput.shownValue = String(opts?.value ?? "");
+    return "media/icon-renamed.png";
+  };
+}
+
+/**
+ * What the double-click rename left in the document (#142). The runner renamed
+ * the plain `![A plain image](media/icon.png)`; sample.md references that file
+ * TWICE (the other is an `<img width>`), and the host's rename rewrites both
+ * references while the webview updates only the node that was clicked. So the
+ * detail counts three things apart: references on the new name, references
+ * still on the old name, and webview addresses in the text. The invariant is
+ * the honest one: every reference points at the new name and the file is there.
+ *
+ * Polls until `icon-renamed` appears in any form and the text has been stable
+ * for a second, because the rename is at least two host writes (the rename
+ * rewrite, then the webview's debounced edit) and the bounce check that follows
+ * must not read those as a bounce.
+ */
+async function recordImageRenameResult(doc: vscode.TextDocument, docFolder: string): Promise<void> {
+  const name = "double-click rename leaves every reference on the new relative path (#142)";
+  const deadline = Date.now() + 10000;
+  let text = doc.getText();
+  let stableSince = Date.now();
+  while (Date.now() < deadline) {
+    await sleep(250);
+    const next = doc.getText();
+    if (next !== text) {
+      text = next;
+      stableSince = Date.now();
+    } else if (text.includes("icon-renamed") && Date.now() - stableSince >= 1000) {
+      break;
+    }
+  }
+  const count = (re: RegExp) => (text.match(re) || []).length;
+  // Relative references only: a webview address ends in the same file name,
+  // so a bare `media/icon-renamed.png` match would count the defect as a pass.
+  const newRelative = count(/(\]\(|src=["'])media\/icon-renamed\.png/g);
+  const oldRelative = count(/(\]\(|src=["'])media\/icon\.png/g);
+  // One per address, not one per substring: an address carries both
+  // `vscode-resource` and `vscode-cdn.net`.
+  const webviewUrls = count(/https?:\/\/[^\s)"']*vscode-(?:resource|webview|cdn)[^\s)"']*/g);
+  const renamedOnDisk = fs.existsSync(path.join(docFolder, "media", "icon-renamed.png"));
+  const oldGone = !fs.existsSync(path.join(docFolder, "media", "icon.png"));
+  const shownRelative = renameInput.shownValue === "media/icon.png";
+  record(
+    name,
+    renameInput.asked === 1 && shownRelative && renamedOnDisk && oldGone &&
+      webviewUrls === 0 && oldRelative === 0 && newRelative === 2,
+    `asked=${renameInput.asked} shown=${JSON.stringify(renameInput.shownValue)} ` +
+      `renamedOnDisk=${renamedOnDisk} oldGone=${oldGone} ` +
+      `newRelative=${newRelative} oldRelative=${oldRelative} webviewUrls=${webviewUrls} ` +
+      `(two references in sample.md, so two must come out on the new name; a webview ` +
+      `address here is the #142 lossy shape, an oldRelative>0 is the second image node ` +
+      `serialized from a stale map; the later save may trash a dangling reference)`,
+  );
+}
+
 /**
  * Assert what the driven Export button actually produced. The bytes are checked
  * by their magic number rather than by size, because an empty or truncated file
@@ -738,6 +817,7 @@ export async function run(): Promise<void> {
       // is about the delta rather than an absolute number.
       const versionBeforeEdit = afterHold.version;
       stubExportDialogs(path.dirname(samplePath));
+      stubImageRenameInput();
       fs.writeFileSync(path.join(base, "phase-interact"), "go", "utf8");
 
       const drivenPath = path.join(base, "phase-driven");
@@ -795,6 +875,10 @@ export async function run(): Promise<void> {
         // and posted again as a new `edit`. A broken guard is a runaway
         // version count, not a wrong character, so the only way to see it is
         // to look twice with the editor idle in between.
+        // The rename probe (#142) writes the document at least twice more, so it
+        // is settled and recorded HERE, before the idle window below is measured.
+        await recordImageRenameResult(afterHold, path.dirname(samplePath));
+
         const versionAfterEdit = afterHold.version;
         await sleep(3000);
         record(

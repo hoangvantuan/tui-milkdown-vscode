@@ -25,25 +25,9 @@ export function handleExport(
   msg: ExportMessage,
   document: vscode.TextDocument,
   webview: TypedWebview,
-  isExportInProgress: () => boolean,
-  setExportInProgress: (value: boolean) => void,
+  withExportLock: (action: () => Promise<void>) => boolean,
 ): void {
   const exportMsg = msg;
-
-  // Reject duplicate export requests so two save dialogs / two
-  // Chromium instances cannot race to the same output path.
-  if (isExportInProgress()) {
-    webview.postMessage({
-      type: "exportDone",
-      success: false,
-      reason: "busy",
-    });
-    vscode.window.showWarningMessage(
-      "Export in progress, please wait for the current export to finish.",
-    );
-    return;
-  }
-
   const mermaidImages = exportMsg.mermaidImages || [];
   const exportFormat = exportMsg.format || "docx";
   const fontFamily = exportMsg.fontFamily || "";
@@ -53,13 +37,12 @@ export function handleExport(
   const pageSize: "A4" | "Letter" =
     configuredPageSize === "Letter" ? "Letter" : "A4";
 
-  const rawText = document.getText();
-  const stripped = rawText.replace(/^﻿/, "");
-  const parsedFm = parseContent(stripped);
-  const normalized = parsedFm.body;
+  const acquired = withExportLock(async () => {
+    const rawText = document.getText();
+    const stripped = rawText.replace(/^﻿/, "");
+    const parsedFm = parseContent(stripped);
+    const normalized = parsedFm.body;
 
-  setExportInProgress(true);
-  (async () => {
     try {
       const markdownAstPath = require("path").join(__dirname, "markdown-ast.js");
       const {
@@ -133,8 +116,18 @@ export function handleExport(
       } catch {
         /* webview may have been disposed */
       }
-    } finally {
-      setExportInProgress(false);
     }
-  })();
+  });
+
+  if (!acquired) {
+    webview.postMessage({
+      type: "exportDone",
+      success: false,
+      reason: "busy",
+    });
+    vscode.window.showWarningMessage(
+      "Export in progress, please wait for the current export to finish.",
+    );
+    return;
+  }
 }

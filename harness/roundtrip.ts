@@ -39,6 +39,8 @@ import { runMathFootnoteSeam } from "./math-footnote-seam";
 import { runHtmlRenderSeam } from "./html-render-seam";
 import { runEmojiInsertSeam } from "./emoji-insert-seam";
 import { runCodeBlockSeam } from "./codeblock-seam";
+import { runContentSyncSeam } from "./content-sync-seam";
+import { runImagePathSeam } from "./image-path-seam";
 import { formatUnifiedDiff } from "./diff";
 
 const MAX_DIFF_LINES = 120;
@@ -49,14 +51,17 @@ type Outcome =
   | { kind: "missing" }
   | { kind: "error"; message: string };
 
-function runFixture(
+// A seam may be async: `content-sync-seam.ts` reads a latch one microtask after
+// the call that set it, and a microtask cannot be drained from synchronous code
+// (#150). Markdown fixtures stay synchronous; the await below is a no-op for them.
+async function runFixture(
   entry: CorpusEntry,
   update: boolean,
-  run: (content: string) => string = roundtripMarkdown,
-): Outcome {
+  run: (content: string) => string | Promise<string> = roundtripMarkdown,
+): Promise<Outcome> {
   let output: string;
   try {
-    output = run(entry.content);
+    output = await run(entry.content);
   } catch (err) {
     return {
       kind: "error",
@@ -98,7 +103,15 @@ function runFixture(
   };
 }
 
-function main(): number {
+async function main(): Promise<number> {
+  // A run that verifies nothing must never exit 0. `main` became async when
+  // seams were allowed to return promises (#150); a seam whose promise never
+  // settles would leave the `.then` below unreached, and node exits 0 on an
+  // empty event loop. The same trap cost `harness/vscode-floor/run.mjs` a green
+  // on a run that checked nothing. Measured: a seam that hangs exits 1 with
+  // this line and 0 without it. The green path calls process.exit(0) itself.
+  process.exitCode = 1;
+
   const update = process.argv.includes("--update");
   const repoRoot = path.resolve(__dirname, "..", "..");
   const corpus = loadCorpus(repoRoot);
@@ -114,7 +127,7 @@ function main(): number {
   let errored = 0;
 
   for (const entry of corpus) {
-    const outcome = runFixture(entry, update);
+    const outcome = await runFixture(entry, update);
     switch (outcome.kind) {
       case "pass":
         if (update) {
@@ -151,7 +164,11 @@ function main(): number {
 
   console.log("──────────────────────────────────────────");
 
-  const seams: Array<{ name: string; goldenPath: string; run: () => string }> = [
+  const seams: Array<{
+    name: string;
+    goldenPath: string;
+    run: () => string | Promise<string>;
+  }> = [
     {
       name: "seams/frontmatter.txt",
       goldenPath: path.join(repoRoot, "harness", "golden", "seams", "frontmatter.txt"),
@@ -237,10 +254,22 @@ function main(): number {
       goldenPath: path.join(repoRoot, "harness", "golden", "seams", "codeblock.txt"),
       run: runCodeBlockSeam,
     },
+    // Wave-10 seams (#149), same rule: registered before the worktrees were cut.
+    // content-sync is #148's to fill; image-path is #142's first and #147's after.
+    {
+      name: "seams/content-sync.txt",
+      goldenPath: path.join(repoRoot, "harness", "golden", "seams", "content-sync.txt"),
+      run: runContentSyncSeam,
+    },
+    {
+      name: "seams/image-path.txt",
+      goldenPath: path.join(repoRoot, "harness", "golden", "seams", "image-path.txt"),
+      run: runImagePathSeam,
+    },
   ];
 
   for (const seam of seams) {
-    const outcome = runFixture(
+    const outcome = await runFixture(
       { name: seam.name, sourcePath: "", goldenPath: seam.goldenPath, content: "" },
       update,
       seam.run,
@@ -291,4 +320,10 @@ function main(): number {
   return failed + missing + errored > 0 ? 1 : 0;
 }
 
-process.exit(main());
+main().then(
+  (code) => process.exit(code),
+  (err) => {
+    console.error(err);
+    process.exit(1);
+  },
+);

@@ -1927,6 +1927,65 @@ async function driveSurfaces(evaluate, session, sessions, beat = () => {}) {
     add("dragging the handle reorders the block", false, `threw: ${err.message}`);
   }
 
+  // --- Double-click image rename (#142, #149) -------------------------------
+  // The host stubbed the image path input box before this phase, answering
+  // `media/icon-renamed.png`. This side double-clicks the PLAIN markdown image
+  // (the last `.tiptap img` for icon.png; the first is the `<img width>` one),
+  // waits for its address to change, then waits past the webview's 300ms
+  // debounce so the edit it posts has landed before the host reads the text.
+  // The plugin's dblclick listener sits on the editor element with capture, so
+  // a bubbling synthetic event on the img reaches it with the img as target.
+  // What the document ends up holding is the host's to assert; this side only
+  // proves the surface could be driven and reports what it saw.
+  try {
+    const findIcon =
+      "var imgs = Array.prototype.slice.call(document.querySelectorAll('.tiptap img'));" +
+      "var hits = imgs.filter(function (i) { return /icon\\.png/.test(i.getAttribute('src') || ''); });";
+    const clicked = await evaluate(
+      "(function () {" + findIcon +
+        "if (!hits.length) return { found: 0, total: imgs.length };" +
+        "var img = hits[hits.length - 1];" +
+        "img.scrollIntoView({ block: 'center' });" +
+        "var r = img.getBoundingClientRect();" +
+        "img.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true, view: window," +
+        " clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }));" +
+        "return { found: hits.length, total: imgs.length, src: img.getAttribute('src') };" +
+      "})()",
+    );
+    if (!clicked || !clicked.found) {
+      add(
+        "double-click image rename could be driven",
+        false,
+        "no .tiptap img for media/icon.png; total imgs=" + (clicked ? clicked.total : "?"),
+      );
+    } else {
+      const started = Date.now();
+      let renamedNodes = 0;
+      while (Date.now() - started < 12000) {
+        await sleep(250);
+        beat();
+        renamedNodes = await evaluate(
+          "(function () { var imgs = Array.prototype.slice.call(document.querySelectorAll('.tiptap img'));" +
+            "return imgs.filter(function (i) { return /icon-renamed/.test(i.getAttribute('src') || ''); }).length; })()",
+        );
+        if (renamedNodes > 0) break;
+      }
+      const waitedMs = Date.now() - started;
+      // Past the 300ms debounce, with margin, so the posted edit has been applied.
+      await sleep(1500);
+      add(
+        "double-click image rename could be driven",
+        renamedNodes > 0,
+        "picked the last of " + clicked.found + " icon.png img(s) of " + clicked.total +
+          " total; src was " + String(clicked.src).slice(0, 60) + "...; nodes now on icon-renamed=" +
+          renamedNodes + " after " + waitedMs + "ms (0 means the host never answered or the plugin " +
+          "never updated the node; the host records what the file holds)",
+      );
+    }
+  } catch (err) {
+    add("double-click image rename could be driven", false, "threw: " + err.message);
+  }
+
   // --- Export, both formats (#88 hand-test debt) ----------------------------
   // MOVED here deliberately, and it must stay last. PDF export launches a real
   // Chromium window, and ANY window covering the VS Code one stops its animation

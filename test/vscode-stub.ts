@@ -50,12 +50,20 @@ export interface ExecutedCommand {
 }
 const executedCommands: ExecutedCommand[] = [];
 
+type ApplyEditHandler = (edit: WorkspaceEdit) => boolean | Promise<boolean>;
+let customApplyEditHandler: ApplyEditHandler | undefined;
+const appliedEdits: WorkspaceEdit[] = [];
+
 export function setWorkspaceRoot(dir: string | null): void {
   currentWorkspaceRoot = dir ? path.resolve(dir) : null;
 }
 
 export function setWarningChoice(handler: WarningChoiceHandler): void {
   warningChoiceHandler = handler;
+}
+
+export function setApplyEditHandler(handler: ApplyEditHandler | undefined): void {
+  customApplyEditHandler = handler;
 }
 
 export function getWarningCalls(): readonly WarningCall[] {
@@ -70,12 +78,18 @@ export function getExecutedCommands(): readonly ExecutedCommand[] {
   return [...executedCommands];
 }
 
+export function getAppliedEdits(): readonly WorkspaceEdit[] {
+  return [...appliedEdits];
+}
+
 export function resetStub(): void {
   currentWorkspaceRoot = null;
   warningCalls.length = 0;
   warningChoiceHandler = undefined;
   deletedUris.length = 0;
   executedCommands.length = 0;
+  customApplyEditHandler = undefined;
+  appliedEdits.length = 0;
 }
 
 async function walkDir(dir: string): Promise<string[]> {
@@ -94,7 +108,26 @@ async function walkDir(dir: string): Promise<string[]> {
   return results;
 }
 
+export const ColorThemeKind = {
+  Light: 1,
+  Dark: 2,
+  HighContrast: 3,
+  HighContrastLight: 4,
+};
+
 export const window = {
+  activeColorTheme: {
+    kind: 1,
+  },
+
+  async showInformationMessage(_message: string, ..._items: string[]): Promise<string | undefined> {
+    return undefined;
+  },
+
+  async showErrorMessage(_message: string, ..._items: string[]): Promise<string | undefined> {
+    return undefined;
+  },
+
   async showWarningMessage(message: string, ...items: string[]): Promise<string | undefined> {
     warningCalls.push({ message, items });
     if (typeof warningChoiceHandler === "function") {
@@ -255,6 +288,14 @@ export const workspace = {
       },
     };
   },
+
+  async applyEdit(edit: WorkspaceEdit): Promise<boolean> {
+    appliedEdits.push(edit);
+    if (customApplyEditHandler) {
+      return await customApplyEditHandler(edit);
+    }
+    return true;
+  },
 };
 
 export const ConfigurationTarget = {
@@ -264,9 +305,32 @@ export const ConfigurationTarget = {
 };
 
 export const EndOfLine = { LF: 1, CRLF: 2 };
-export class Range {}
-export class Position {}
-export class WorkspaceEdit {}
+
+export class Position {
+  constructor(readonly line: number = 0, readonly character: number = 0) {}
+}
+
+export class Range {
+  constructor(readonly start: Position = new Position(), readonly end: Position = new Position()) {}
+}
+
+export class WorkspaceEdit {
+  readonly entries: Array<{ uri: Uri; range: Range; newText: string }> = [];
+  replace(uri: Uri, range: Range, newText: string): void {
+    this.entries.push({ uri, range, newText });
+  }
+}
+
+export class Disposable {
+  constructor(private readonly callOnDispose: () => any) {}
+  dispose(): void {
+    this.callOnDispose?.();
+  }
+  static from(...disposables: { dispose(): any }[]): Disposable {
+    return new Disposable(() => disposables.forEach((d) => d.dispose()));
+  }
+}
+
 export const commands = {
   async executeCommand(command: string, ...args: any[]): Promise<any> {
     executedCommands.push({ command, args });

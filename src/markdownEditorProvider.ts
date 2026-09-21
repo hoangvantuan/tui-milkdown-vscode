@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { MAX_FILE_SIZE } from "./constants";
 import { getNonce } from "./utils/getNonce";
 import type { TypedWebview } from "./host/typedWebview";
-import { buildOriginalImageMap } from "./host/imagePaths";
+import { ImageLedger } from "./host/imageLedger";
 import { EditorSession } from "./host/session";
 import { handleConfigurationChange } from "./host/config";
 import { handleDocumentSave } from "./host/documentSave";
@@ -23,11 +23,10 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
   public static readonly viewType = "tuiMarkdown.editor";
 
   /**
-   * Stores original image paths per document for rename detection.
-   * Key: document.uri.toString()
-   * Value: Map<relativePath, absolutePathString>
+   * One ledger per open document, keyed by docKey (document.uri.toString()).
+   * Two panels opening the same file share one ledger.
    */
-  private originalImagePaths: Map<string, Map<string, string>> = new Map();
+  private imageLedgers: Map<string, ImageLedger> = new Map();
 
   /** Tracks clipboard error reasons shown during this session to avoid warning spam */
   private clipboardWarningsShown = new Set<string>();
@@ -76,12 +75,13 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       }
     }
 
-    // Store original image paths for rename detection
+    // Create or reuse the image ledger for this document
     const docKey = document.uri.toString();
-    this.originalImagePaths.set(
-      docKey,
-      buildOriginalImageMap(document.getText(), document.uri),
-    );
+    let ledger = this.imageLedgers.get(docKey);
+    if (!ledger) {
+      ledger = new ImageLedger(document.getText(), document.uri);
+      this.imageLedgers.set(docKey, ledger);
+    }
 
     // Build localResourceRoots with document folder and workspace
     const documentFolder = vscode.Uri.joinPath(document.uri, "..");
@@ -103,13 +103,12 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
     webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview);
 
-    const session = new EditorSession(document, webviewPanel, this.originalImagePaths);
+    const session = new EditorSession(document, webviewPanel, ledger);
     const handlerContext: HandlerContext = {
       session,
       document,
       webview: session.webview,
       globalState: this.context.globalState,
-      originalImagePaths: this.originalImagePaths,
       notifyClipboardError: (target, reason, warningMessage) =>
         this.notifyClipboardError(target, reason, warningMessage),
     };
@@ -121,7 +120,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       vscode.workspace.onDidChangeTextDocument((e) => {
         if (
           e.document.uri.toString() === document.uri.toString() &&
-          !session.pendingEdit &&
+          !session.isApplyingEdit &&
           e.contentChanges.length > 0
         ) {
           session.updateWebview();
@@ -138,11 +137,14 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         handleConfigurationChange(e, document, () => session.sendConfig()),
       ),
       vscode.workspace.onDidSaveTextDocument((savedDoc) =>
-        handleDocumentSave(savedDoc, document, docKey, this.originalImagePaths),
+        handleDocumentSave(savedDoc, document, ledger),
       ),
     );
 
-    webviewPanel.onDidDispose(() => session.dispose());
+    webviewPanel.onDidDispose(() => {
+      session.dispose();
+      this.imageLedgers.delete(docKey);
+    });
   }
 
   private getHtmlForWebview(webview: vscode.Webview): string {
