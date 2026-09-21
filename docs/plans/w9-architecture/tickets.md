@@ -1,152 +1,210 @@
 # Wave 9 Architecture Tickets
 
-Two waves. Wave 1 runs three tickets in parallel. Wave 2 runs two tickets after
-C1 merges.
+Two waves. Wave 1 runs three tickets in parallel. Wave 2 tickets enter as their
+blockers merge.
 
 ## Wave 1 (parallel)
 
-### Ticket 1: Fix image path translation after rename (C3 bugfix)
+### Ticket 1: Fix lossy image path after rename (C3 bugfix)
 
 **Title:** Fix lossy image path after double-click rename
 
-**Blocked by:** None (can start immediately, leads the wave as a Lossy bug fix)
+**Blocked by:** None (leads the wave as a Lossy bug fix)
+
+**Size:** Fits one context window; worker reads spec-image-map-bugfix.md and this ticket.
 
 **What it delivers:** After double-click renaming an image in the same folder, the
-file on disk contains the relative path (`images/new-name.png`), never a webview URI.
-The rename-then-type sequence produces correct markdown.
+file on disk contains the relative path, never a webview URI. The rename-then-type
+sequence produces correct markdown.
 
 **Acceptance criteria:**
 
 - [ ] Floor probe (coordinator-provided in `run.mjs`) for double-click rename is
       RED on develop, GREEN after fix
 - [ ] Harness seam `image-path-seam.ts` (coordinator-provided empty shell) filled
-      with test cases: rename sequence produces correct relative path in serialized
-      output
+      with test cases demonstrating correct path after rename
 - [ ] Teeth test: break the fix, floor probe and seam go red; report number of
       cases that fail
-- [ ] Invariant: `postEdit` remains the sole exit for `edit`, gated on
-      `contentBaseline`; no `edit` is posted if the document matches what the host
-      holds
-- [ ] Invariant: after rename, `contentBaseline` reflects the document the host holds
-- [ ] `npm run roundtrip` passes (42 corpus + 16 seams)
+- [ ] After rename, the file on disk contains the new relative path and no webview URI
+- [ ] No edit is posted when the document matches what the host holds
+- [ ] After a host-initiated document change, the baseline reflects reality
+- [ ] `npm run roundtrip` passes
 - [ ] `npm test` passes
+- [ ] `npm run verify:vscode-floor` runs once near the end and passes
+
+**Fallback:** If the floor probe does NOT go red on develop, the bug does not manifest
+in the form described. The ticket then becomes: record why the RPC ordering masks it
+(the open fact from phase 0), apply the refactor portion, and no blind fix.
 
 **Ownership (wave 1):** `currentImageMap`, `imageMapVersion`, `cachedReverseImageMap`,
-`replaceImagePaths`, `transformForDisplay`, `transformForSave`, `setImageMap` in
-main.ts, and the entirety of `image-edit-plugin.ts`.
+`replaceImagePaths`, `transformForDisplay`, `transformForSave`, `setImageMap` in the
+main webview module, and the entirety of image-edit-plugin.
 
 **Parent spec:** spec-image-map-bugfix.md
 
 ---
 
-### Ticket 2: Extract extension factory (C1)
+### Ticket 2a: Extension factory, harness first (C1, part 1)
 
-**Title:** Extract markdown-relevant extensions into a shared factory module
+**Title:** Extension factory: build module and switch harness to it
 
-**Blocked by:** None (can start immediately)
+**Blocked by:** None
 
-**What it delivers:** A single Node-safe module that both `initEditor()` in main.ts
-and `createHarnessEditor()` in harness/editor.ts import from. The twelve definitions
-that existed as byte-for-byte copies are gone from the harness. The wave 8 ownership
-markers are deleted.
+**Size:** Fits one context window; worker reads spec-extension-factory.md and this ticket.
+
+**What it delivers:** A Node-safe module containing all twelve markdown-relevant
+definitions. The harness editor imports from it and deletes its mirror copies.
+The main webview module is NOT changed yet (it still has its own copies).
 
 **Acceptance criteria:**
 
-- [ ] `harness/editor.ts` does NOT contain any of the following definitions as local
-      code: EscapeToken, BlankLineHandler, CustomUnderline, MarkdownManager prototype
-      patch (#95), expandPrefixTabsInText, createCustomMarked, Blockquote alert extend,
-      Document serializer extend, CodeBlockLowlight fence extend, Table renderMarkdown
-      extend, lowlight language registration, StarterKit.configure flags
-- [ ] `grep -c 'Mirror of' harness/editor.ts` returns 0
-- [ ] Wave 8 ownership markers deleted from both main.ts and harness/editor.ts
-- [ ] Teeth test: remove ONE extension from the factory (e.g., EscapeToken), run
-      `npm run roundtrip`; the corresponding fixture goes RED. Report how many fail.
-- [ ] `npm run roundtrip` passes (42 corpus + 16 seams)
+- [ ] New factory module exists, Node-safe (no DOM, no browser globals)
+- [ ] Harness editor imports all markdown-relevant definitions from the factory
+- [ ] No definition in the harness is a mirror of the main webview module
+      (`grep -c 'Mirror of' harness/editor.ts` returns 0)
+- [ ] `npm run roundtrip` passes (58/58, proving factory is equivalent to shipped code)
 - [ ] `npm test` passes
-- [ ] `npm run verify:vscode-floor` passes (import path changed, prototype patch at
-      import time)
-- [ ] `npm run build` passes, webview bundle <= 1,100,000 B
 
-**Ownership (wave 1):** All markdown-relevant definitions in main.ts (listed above),
-`initEditor` function, and `harness/editor.ts`.
+**Note:** No `verify:vscode-floor` needed for this ticket because the main webview
+module is unchanged.
+
+**Ownership (wave 1):** The new factory module and the harness editor module.
 
 **Parent spec:** spec-extension-factory.md
 
 ---
 
-### Ticket 3: Extract image ledger on host side (C4)
+### Ticket 3a: Image ledger module (C4, part 1)
 
-**Title:** Extract host-side image path management into an Image Ledger module
+**Title:** Image ledger: one module holding per-document image baseline
 
-**Blocked by:** None (can start immediately)
+**Blocked by:** None
 
-**What it delivers:** An `ImageLedger` module under `src/host/` that owns the per-document
-image map, enforces the "outer map + docKey" rule through its interface, and internalizes
-session flags. The "replace map synchronously before prompt" rule is enforced by code,
-not by a comment.
+**Size:** Fits one context window; worker reads spec-image-ledger.md and this ticket.
+
+**What it delivers:** An Image Ledger module that replaces the outer map + docKey
+pattern with a single object per document. The provider, document-save handler,
+and rename handler use the ledger instead of threading the raw map.
 
 **Acceptance criteria:**
 
-- [ ] `originalImagePaths` map replaced by `Map<string, ImageLedger>` in provider
-- [ ] Session flags (`pendingEdit`, `inFlightEdit`, `renameInProgress`,
-      `exportInProgress`) are private to `EditorSession` with behaviour methods
-- [ ] `requestImageRename.ts` receives the ledger, not raw map + docKey + closure
-- [ ] `documentSave.ts` calls `ledger.setBaseline()`, not `originalImagePaths.set()`
-- [ ] Unit test: `setBaseline` then `detectRenames` with a path change returns the rename
-- [ ] Unit test: `setBaseline` after save discards old inner map
-- [ ] Unit test: two concurrent `applyRenames`, second is rejected
-- [ ] Unit test: **save replaces map while rename is awaiting** (race test, currently
-      only in a comment)
-- [ ] Teeth test: break `setBaseline`; rename detection fails. Report how many cases fail.
+- [ ] A ledger module exists, holding the per-document inner map
+- [ ] The provider holds one ledger per document key
+- [ ] Setting a baseline then providing content with a changed path detects exactly
+      one rename
+- [ ] Setting a baseline after save discards the old map; the next detection uses
+      the new baseline
+- [ ] Two concurrent rename applications: the second is rejected
+- [ ] A save arriving while a rename is in-flight does not lose the rename result
+      and does not cause the next save to re-ask about the same image
+- [ ] Teeth test: break baseline replacement; rename detection fails. Report how
+      many cases fail
 - [ ] `npm run roundtrip` passes
 - [ ] `npm test` passes
 - [ ] `npm run lint` passes
+- [ ] `npm run verify:vscode-floor` runs once near the end and passes
 
-**Ownership (wave 1):** `src/host/**`, `src/markdownEditorProvider.ts`,
-`src/utils/image-rename-handler.ts`.
+**Ownership (wave 1):** The new ledger module, the provider, document-save handler,
+rename handler, and image-rename-handler utility.
 
 **Parent spec:** spec-image-ledger.md
 
 ---
 
-## Wave 2 (after C1 merges)
+## After blockers merge
+
+### Ticket 2b: Extension factory, main.ts switches (C1, part 2)
+
+**Title:** Extension factory: main.ts switches to factory, delete mirrors and wave 8 markers
+
+**Blocked by:** Ticket 2a
+
+**Size:** Fits one context window; worker reads spec-extension-factory.md and this ticket.
+
+**What it delivers:** `initEditor` imports the factory instead of defining its own
+copies. The twelve mirror definitions and the wave 8 ownership markers are deleted
+from both files.
+
+**Acceptance criteria:**
+
+- [ ] The main webview module no longer contains its own copies of the twelve
+      markdown-relevant definitions
+- [ ] Wave 8 ownership markers deleted from both files
+- [ ] Teeth test: change one rule in the factory; the corresponding roundtrip
+      fixture goes red. Report how many fixtures fail
+- [ ] `npm run roundtrip` passes
+- [ ] `npm test` passes
+- [ ] `npm run build` passes, webview bundle <= 1,100,000 B
+- [ ] `npm run verify:vscode-floor` runs once near the end and passes (import path
+      changed, prototype patch executes at import time)
+
+**Ownership:** The main webview module's markdown-relevant definitions section and
+`initEditor`.
+
+**Parent spec:** spec-extension-factory.md
+
+---
+
+### Ticket 3b: EditorSession flags become named behavior (C4, part 2)
+
+**Title:** EditorSession: flags become named behavior methods
+
+**Blocked by:** Ticket 3a
+
+**Size:** Fits one context window; worker reads spec-image-ledger.md and this ticket.
+
+**What it delivers:** Session flags (`pendingEdit`, `inFlightEdit`, `renameInProgress`,
+`exportInProgress`) are no longer written from the message handler table via closures.
+They become private with behavior methods. Dispose order (#104) is preserved and tested.
+
+**Acceptance criteria:**
+
+- [ ] Session flags are private; the message handler table calls behavior methods
+- [ ] Dispose order preserved: in-flight edit is awaited before disposed is set
+- [ ] `npm run roundtrip` passes
+- [ ] `npm test` passes
+- [ ] `npm run verify:vscode-floor` runs once near the end and passes
+
+**Ownership:** The session module and the message handler table.
+
+**Parent spec:** spec-image-ledger.md
+
+---
+
+## Wave 2 (after C1 part 2 and C3 bugfix merge)
 
 ### Ticket 4: Extract content sync module (C2)
 
 **Title:** Extract document synchronization state into a Content Sync module
 
-**Blocked by:** Ticket 2 (Extension Factory, C1) must merge first.
-_Reason: the sync module must be importable by the harness, which requires
-`acquireVsCodeApi` to be out of the import path._
+**Blocked by:** Ticket 2b (Extension Factory part 2)
+
+**Size:** Fits one context window; worker reads spec-content-sync.md and this ticket.
 
 **What it delivers:** A Node-safe module that owns the sync state between webview and
-host (`currentBody`, `currentFrontmatter`, `currentFormat`, `currentRawBlock`,
-`contentBaseline`, `lastSentState`, `isUpdatingFromExtension`, `debounceTimer`,
-`blobRetryCount`), with `postMessage` injected as a dependency. Production wires
-`vscode.postMessage`, the harness wires a recorder.
+host, with `postMessage` injected as a dependency. Production wires the real poster,
+the harness wires a recorder.
 
 **Acceptance criteria:**
 
-- [ ] Nine sync state variables no longer at module scope in main.ts; owned by the
-      sync module
-- [ ] `postEdit` and `debouncedPostEdit` are methods of the sync module, not loose
-      functions in main.ts
+- [ ] Sync state variables no longer at module scope in the main webview module;
+      owned by the sync module
+- [ ] Edit posting and debouncing are methods of the sync module
 - [ ] Harness seam `content-sync-seam.ts` (coordinator-provided empty shell) filled
       with test cases:
-      1. Type then undo within debounce window: no `edit` posted
-      2. Document ending with alert (trailingNode): load does not post `edit`
-      3. After a real post, `contentBaseline` re-anchors
-      4. Two rapid edits: only one `edit` posted (the last)
-      5. `flushEdit` after pending debounce: `edit` posted immediately
-- [ ] Teeth test: break `postEdit` (remove baseline check); seam goes red. Report
-      how many cases fail.
+      1. Type then undo within debounce window: no edit posted
+      2. Document ending with alert (trailingNode): load does not post edit
+      3. After a real post, baseline re-anchors
+      4. Two rapid edits: only one edit posted (the last)
+      5. Flush after pending debounce: edit posted immediately
+- [ ] Teeth test: break baseline check in edit posting; seam goes red. Report how
+      many cases fail
 - [ ] `npm run roundtrip` passes
 - [ ] `npm test` passes
+- [ ] `npm run verify:vscode-floor` runs once near the end and passes
 
-**Ownership (wave 2):** `currentBody`, `currentFrontmatter`, `currentFormat`,
-`currentRawBlock`, `contentBaseline`, `lastSentState`, `isUpdatingFromExtension`,
-`debounceTimer`, `blobRetryCount`, `postEdit`, `debouncedPostEdit`,
-`flushPendingEdit`, `updateEditorContent`, `case "update"` handler in main.ts.
+**Ownership (wave 2):** The sync state variables, edit posting, debouncing, flush,
+editor content update, and the update handler in the main webview module.
 
 **Parent spec:** spec-content-sync.md
 
@@ -156,26 +214,27 @@ host (`currentBody`, `currentFrontmatter`, `currentFormat`, `currentRawBlock`,
 
 **Title:** Consolidate webview image path translation into a single module
 
-**Blocked by:** Ticket 1 (C3 bugfix) must merge first.
+**Blocked by:** Ticket 1 (C3 bugfix)
 
-**What it delivers:** A single Image Path Translation module under `src/webview/` that
-owns the image map, version counter, cached reverse map, and all path transformation
-functions. Neither `main.ts` nor `image-edit-plugin.ts` holds map state. The "triple
-pattern" (`currentImageMap = ...; imageMapVersion++; setImageMap(...)`) is eliminated.
+**Size:** Fits one context window; worker reads spec-image-path-translation.md and this ticket.
+
+**What it delivers:** A single Image Path Translation module that owns the image map,
+version, cached reverse map, and all path transformation functions. Neither the main
+webview module nor the image edit plugin holds map state. When the map changes from the
+plugin, the reverse lookup sees the new path.
 
 **Acceptance criteria:**
 
-- [ ] `currentImageMap`, `imageMapVersion`, `cachedReverseImageMap` no longer at module
-      scope in main.ts
-- [ ] `image-edit-plugin.ts` has no `currentImageMap` local variable
-- [ ] The "triple pattern" (set map + bump version + sync plugin) replaced by single
-      calls to the module
-- [ ] `transformForSave` uses `sameResource` for reverse lookup matching
-- [ ] Harness seam `image-path-seam.ts` extended with cases for `setMap` and `mutateMap`
-- [ ] Teeth test: remove version bump from the module's `setMap`; seam goes red.
-      Report how many cases fail.
+- [ ] Map state no longer at module scope in the main webview module
+- [ ] The image edit plugin has no local map variable
+- [ ] The repeated set-map-bump-version-sync-plugin pattern is replaced by single calls
+- [ ] Reverse lookup uses resource-aware matching for percent-encoded URLs
+- [ ] Harness seam `image-path-seam.ts` extended with module-level cases
+- [ ] Teeth test: disable version bump in the module; seam goes red. Report how many
+      cases fail
 - [ ] `npm run roundtrip` passes
 - [ ] `npm test` passes
+- [ ] `npm run verify:vscode-floor` runs once near the end and passes
 
 **Ownership (wave 2):** Same functions as Ticket 1 ownership.
 
@@ -186,16 +245,12 @@ pattern" (`currentImageMap = ...; imageMapVersion++; setImageMap(...)`) is elimi
 ## Dependency Graph
 
 ```
-Wave 1 (parallel):
-  Ticket 1 (C3 bugfix)  ───────────────────> Ticket 5 (C3 refactor, wave 2)
-  Ticket 2 (C1 factory) ───────────────────> Ticket 4 (C2 sync, wave 2)
-  Ticket 3 (C4 ledger)       (independent)
-
-Wave 2 (after C1 merge):
-  Ticket 4 (C2 sync)
-  Ticket 5 (C3 refactor)
+Wave 1 (parallel, 3 workers):
+  Ticket 1  (C3 bugfix)      ──> Ticket 5  (C3 refactor)
+  Ticket 2a (C1 factory/harness) ──> Ticket 2b (C1 factory/main) ──> Ticket 4 (C2 sync)
+  Ticket 3a (C4 ledger)      ──> Ticket 3b (C4 session flags)
 ```
 
-All three import blocks in wave 1 will touch main.ts (different functions, no logic
+All three wave 1 tickets touch the main webview module (different functions, no logic
 overlap). Import-line conflicts are expected and resolved by the coordinator at merge.
 A LOGIC conflict means the ownership boundary is wrong.
