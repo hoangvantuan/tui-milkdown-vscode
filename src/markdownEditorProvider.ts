@@ -120,7 +120,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       vscode.workspace.onDidChangeTextDocument((e) => {
         if (
           e.document.uri.toString() === document.uri.toString() &&
-          !session.pendingEdit &&
+          !session.isApplyingEdit &&
           e.contentChanges.length > 0
         ) {
           session.updateWebview();

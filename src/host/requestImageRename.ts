@@ -30,7 +30,7 @@ export function handleRequestImageRename(
   document: vscode.TextDocument,
   webview: TypedWebview,
   ledger: ImageLedger,
-  setPendingEdit: (value: boolean) => void,
+  withPendingEdit: <T>(action: () => Promise<T>) => Promise<T>,
 ): void {
   const renameMsg = msg;
   if (!renameMsg.renameId || !renameMsg.oldPath || !renameMsg.newPath) return;
@@ -78,8 +78,7 @@ export function handleRequestImageRename(
         `$1${newPath}$2`
       );
       if (updatedText !== currentText) {
-        setPendingEdit(true);
-        try {
+        await withPendingEdit(async () => {
           const edit = new vscode.WorkspaceEdit();
           const fullRange = new vscode.Range(
             document.positionAt(0),
@@ -87,9 +86,7 @@ export function handleRequestImageRename(
           );
           edit.replace(document.uri, fullRange, updatedText);
           await vscode.workspace.applyEdit(edit);
-        } finally {
-          queueMicrotask(() => { setPendingEdit(false); });
-        }
+        });
       }
 
       // Update ledger baseline

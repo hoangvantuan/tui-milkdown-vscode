@@ -82,8 +82,7 @@ const handlers: HandlerTable = {
 
   edit: async (msg, ctx) => {
     if (typeof msg.content === "string" && !ctx.document.isClosed) {
-      ctx.session.inFlightEdit = ctx.session.applyEdit(msg.content);
-      await ctx.session.inFlightEdit;
+      await ctx.session.applyEdit(msg.content);
     }
   },
 
@@ -200,9 +199,7 @@ const handlers: HandlerTable = {
       ctx.document,
       ctx.webview,
       ctx.session.ledger,
-      (value) => {
-        ctx.session.pendingEdit = value;
-      },
+      (action) => ctx.session.withPendingEdit(action),
     );
   },
 
@@ -257,10 +254,7 @@ const handlers: HandlerTable = {
       msg,
       ctx.document,
       ctx.webview,
-      () => ctx.session.exportInProgress,
-      (value) => {
-        ctx.session.exportInProgress = value;
-      },
+      (action) => ctx.session.withExportLock(action),
     );
   },
 

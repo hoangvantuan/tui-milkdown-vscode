@@ -43,10 +43,16 @@ function getThemeKind(): "dark" | "light" {
 export class EditorSession {
   readonly docKey: string;
   readonly webview: TypedWebview;
-  isDisposed = false;
-  inFlightEdit: Promise<void> | null = null;
-  pendingEdit = false;
-  exportInProgress = false;
+  private _isDisposed = false;
+  get isDisposed(): boolean {
+    return this._isDisposed;
+  }
+  private _inFlightEdit: Promise<void> | null = null;
+  private _pendingEdit = false;
+  get isApplyingEdit(): boolean {
+    return this._pendingEdit;
+  }
+  private _exportInProgress = false;
   get renameInProgress(): boolean {
     return this.ledger.renameInProgress;
   }
@@ -63,13 +69,13 @@ export class EditorSession {
   }
 
   updateWebview(): void {
-    if (this.pendingEdit || this.isDisposed) return;
+    if (this._pendingEdit || this._isDisposed) return;
 
     // Debounce rapid calls (e.g., from applyEdit + onDidChangeTextDocument)
     if (this.updateDebounceTimer) clearTimeout(this.updateDebounceTimer);
 
     this.updateDebounceTimer = setTimeout(() => {
-      if (this.isDisposed) return;
+      if (this._isDisposed) return;
       const content = this.document.getText();
       const imageMap = buildImageMap(content, this.document.uri, this.webview);
       this.webview.postMessage({
@@ -82,7 +88,7 @@ export class EditorSession {
   }
 
   sendTheme(): void {
-    if (this.isDisposed) return;
+    if (this._isDisposed) return;
     this.webview.postMessage({
       type: "theme",
       theme: getThemeKind(),
@@ -90,8 +96,36 @@ export class EditorSession {
   }
 
   sendConfig(): void {
-    if (this.isDisposed) return;
+    if (this._isDisposed) return;
     this.webview.postMessage(buildConfigMessage(this.document));
+  }
+
+  async withPendingEdit<T>(action: () => Promise<T>): Promise<T> {
+    this._pendingEdit = true;
+    try {
+      return await action();
+    } finally {
+      queueMicrotask(() => {
+        this._pendingEdit = false;
+      });
+    }
+  }
+
+  withExportLock(action: () => Promise<void>): boolean {
+    if (this._exportInProgress) {
+      return false;
+    }
+    this._exportInProgress = true;
+    (async () => {
+      try {
+        await action();
+      } finally {
+        this._exportInProgress = false;
+      }
+    })().catch(() => {
+      /* ignore unhandled rejection here; action/caller handles its own errors */
+    });
+    return true;
   }
 
   async applyEdit(newContent: string): Promise<void> {
@@ -99,6 +133,18 @@ export class EditorSession {
     const normalizedContent = normalizeLineEndings(newContent, this.document.eol);
     if (normalizedContent === this.document.getText()) return;
 
+    const editPromise = this.performApplyEdit(normalizedContent);
+    this._inFlightEdit = editPromise;
+    try {
+      await editPromise;
+    } finally {
+      if (this._inFlightEdit === editPromise) {
+        this._inFlightEdit = null;
+      }
+    }
+  }
+
+  private async performApplyEdit(normalizedContent: string): Promise<void> {
     // === Image Rename Detection (BEFORE applying edit) ===
     // Rename files first so webviewUri resolves correctly after edit
     // Skip if another rename is already in progress to prevent race conditions
@@ -136,7 +182,7 @@ export class EditorSession {
       }
     }
 
-    this.pendingEdit = true;
+    this._pendingEdit = true;
     try {
       const edit = new vscode.WorkspaceEdit();
       const fullRange = new vscode.Range(
@@ -147,11 +193,11 @@ export class EditorSession {
       await vscode.workspace.applyEdit(edit);
     } finally {
       queueMicrotask(() => {
-        this.pendingEdit = false;
+        this._pendingEdit = false;
         // Send updated imageMap AFTER pendingEdit is reset
         // This ensures new image paths get resolved to webviewUris
         // Loop prevented by lastSentContent check in webview
-        if (!this.isDisposed) {
+        if (!this._isDisposed) {
           this.updateWebview();
         }
       });
@@ -168,14 +214,14 @@ export class EditorSession {
     if (this.updateDebounceTimer) clearTimeout(this.updateDebounceTimer);
     // Allow any edit in-flight during teardown (e.g. flushed on pagehide) to be applied if the document is still open
     setImmediate(async () => {
-      if (this.inFlightEdit) {
+      if (this._inFlightEdit) {
         try {
-          await this.inFlightEdit;
+          await this._inFlightEdit;
         } catch {
           /* ignore */
         }
       }
-      this.isDisposed = true;
+      this._isDisposed = true;
       this.disposables.forEach((d) => d.dispose());
     });
   }
