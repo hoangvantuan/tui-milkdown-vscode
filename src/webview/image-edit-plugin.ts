@@ -26,6 +26,29 @@ interface PendingRename {
 }
 const pendingRenames = new Map<string, PendingRename>();
 
+/**
+ * Callback main.ts registers so that the rename response is handled in one
+ * place that can bump `imageMapVersion`, update ALL image nodes (not just the
+ * clicked one), and re-anchor `contentBaseline`. Without this, the plugin
+ * mutates `currentImageMap` without bumping the version counter, and the stale
+ * reverse-map cache in `transformForSave` leaks the webview URI into the file.
+ *
+ * Parameters: oldSrc (the webview URI nodes currently display), oldPath
+ * (relative path being renamed away from), newPath (relative path being
+ * renamed to), webviewUri (display address for the new file).
+ */
+type ImageRenamedCallback = (
+  oldSrc: string,
+  oldPath: string,
+  newPath: string,
+  webviewUri: string,
+) => void;
+let onImageRenamedCallback: ImageRenamedCallback | null = null;
+
+export function setOnImageRenamed(cb: ImageRenamedCallback): void {
+  onImageRenamedCallback = cb;
+}
+
 // Store references
 let storedGetView: (() => EditorView | null) | null = null;
 let storedPostMessage: ((msg: WebviewToHostMessage) => void) | null = null;
@@ -568,25 +591,28 @@ export function handleImageRenameResponse(
   if (!pending) return;
   pendingRenames.delete(renameId);
 
-  if (success && webviewUri) {
-    // Remove old imageMap entry to prevent path regression in transformForSave
-    if (pending.oldPath) {
-      delete currentImageMap[pending.oldPath];
-    }
-    // Update imageMap BEFORE updating editor so transformForSave works correctly
-    // This ensures webviewUri gets converted back to relative path when saving
-    currentImageMap[newPath] = webviewUri;
+  if (!success) return; // Failed: keep old path, nothing to update.
 
-    // Now update editor with webviewUri for display; pass originalSrc to verify identity
-    updateEditorNode(pending.nodePos, pending.nodeAttrs, webviewUri, pending.originalSrc);
-  } else if (success) {
-    // Remove old imageMap entry
+  if (webviewUri && onImageRenamedCallback) {
+    // Preferred path: main.ts handles the map mutation, version bump, all-node
+    // update (via updateImageNodeSrc), and baseline re-anchor in one step.
+    // `pending.originalSrc` is the webview URI the nodes currently display.
+    onImageRenamedCallback(pending.originalSrc, pending.oldPath, newPath, webviewUri);
+    return;
+  }
+
+  // Fallback: no callback registered (should not happen in production).
+  if (webviewUri) {
     if (pending.oldPath) {
       delete currentImageMap[pending.oldPath];
     }
-    // No webviewUri - use newPath directly; pass originalSrc to verify identity
+    currentImageMap[newPath] = webviewUri;
+    updateEditorNode(pending.nodePos, pending.nodeAttrs, webviewUri, pending.originalSrc);
+  } else {
+    if (pending.oldPath) {
+      delete currentImageMap[pending.oldPath];
+    }
     updateEditorNode(pending.nodePos, pending.nodeAttrs, newPath, pending.originalSrc);
   }
-  // If failed, don't update editor (keep old path)
 }
 

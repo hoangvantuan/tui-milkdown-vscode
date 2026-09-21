@@ -69,7 +69,7 @@ import {
 } from "./frontmatter";
 import { LineHighlight } from "./line-highlight-plugin";
 import { HeadingLevel, headingSlug } from "./heading-level-plugin";
-import { setupImageEditOverlay, handleUrlEditResponse, handleImageRenameResponse, setImageMap, promptForImageUrl } from "./image-edit-plugin";
+import { setupImageEditOverlay, handleUrlEditResponse, handleImageRenameResponse, setImageMap, setOnImageRenamed, promptForImageUrl } from "./image-edit-plugin";
 import { renderTableToMarkdown } from "./table-markdown-serializer";
 import { transformTableCellsAfterParse } from "./table-cell-content-parser";
 import { MermaidDiagram, updateMermaidTheme, clearMermaidCache } from "./mermaid-plugin";
@@ -709,6 +709,39 @@ function resetContentBaseline(): void {
   const body = serializeEditorBody();
   contentBaseline = body === null ? null : buildContent(body);
 }
+
+// Register the rename-completion callback so that image-edit-plugin delegates
+// the map mutation, version bump, all-node update, and baseline re-anchor to
+// this module, which owns `imageMapVersion` and `updateImageNodeSrc`.
+//
+// Without this, the plugin mutated `currentImageMap` directly without bumping
+// `imageMapVersion`, so `transformForSave` reused a stale cached reverse map
+// and the webview URI leaked into the file on disk (#142).
+setOnImageRenamed((oldSrc, oldPath, newPath, webviewUri) => {
+  // 1. Update the image map and bump the version so the reverse cache is
+  //    invalidated on the next `transformForSave` call.
+  if (oldPath) {
+    delete currentImageMap[oldPath];
+  }
+  currentImageMap[newPath] = webviewUri;
+  imageMapVersion++;
+  setImageMap(currentImageMap);
+
+  // 2. Update ALL editor nodes that display the old webview URI. This uses
+  //    `isUpdatingFromExtension = true`, so `onUpdate` does not fire
+  //    `debouncedPostEdit`. The host already wrote the new relative path into
+  //    the document text; a redundant edit from the webview would at best be
+  //    harmless, at worst carry a stale map entry.
+  updateImageNodeSrc(oldSrc, webviewUri);
+
+  // 3. Re-anchor the baseline. The host changed the document (wrote the new
+  //    path) without sending `update`, so `contentBaseline` still describes the
+  //    old text. After the node update above, `serializeEditorBody` produces
+  //    the new relative paths (via the now-correct reverse map). That is what
+  //    the host holds, so anchoring here means `postEdit` will correctly
+  //    suppress the redundant edit.
+  resetContentBaseline();
+});
 
 const MAX_BLOB_RETRIES = 5;
 let blobRetryCount = 0;
