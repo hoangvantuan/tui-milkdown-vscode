@@ -1,3 +1,7 @@
-# content-sync-seam.ts: no cases yet
+# content sync seam: which edits the rich text view posts to the host, and which it does not
 
-This seam is a skeleton. Ticket #148 replaces this body with real cases.
+[type-undo-in-debounce] posts=0
+[alert-trailing-node-load] posts=0
+[baseline-reanchors-after-post] posts=2
+[rapid-edits-single-post] posts=1 content="Alpha Beta Gamma"
+[flush-pending-debounce-posts-immediately] posts=1 flushed=true content="First Second"
