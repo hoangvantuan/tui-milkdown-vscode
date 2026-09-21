@@ -544,6 +544,26 @@ cho tới khi có một lượt xanh.** Lượt 4 xanh 55/55, lượt 5 đỏ đ
 lượt (lỗi mã thì đỏ cùng một chỗ mọi lượt), và các check không phụ thuộc vị trí không bao
 giờ nhúc nhích.
 
+**Cửa sổ floor cần người GIỮ ở trước, không phải được raise một lần.** Bài trên nói
+"đo tiếp tới khi xanh"; trên một desktop thật thì có khi không bao giờ xanh. Lúc phát hành
+3.0.2 tôi chạy tám lượt, sáu lượt đầu đỏ và không lượt nào đỏ cùng một chỗ. Nguyên nhân đo
+được bằng một lệnh: `osascript -e 'tell application "System Events" to get name of every
+process whose visible is true and background only is false'` trả về mười ba app đang mở
+cửa sổ. `driveSurfaces` raise MỘT lần ở cổng đầu rồi đo, nên vài giây sau là có thứ khác
+lấy mất mặt trước, và mọi probe phụ thuộc vị trí từ đó đo window manager.
+
+Thứ chạy được là một vòng bên ngoài, chạy song song với lượt floor, tìm tiến trình mang
+`--extensionDevelopmentPath=<repo>` rồi đưa nó ra trước. **Và vòng đó chỉ được chạm vào
+cửa sổ khi nó ĐÃ mất mặt trước.** Bản đầu tôi viết gọi `set frontmost` mỗi hai giây vô
+điều kiện: cổng visibility xanh ngay, nhưng lượt ấy đỏ `slash command opens a filtered
+block menu` vì poke window server giữa lúc probe đang gõ thì ký tự rơi. Thêm một phép so
+`unix id of first process whose frontmost is true` trước khi raise là đủ: lượt kế 55/55,
+và cổng báo `reraise=not needed`.
+
+Lọc theo `--extensionDevelopmentPath` của đúng repo mình, cùng lý do với luật dọn survivor
+ở trên. Vòng này cướp mặt trước của người dùng trong khoảng bốn phút, nên xin phép trước
+khi chạy trên máy có người đang làm việc.
+
 **Sửa một `.md` ở GỐC repo sau lượt roundtrip cuối là commit golden cũ.** `harness/corpus.ts`
 quét mọi `*.md` ở gốc làm corpus, nên sửa `CHANGELOG.md` hay `AGENTS.md` ở bước viết tài
 liệu, tức là SAU khi đã chạy đủ bộ kiểm, làm golden trong commit lệch với cây. Commit
