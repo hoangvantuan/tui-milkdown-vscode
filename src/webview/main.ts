@@ -188,24 +188,30 @@ document.addEventListener("mermaid-copy-error", (e: Event) => {
 
 let editor: Editor | null = null;
 let linkPopover: LinkPopoverController | null = null;
-// Temporary alias for #147 touch point in updateImageNodeSrc
-let isUpdatingFromExtension = false;
 let globalThemeReceived: ThemeName | null = null;
 let highlightCurrentLine = true;
+
+// Document sync state. Declared here, above updateImageNodeSrc, because every
+// suppression of a host-driven update now goes through this object: since #150
+// the extension-update latch is a private field of ContentSync and
+// `guardExtensionUpdate` is the only way to raise it. This module keeps no copy
+// of that flag; a second one here is the #142 shape, two places holding one truth.
+const contentSync = new ContentSync({
+  postMessage: (msg) => vscode.postMessage(msg),
+  getEditorBody: () => (editor ? transformForSave(editor.getMarkdown()) : null),
+  checkPendingBlobs: (content) => processInlineImages(content),
+  getImageMapVersion: () => getImageMapVersion(),
+});
 
 // Inline image handling
 const INLINE_IMAGE_REGEX = /!\[([^\]]*)\]\(((?:blob:|data:image\/)[^)]+)\)/g;
 
 function updateImageNodeSrc(oldSrc: string, newSrc: string): boolean {
-  if (!editor) return false;
-  try {
-    isUpdatingFromExtension = true;
-    return updateEditorImageNodeSrc(editor, oldSrc, newSrc);
-  } finally {
-    queueMicrotask(() => {
-      isUpdatingFromExtension = false;
-    });
-  }
+  const ed = editor;
+  if (!ed) return false;
+  return contentSync.guardExtensionUpdate(() =>
+    updateEditorImageNodeSrc(ed, oldSrc, newSrc),
+  );
 }
 
 const pendingImageSaves = new Map<string, number>();
@@ -363,14 +369,6 @@ async function processInlineImages(content: string): Promise<boolean> {
   return hasPendingImages;
 }
 
-const contentSync = new ContentSync({
-  postMessage: (msg) => vscode.postMessage(msg),
-  getEditorBody: () => (editor ? transformForSave(editor.getMarkdown()) : null),
-  checkPendingBlobs: (content) => processInlineImages(content),
-  isExternalUpdating: () => isUpdatingFromExtension,
-  getImageMapVersion: () => getImageMapVersion(),
-});
-
 function replaceInlineImage(
   imageUrl: string,
   savedPath: string,
@@ -439,23 +437,21 @@ export function resetContentBaseline(): void {
 }
 
 // Rename completion: delegates map mutation and editor node updates to the
-// image translation module, keeping extension sync flags and baseline re-anchoring
-// in this module (#142, #147).
+// image translation module, and the baseline re-anchoring to ContentSync
+// (#142, #147). The rewrite runs under the extension-update latch, so the
+// transactions it dispatches do not post the rewritten text back as a user
+// edit; re-anchoring afterwards is what makes the new paths the baseline.
 function handleImageRenamed(
   oldSrc: string,
   oldPath: string,
   newPath: string,
   webviewUri: string,
 ): void {
-  if (!editor) return;
-  try {
-    isUpdatingFromExtension = true;
-    applyImageRenameTranslation(oldSrc, oldPath, newPath, webviewUri, editor);
-  } finally {
-    queueMicrotask(() => {
-      isUpdatingFromExtension = false;
-    });
-  }
+  const ed = editor;
+  if (!ed) return;
+  contentSync.guardExtensionUpdate(() => {
+    applyImageRenameTranslation(oldSrc, oldPath, newPath, webviewUri, ed);
+  });
   resetContentBaseline();
 }
 
@@ -906,7 +902,7 @@ function initEditor(initialContent: string = ""): Editor | null {
         },
       },
       onUpdate: () => {
-        if (isUpdatingFromExtension || contentSync.isUpdating()) return;
+        if (contentSync.isUpdating()) return;
         // Perf (Fix 1): Serialization moved inside debouncedPostEdit — runs only once per 300ms window.
         debouncedPostEdit();
       },
@@ -1591,7 +1587,6 @@ window.addEventListener("message", async (event) => {
         setImageMap(newImageMap);
 
         contentSync.guardExtensionUpdate(() => {
-          isUpdatingFromExtension = true;
           try {
             const parsed = contentSync.applyHostUpdate(message.content);
 
@@ -1678,10 +1673,6 @@ window.addEventListener("message", async (event) => {
             showError(
               `Failed to update content: ${err instanceof Error ? err.message : String(err)}`,
             );
-          } finally {
-            queueMicrotask(() => {
-              isUpdatingFromExtension = false;
-            });
           }
         });
       }

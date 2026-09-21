@@ -5,3 +5,5 @@
 [baseline-reanchors-after-post] posts=2
 [rapid-edits-single-post] posts=1 content="Alpha Beta Gamma"
 [flush-pending-debounce-posts-immediately] posts=1 flushed=true content="First Second"
+[debounce-coalesces-into-one-timer] postsAtFirstDeadline=0 posts=1 serializations=1
+[extension-update-latch] before=false inside=true afterReturn=true settled=false returns=42 posts=0

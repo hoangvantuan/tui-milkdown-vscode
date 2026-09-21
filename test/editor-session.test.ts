@@ -7,6 +7,7 @@
  * 3. Concurrent exports: second is rejected; after first completes (or throws), a new export is accepted.
  * 4. handleExport rejects duplicate export requests with busy reason via withExportLock.
  * 5. handleRequestImageRename executes document updates via withPendingEdit.
+ * 6. withPendingEdit releases the flag on a MICROTASK, not synchronously (#150).
  */
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
@@ -344,5 +345,54 @@ describe("EditorSession (#146)", () => {
     assert.equal(withPendingEditCalled, true, "handleRequestImageRename must use withPendingEdit");
     assert.equal(sawPendingEditActive, true, "isApplyingEdit must be active during document edit");
     assert.equal(session.isApplyingEdit, false, "isApplyingEdit must be cleared after completion");
+  });
+
+  // Case 6 closes the gap the wave 10 close of #146 recorded: case 2 above reads
+  // the flag only after awaiting, by which time a synchronous release in the
+  // `finally` looks identical to the microtask one, so it could not go red.
+  //
+  // The distinguishing reading exists, and it is this one. `withPendingEdit`
+  // suspends at `await action()`, so its resumption is already queued when the
+  // call returns; an observer queued by the caller right afterwards therefore
+  // runs AFTER the `finally` body and BEFORE the microtask that body queued.
+  // Microtask release: the observer sees true. Synchronous release: false.
+  //
+  // The deferral is not decoration. `vscode.workspace.applyEdit` resolving does
+  // not mean the document-change listener has run; it is delivered in the same
+  // microtask checkpoint, and it reads `session.isApplyingEdit` to tell the
+  // host's own write apart from a user edit. Released synchronously, the host
+  // would treat its own WorkspaceEdit as an external change and push it back to
+  // the webview: the edit loop all four layers exist to stop.
+  it("6. withPendingEdit releases the flag on a microtask, not synchronously", async () => {
+    const doc = createMockDoc(docUri, "# Content\n");
+    const webviewMock = createMockWebview();
+    const ledger = new ImageLedger("# Content\n", docUri);
+    const session = new EditorSession(
+      doc,
+      { webview: webviewMock } as unknown as vscode.WebviewPanel,
+      ledger,
+    );
+
+    const pending = session.withPendingEdit(() => Promise.resolve());
+
+    // Queued before the first await below, so it lands behind withPendingEdit's
+    // own resumption and ahead of the release the `finally` queues.
+    let flagAtCheckpoint: boolean | "unset" = "unset";
+    queueMicrotask(() => {
+      flagAtCheckpoint = session.isApplyingEdit;
+    });
+
+    await pending;
+
+    assert.equal(
+      flagAtCheckpoint,
+      true,
+      "isApplyingEdit must still be set at the microtask checkpoint after the action settles",
+    );
+    assert.equal(
+      session.isApplyingEdit,
+      false,
+      "isApplyingEdit must be released by the time the caller resumes",
+    );
   });
 });

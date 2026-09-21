@@ -51,14 +51,17 @@ type Outcome =
   | { kind: "missing" }
   | { kind: "error"; message: string };
 
-function runFixture(
+// A seam may be async: `content-sync-seam.ts` reads a latch one microtask after
+// the call that set it, and a microtask cannot be drained from synchronous code
+// (#150). Markdown fixtures stay synchronous; the await below is a no-op for them.
+async function runFixture(
   entry: CorpusEntry,
   update: boolean,
-  run: (content: string) => string = roundtripMarkdown,
-): Outcome {
+  run: (content: string) => string | Promise<string> = roundtripMarkdown,
+): Promise<Outcome> {
   let output: string;
   try {
-    output = run(entry.content);
+    output = await run(entry.content);
   } catch (err) {
     return {
       kind: "error",
@@ -100,7 +103,7 @@ function runFixture(
   };
 }
 
-function main(): number {
+async function main(): Promise<number> {
   const update = process.argv.includes("--update");
   const repoRoot = path.resolve(__dirname, "..", "..");
   const corpus = loadCorpus(repoRoot);
@@ -116,7 +119,7 @@ function main(): number {
   let errored = 0;
 
   for (const entry of corpus) {
-    const outcome = runFixture(entry, update);
+    const outcome = await runFixture(entry, update);
     switch (outcome.kind) {
       case "pass":
         if (update) {
@@ -153,7 +156,11 @@ function main(): number {
 
   console.log("──────────────────────────────────────────");
 
-  const seams: Array<{ name: string; goldenPath: string; run: () => string }> = [
+  const seams: Array<{
+    name: string;
+    goldenPath: string;
+    run: () => string | Promise<string>;
+  }> = [
     {
       name: "seams/frontmatter.txt",
       goldenPath: path.join(repoRoot, "harness", "golden", "seams", "frontmatter.txt"),
@@ -254,7 +261,7 @@ function main(): number {
   ];
 
   for (const seam of seams) {
-    const outcome = runFixture(
+    const outcome = await runFixture(
       { name: seam.name, sourcePath: "", goldenPath: seam.goldenPath, content: "" },
       update,
       seam.run,
@@ -305,4 +312,10 @@ function main(): number {
   return failed + missing + errored > 0 ? 1 : 0;
 }
 
-process.exit(main());
+main().then(
+  (code) => process.exit(code),
+  (err) => {
+    console.error(err);
+    process.exit(1);
+  },
+);

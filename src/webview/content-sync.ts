@@ -42,8 +42,6 @@ export interface ContentSyncOptions {
   debounceMs?: number;
   /** Optional custom scheduler for timers (e.g. mock clock in test harness). */
   scheduler?: TimerScheduler;
-  /** Optional callback to check if an external update is in progress. */
-  isExternalUpdating?: () => boolean;
   /** Optional callback to query the current image map version for echo serialization. */
   getImageMapVersion?: () => number;
 }
@@ -252,7 +250,17 @@ export class ContentSync {
   }
 
   /**
-   * Run a callback under the isUpdatingFromExtension flag, clearing it on the next microtask.
+   * Run a callback under the isUpdatingFromExtension flag, clearing it on the
+   * next microtask. The ONLY way to raise that flag (#150): there is no setter,
+   * so a caller cannot set it and forget to clear it, nor clear it early.
+   *
+   * The microtask is the point, not an implementation detail. Setting the
+   * content of a ProseMirror view dispatches transactions whose `onUpdate`
+   * handlers run after `fn` returns but before the microtask checkpoint drains;
+   * clearing synchronously in the `finally` would let those transactions post
+   * an `edit` for text the host just sent us. `harness/content-sync-seam.ts`
+   * measures the flag at all three moments: inside, after the call returns, and
+   * after one microtask.
    */
   public guardExtensionUpdate<T>(fn: () => T): T {
     this.isUpdatingFromExtension = true;
@@ -314,16 +322,15 @@ export class ContentSync {
     this.lastSentState = state;
   }
 
+  /**
+   * Whether an update driven by the host (or by this webview rewriting image
+   * nodes on its behalf) is in progress. Reads ONE field: until #150 it also
+   * consulted an `isExternalUpdating` callback that `main.ts` answered from a
+   * module-scope flag of its own, so two places held one truth and either could
+   * be the one a new caller set.
+   */
   public isUpdating(): boolean {
-    if (this.isUpdatingFromExtension) return true;
-    if (this.options.isExternalUpdating && this.options.isExternalUpdating()) {
-      return true;
-    }
-    return false;
-  }
-
-  public setUpdatingFromExtension(updating: boolean): void {
-    this.isUpdatingFromExtension = updating;
+    return this.isUpdatingFromExtension;
   }
 
   public getBlobRetryCount(): number {
