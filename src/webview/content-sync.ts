@@ -26,6 +26,11 @@ export interface TimerScheduler {
   clearTimeout: (id: any) => void;
 }
 
+const defaultScheduler: TimerScheduler = {
+  setTimeout: (fn: () => void, ms?: number) => setTimeout(fn, ms),
+  clearTimeout: (id: any) => clearTimeout(id),
+};
+
 export interface ContentSyncOptions {
   /** Injected postMessage adapter. In production: vscode.postMessage; in harness: recording poster. */
   postMessage: (msg: EditMessage) => void;
@@ -55,6 +60,10 @@ export class ContentSync {
   private blobRetryCount: number = 0;
 
   constructor(private readonly options: ContentSyncOptions) {}
+
+  private get scheduler(): TimerScheduler {
+    return this.options.scheduler ?? defaultScheduler;
+  }
 
   /** The body as this webview would write it, without touching currentBody. */
   public serializeEditorBody(): string | null {
@@ -138,7 +147,7 @@ export class ContentSync {
    * Serialization happens inside the debounce callback, not on every keystroke.
    */
   public debouncedPostEdit(): void {
-    const scheduler = this.options.scheduler ?? { setTimeout, clearTimeout };
+    const scheduler = this.scheduler;
     if (this.debounceTimer !== null) {
       scheduler.clearTimeout(this.debounceTimer);
     }
@@ -188,7 +197,7 @@ export class ContentSync {
    * Returns whether an edit was posted.
    */
   public flushPendingEdit(force: boolean = false): boolean {
-    const scheduler = this.options.scheduler ?? { setTimeout, clearTimeout };
+    const scheduler = this.scheduler;
     const hadPending = this.debounceTimer !== null;
     if (!hadPending && !force) return false;
 
@@ -216,7 +225,7 @@ export class ContentSync {
 
   /** Cancel any pending debounced edit timer without posting. */
   public cancelDebounce(): void {
-    const scheduler = this.options.scheduler ?? { setTimeout, clearTimeout };
+    const scheduler = this.scheduler;
     if (this.debounceTimer !== null) {
       scheduler.clearTimeout(this.debounceTimer);
       this.debounceTimer = null;
