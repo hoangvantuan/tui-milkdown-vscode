@@ -2,6 +2,20 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## [Unreleased]
+
+Wave 10 (#149) turned the architecture review of 2026-09-21 into code: five of seven tickets are merged, each closed against the coordinator's own measurements rather than the worker's report. The two still open (#147 Image path translation, #148 Content sync) are running on the same base.
+
+### Fixed
+
+- **Renaming an image by double-click wrote a webview address into the file (#142, #129)**: `sample.md` referenced `media/icon.png` twice, once as `<img width>` and once as `![]()`; after a rename the file held one `https://file+.vscode-resource...` URL and one new relative path, so the document pointed at a resource that exists only inside the webview and at a file that no longer existed. Two modules held the image map and neither invalidated the other's cache: the plugin rewrote the map without bumping `imageMapVersion`, so `transformForSave` reused the stale reverse map, and only the clicked node was updated while the host had rewritten every reference. Rename completion is now one call in `main.ts` that bumps the version, updates every node carrying the old address (matched through `sameResource`, so percent-encoding does not matter) and re-anchors `contentBaseline`, so no redundant `edit` follows. The floor probe added for this went from `newRelative=1 webviewUrls=1` to `newRelative=2 webviewUrls=0`, and `harness/image-path-seam.ts` pins seven cases; a fix that updates only the first node turns one of them red.
+
+### Changed
+
+- **Extension factory (#143, #145)**: the markdown-relevant Tiptap extensions (StarterKit flags, the alert Blockquote, the Document serializer, the fence-length CodeBlockLowlight, the Table serializer, EscapeToken, BlankLineHandler, CustomUnderline, the tab-expanding marked lexer, the idempotent `MarkdownManager.prototype` patch) are built ONCE by `buildMarkdownExtensions()` in `src/webview/extension-factory.ts`. `harness/editor.ts` and `initEditor()` both call it, so the roundtrip harness measures the rules that ship instead of a hand-kept mirror; the wave 8 ownership markers in `main.ts` are gone with the mirror. Behaviour is unchanged: 60/60 roundtrip with no golden touched, and the webview bundle dropped 2,223 B to 1,024,243 B.
+- **Image ledger (#144)**: the per-document baseline of image paths that rename and delete detection compare against lives in `src/host/imageLedger.ts`, one instance per `docKey`, shared by two panels on the same file. The provider, `applyEdit`, `handleDocumentSave` and the rename handler call `setBaseline`, `detectRenames`, `applyRenames`, `detectDeletes` and `updateEntry` instead of threading the outer `Map<string, Map<string, string>>` plus `docKey` around; the "never hold the inner map" trap in AGENTS.md is now unrepresentable. The #126 rule (re-baseline FIRST, synchronously, before the delete prompt's `await`) is inside the ledger and has a unit test that goes red when the order is swapped.
+- **EditorSession flags are behaviour, not fields (#146)**: `pendingEdit`, `inFlightEdit` and `exportInProgress` are private; the message handler table calls `withPendingEdit(fn)`, `withExportLock(fn)` and `applyEdit()` instead of assigning them, and the provider reads `isApplyingEdit`. The #104 teardown order (await the in-flight edit, then set disposed) is unchanged and now has a unit test that goes red when it is reversed. The rename path still runs under `withPendingEdit` without calling `updateWebview()`, as before.
+
 ## [3.0.1] - 2026-09-20
 
 ### Changed
