@@ -39,6 +39,8 @@ import { runMathFootnoteSeam } from "./math-footnote-seam";
 import { runHtmlRenderSeam } from "./html-render-seam";
 import { runEmojiInsertSeam } from "./emoji-insert-seam";
 import { runCodeBlockSeam } from "./codeblock-seam";
+import { runContentSyncSeam } from "./content-sync-seam";
+import { runImagePathSeam } from "./image-path-seam";
 import { formatUnifiedDiff } from "./diff";
 
 const MAX_DIFF_LINES = 120;
@@ -236,6 +238,18 @@ function main(): number {
       name: "seams/codeblock.txt",
       goldenPath: path.join(repoRoot, "harness", "golden", "seams", "codeblock.txt"),
       run: runCodeBlockSeam,
+    },
+    // Wave-10 seams (#149), same rule: registered before the worktrees were cut.
+    // content-sync is #148's to fill; image-path is #142's first and #147's after.
+    {
+      name: "seams/content-sync.txt",
+      goldenPath: path.join(repoRoot, "harness", "golden", "seams", "content-sync.txt"),
+      run: runContentSyncSeam,
+    },
+    {
+      name: "seams/image-path.txt",
+      goldenPath: path.join(repoRoot, "harness", "golden", "seams", "image-path.txt"),
+      run: runImagePathSeam,
     },
   ];
 

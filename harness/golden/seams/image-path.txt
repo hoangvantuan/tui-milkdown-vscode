@@ -1,0 +1,3 @@
+# image-path-seam.ts: no cases yet
+
+This seam is a skeleton. Ticket #142 fills it; #147 extends it.
