@@ -61,11 +61,16 @@ become private to the session with behaviour methods:
 
 ## Testing Decisions
 
-- **Unit tests** (in `test/`): the ledger is pure Node code, no VS Code API needed.
-  Test cases:
+- **Unit tests** (in `test/`): the ledger is pure Node code. Uses `test/vscode-stub.ts`
+  as precedent (existing tests: `test/image-rename-handler.test.ts`,
+  `test/image-usage.test.ts`; `esbuild.harness.config.js` auto-scans, no config edit).
+  Mandatory cases:
   1. `setBaseline` then `detectRenames` with a path change: returns the rename
   2. `setBaseline` after save: old inner map is discarded
   3. Two concurrent `applyRenames` calls: second is rejected (renameInProgress)
+  4. **Race: save replaces map while rename is awaiting.** This is the race currently
+     documented only in a comment. The test must prove that a save arriving during
+     an in-flight rename does not lose the rename result.
 - **Teeth test**: break `setBaseline` (e.g., skip the map replacement). Rename
   detection must fail. Report how many cases fail.
 - Existing roundtrip and seam tests must remain green (host-side changes do not

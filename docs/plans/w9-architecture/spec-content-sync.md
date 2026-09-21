@@ -57,15 +57,18 @@ read/write `currentBody` for callers that need it (image save, metadata edit).
 
 ## Testing Decisions
 
-- **New harness seam**: `sync-state-seam.ts`. Test cases:
-  1. Type then undo within debounce window: no `edit` posted
-  2. Host sends `update` with content that normalizes differently: no `edit` back
-  3. Two rapid edits: only one `edit` posted (the last)
-  4. `flushEdit` after a pending debounce: `edit` posted immediately
+- **Harness seam**: `content-sync-seam.ts` (coordinator will commit the empty shell
+  and golden registration before worktree cut). Worker fills in test cases and golden.
+  Mandatory cases:
+  1. Type then undo within a debounce window: no `edit` posted
+  2. Document ending with an alert (trailingNode appends paragraph): load does not
+     post an `edit`
+  3. After a real post, `contentBaseline` re-anchors to the posted content
+  4. Two rapid edits: only one `edit` posted (the last)
+  5. `flushEdit` after a pending debounce: `edit` posted immediately
 - **Teeth test**: break `postEdit` (e.g., remove the baseline check). Seam must go
   red. Report how many cases fail.
 - Existing roundtrip fixtures must remain green.
-- No new floor check probe needed at this stage.
 
 ## Out of Scope
 

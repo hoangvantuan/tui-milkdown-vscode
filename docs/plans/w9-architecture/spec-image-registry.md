@@ -1,6 +1,6 @@
-# Spec: Image Registry (Candidate 3, refactor)
+# Spec: Image Path Translation (Candidate 3, refactor)
 
-_Blocked by: Image Map Cache Invalidation Bug Fix (C3 prerequisite)._
+_Blocked by: Image Path Translation Bug Fix (C3 prerequisite)._
 
 ## Problem Statement
 

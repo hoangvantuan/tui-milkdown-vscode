@@ -1,4 +1,4 @@
-# Spec: Image Map Cache Invalidation Bug Fix (Candidate 3, prerequisite)
+# Spec: Image Path Translation Bug Fix (Candidate 3, prerequisite)
 
 ## Problem Statement
 
@@ -17,18 +17,26 @@ cache, so `replaceImagePaths` does not convert it back to the relative path.
 
 ## Solution
 
-Two minimal fixes, both in existing files:
+Fix the code so that the following invariants hold after a double-click rename:
 
-1. **Bump `imageMapVersion` after plugin map mutation.** Either export a
-   `bumpImageMapVersion()` function from main.ts for the plugin to call, or have
-   `setImageMap` in main.ts (the existing sync point) also bump the version by
-   accepting a callback or making `setImageMap` the sole mutator.
+1. **The file on disk contains the relative path, not a webview URI.** After rename,
+   the document must contain `images/new-name.png` (the new relative path), never
+   `https://file+.vscode-resource...`.
+2. **No `edit` is posted if the document matches what the host holds.** `postEdit`
+   remains the sole exit for `edit`, gated on `contentBaseline`. If the host already
+   wrote the new path (via `requestImageRename.ts`), the webview must not post a
+   redundant or stale edit.
+3. **Baseline must be re-anchored after any host-initiated document change.** If the
+   host changes the document (rename writes new path) without sending `update`, the
+   webview's `contentBaseline` must still reflect reality, otherwise the next user
+   edit will carry stale state.
 
-2. **Set `isUpdatingFromExtension` in `updateEditorNode`.** The function dispatches a
-   ProseMirror transaction that is not a user edit, but it does not guard against
-   `onUpdate` triggering `debouncedPostEdit`. Either the plugin sets the flag (requires
-   importing it from main.ts), or `updateEditorNode` uses `tr.setMeta` to signal that
-   the transaction should be ignored by the `onUpdate` handler.
+The ticket does NOT prescribe the mechanism. The worker chooses how to fix it.
+
+**Floor probe**: the coordinator will add a floor check probe to `run.mjs` that
+exercises double-click rename (same folder) and reads back the document text. This
+probe must be RED on `develop` (before fix) and GREEN after. The worker's ticket
+references the probe but does not create it.
 
 ## User Stories
 
@@ -39,27 +47,22 @@ Two minimal fixes, both in existing files:
 
 ## Implementation Decisions
 
-- Fix (1) is the primary fix. Fix (2) is defense in depth: even without it, the
-  correct cache would produce the right reverse mapping. But without (2), an
-  unnecessary `edit` message is still sent after rename.
 - The fix must NOT change the overall architecture of the image map. Candidate 3
   (refactor) comes after this fix.
 - The fix must work with the CURRENT structure: `imageMapVersion` as a module-local
   in main.ts, `currentImageMap` shared by reference.
-- Preferred approach for (1): add a `notifyImageMapChanged()` export from main.ts
-  that does `imageMapVersion++; cachedReverseImageMap = null;`. The plugin calls it
-  after mutating the map. This is intentionally narrow: the refactor (C3) will
-  subsume it.
+- `postEdit` remains the sole exit for `edit`, gated on `contentBaseline`.
+- The mechanism is for the worker to decide; the ticket specifies invariants only.
 
 ## Testing Decisions
 
-- **New harness seam**: `image-map-seam.ts`. Test case: construct an editor with a
-  document containing `![alt](images/photo.png)`, provide an image map, simulate
-  the sequence (mutate map as rename response would, serialize). Assert the serialized
-  output contains `images/new-name.png`, not a webview URI.
-- **Teeth test**: remove the `notifyImageMapChanged()` call from the plugin. The seam
-  must go red. Report how many cases fail.
-- No floor check probe needed for this fix alone. The seam exercises the code path.
+- **Floor probe** (coordinator-provided): a probe in `run.mjs` exercises double-click
+  rename on a same-folder image and reads back document text. Must be RED on develop
+  before fix, GREEN after.
+- **Harness seam**: `image-path-seam.ts` (coordinator will commit the empty shell and
+  golden registration before worktree cut). Worker fills in test cases and golden.
+- **Teeth test**: break the fix, the floor probe and the seam must go red. Report
+  how many cases fail.
 
 ## Out of Scope
 

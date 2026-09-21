@@ -59,11 +59,21 @@ The wave 8 ownership markers are deleted once the factory is in place.
 
 - **Roundtrip fixtures**: all 42 existing corpus documents + 16 seams must remain green.
   This is the primary verification: the factory produces the same roundtrip as before.
-- **Metric**: after the change, `grep -c 'Mirror of' harness/editor.ts` returns 0.
-  No definition in the harness is a "mirror" of main.ts.
-- **Teeth test**: temporarily remove one extension from the factory (e.g., EscapeToken).
-  Both roundtrip AND harness must go red. Report how many fixtures fail.
-- No new seam needed. The roundtrip harness already exercises the factory's output.
+- **Mirror elimination metric**: after the change, `harness/editor.ts` must not contain
+  any definition that mirrors `main.ts`. The following definitions must be gone from
+  the harness and imported from the factory instead: EscapeToken, BlankLineHandler,
+  CustomUnderline, MarkdownManager prototype patch (#95), expandPrefixTabsInText,
+  createCustomMarked, Blockquote alert extend, Document serializer extend,
+  CodeBlockLowlight fence extend, Table renderMarkdown extend, lowlight language
+  registration, StarterKit.configure flags. Prove with grep: `grep -c 'Mirror of'
+  harness/editor.ts` returns 0.
+- **Teeth test**: remove ONE extension from the factory (e.g., EscapeToken), then
+  run roundtrip. The corresponding fixture must go RED. This proves the harness
+  measures the code that ships. Report how many fixtures fail.
+- **Floor check**: run `npm run verify:vscode-floor` since this change modifies the
+  import path of main.ts and the MarkdownManager prototype patch executes at import
+  time. Must pass.
+- No new harness seam needed. The roundtrip harness already exercises the factory's output.
 
 ## Out of Scope
 
