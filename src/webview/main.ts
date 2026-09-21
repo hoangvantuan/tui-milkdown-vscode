@@ -57,6 +57,7 @@ import { initLinkPopover, type LinkPopoverController } from "./link-popover";
 import { SlashCommand, setImageSrcProvider } from "./slash-command-plugin";
 import { EmojiSuggestion } from "./emoji-plugin";
 import { setupDragHandle } from "./drag-handle-plugin";
+import { ContentSync } from "./content-sync";
 import { setupBacklinksPanel, updateBacklinks, refreshBacklinksIfVisible } from "./backlinks-panel";
 import { setupFocusMode, handleFocusModeTransaction } from "./focus-mode";
 import { buildMarkdownExtensions } from "./extension-factory";
@@ -183,41 +184,9 @@ document.addEventListener("mermaid-copy-error", (e: Event) => {
 
 let editor: Editor | null = null;
 let linkPopover: LinkPopoverController | null = null;
+// Temporary alias for #147 touch point in updateImageNodeSrc
 let isUpdatingFromExtension = false;
-let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let globalThemeReceived: ThemeName | null = null;
-let currentFrontmatter: string | null = null;
-let currentBody: string = "";
-let currentFormat: FrontmatterFormat = "none";
-// Raw frontmatter block (delimiters plus the original blank-line gap to the
-// body) from the last parse; lets reconstruction replay the original bytes
-// verbatim. Not cleared on metadata edits: reconstructContent only replays
-// it while it still embeds the current frontmatter text.
-let currentRawBlock: string | null = null;
-let lastSentState: string | null = null;
-/**
- * The content string this webview last agreed with the host on: either the
- * last `edit` it posted, or the re-serialization of the last `update` it
- * parsed. An `edit` whose content equals it is not sent (#111).
- *
- * Why the comparison lives at the MARKDOWN layer and not at the ProseMirror
- * one: the webview posts `editor.getMarkdown()`, never the text the host
- * handed it, and a document is not always a fixed point under that
- * serializer. So a transaction that changes the document without changing
- * what it serializes to, and equally one that merely changes and reverts,
- * would otherwise rewrite the user's file with normalizations they never
- * typed. Merely opening a file could leave it modified.
- *
- * Why this is not `document.getText()`: the host already compares against
- * that (`EditorSession.applyEdit`) and it does not help, because the
- * normalized string genuinely differs from the file. The baseline has to be
- * what THIS side would produce, measured at the moment the two sides agreed.
- *
- * It is updated on every real post, which is what keeps undo honest: type a
- * character and undo it after the edit has gone, and the undone content no
- * longer matches the baseline, so it is posted and the host follows.
- */
-let contentBaseline: string | null = null;
 let highlightCurrentLine = true;
 let currentImageMap: Record<string, string> = {};
 
@@ -519,6 +488,14 @@ async function processInlineImages(content: string): Promise<boolean> {
   return hasPendingImages;
 }
 
+const contentSync = new ContentSync({
+  postMessage: (msg) => vscode.postMessage(msg),
+  getEditorBody: () => (editor ? transformForSave(editor.getMarkdown(), currentImageMap) : null),
+  checkPendingBlobs: (content) => processInlineImages(content),
+  isExternalUpdating: () => isUpdatingFromExtension,
+  getImageMapVersion: () => imageMapVersion,
+});
+
 function replaceInlineImage(
   imageUrl: string,
   savedPath: string,
@@ -528,7 +505,7 @@ function replaceInlineImage(
 
   const searchStart = "](";
   const searchEnd = ")";
-  let result = currentBody;
+  let result = contentSync.getBody();
   let searchPos = 0;
 
   while (true) {
@@ -542,7 +519,7 @@ function replaceInlineImage(
     searchPos = replaceStart + savedPath.length;
   }
 
-  currentBody = result;
+  contentSync.setBody(result);
 
   if (webviewUri) {
     currentImageMap[savedPath] = webviewUri;
@@ -550,7 +527,7 @@ function replaceInlineImage(
     setImageMap(currentImageMap);
   }
 
-  postEdit(buildContent(currentBody));
+  postEdit(buildContent(contentSync.getBody()));
 
   if (editor && webviewUri) {
     updateImageNodeSrc(imageUrl, webviewUri);
@@ -559,43 +536,31 @@ function replaceInlineImage(
 
 // Perf (Fix 3): Avoid JSON.stringify + Object.keys().sort() on every edit.
 // imageMapVersion tracks mutations to currentImageMap — cheaper than key enumeration.
-function serializeStateForEcho(content: string, _imageMap: Record<string, string>): string {
-  return content + '\0' + imageMapVersion;
+function serializeStateForEcho(content: string, _imageMap?: Record<string, string>): string {
+  return contentSync.serializeStateForEcho(content);
 }
 
 /** The body as this webview would write it, without touching `currentBody`. */
 function serializeEditorBody(): string | null {
-  if (!editor) return null;
-  return transformForSave(editor.getMarkdown(), currentImageMap);
+  return contentSync.serializeEditorBody();
 }
 
 /** The full document (frontmatter + body) as it would be written out. */
 function buildContent(body: string): string {
-  return reconstructContent(currentFrontmatter, body, currentFormat, currentRawBlock);
+  return contentSync.buildContent(body);
 }
 
 /**
  * The ONE place an `edit` leaves the webview (#111).
- *
- * Every caller used to repeat the `lastSentState` assignment next to its own
- * `postMessage`, so a new call site was one forgotten line away from an echo
- * loop, and there was nowhere to put the baseline check that stops a
- * round-tripped document from being written back as a user edit.
- *
- * Returns whether anything was sent.
+ * Delegated to ContentSync.
  */
 function postEdit(content: string): boolean {
-  if (content === contentBaseline) return false;
-  contentBaseline = content;
-  lastSentState = serializeStateForEcho(content, currentImageMap);
-  vscode.postMessage({ type: "edit", content });
-  return true;
+  return contentSync.postEdit(content);
 }
 
 /** Re-anchor the baseline to what the editor currently holds. */
-function resetContentBaseline(): void {
-  const body = serializeEditorBody();
-  contentBaseline = body === null ? null : buildContent(body);
+export function resetContentBaseline(): void {
+  contentSync.resetContentBaseline();
 }
 
 // Register the rename-completion callback so that image-edit-plugin delegates
@@ -643,82 +608,27 @@ setOnImageRenamed((oldSrc, oldPath, newPath, webviewUri) => {
   applyImageRename(oldSrc, oldPath, newPath, webviewUri);
 });
 
-const MAX_BLOB_RETRIES = 5;
-let blobRetryCount = 0;
-
 // Perf (Fix 1): Serialization (getMarkdown + transformForSave) happens inside the
 // debounce callback, not on every keystroke. onUpdate just schedules this.
 function debouncedPostEdit(): void {
-  if (debounceTimer !== null) clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(async () => {
-    if (!editor) { debounceTimer = null; return; }
-    // Serialize only once per debounce window (300ms after last keystroke).
-    // Held locally until the post actually happens: `currentBody` is what the
-    // host is believed to hold, and `sendFullContent` ships it verbatim on a
-    // metadata edit. Assigning it for a post that the gate below suppresses
-    // would smuggle the serializer's normalizations into the next real edit.
-    const body = serializeEditorBody()!;
-    const content = buildContent(body);
-
-    // Nothing the host does not already have. Typically the document was
-    // changed and changed back inside one debounce window, or a transaction
-    // moved something that does not survive serialization. Neither is an
-    // edit the user made, and posting it would dirty their file (#111).
-    if (content === contentBaseline) {
-      blobRetryCount = 0;
-      debounceTimer = null;
-      return;
-    }
-
-    const hasPendingBlobs = await processInlineImages(content);
-    if (hasPendingBlobs) {
-      if (blobRetryCount < MAX_BLOB_RETRIES) {
-        // Exponential backoff: 300, 600, 1200, 2400, 4800ms
-        const backoff = DEBOUNCE_MS * Math.pow(2, blobRetryCount);
-        blobRetryCount++;
-        debounceTimer = setTimeout(() => {
-          debounceTimer = null;
-          debouncedPostEdit();
-        }, backoff);
-      } else {
-        // Max retries reached - send edit anyway to avoid stuck state
-        blobRetryCount = 0;
-        if (postEdit(content)) currentBody = body;
-        debounceTimer = null;
-      }
-      return;
-    }
-
-    blobRetryCount = 0;
-    if (postEdit(content)) currentBody = body;
-    debounceTimer = null;
-  }, DEBOUNCE_MS);
+  contentSync.debouncedPostEdit();
 }
 
 function flushPendingEdit(): void {
-  const hasPendingDebounce = debounceTimer !== null;
+  const hasPendingDebounce = contentSync.hasPendingDebounce();
   const hasPendingMetadata = metadataDebounceTimer !== null;
   if (!hasPendingDebounce && !hasPendingMetadata) return;
-
-  if (debounceTimer !== null) {
-    clearTimeout(debounceTimer);
-    debounceTimer = null;
-  }
-  blobRetryCount = 0;
 
   if (metadataDebounceTimer !== null) {
     clearTimeout(metadataDebounceTimer);
     metadataDebounceTimer = null;
     const textarea = getMetadataTextarea();
     if (textarea) {
-      currentFrontmatter = textarea.value.trim() === "" ? null : textarea.value;
+      contentSync.setFrontmatter(textarea.value.trim() === "" ? null : textarea.value);
     }
   }
 
-  if (!editor) return;
-
-  const body = serializeEditorBody()!;
-  if (postEdit(buildContent(body))) currentBody = body;
+  contentSync.flushPendingEdit(true);
 }
 
 // DOM elements
@@ -786,11 +696,11 @@ function updateMetadataPanel(
 let metadataDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 async function sendFullContent(): Promise<void> {
-  const hasPendingBlobs = await processInlineImages(currentBody);
+  const hasPendingBlobs = await processInlineImages(contentSync.getBody());
   if (hasPendingBlobs) {
     return;
   }
-  postEdit(buildContent(currentBody));
+  postEdit(buildContent(contentSync.getBody()));
 }
 
 function debouncedMetadataEdit(): void {
@@ -799,7 +709,7 @@ function debouncedMetadataEdit(): void {
     const textarea = getMetadataTextarea();
     if (!textarea) return;
 
-    currentFrontmatter = textarea.value.trim() === "" ? null : textarea.value;
+    contentSync.setFrontmatter(textarea.value.trim() === "" ? null : textarea.value);
     sendFullContent();
   }, DEBOUNCE_MS);
 }
@@ -866,7 +776,7 @@ function setupMetadataHandlers(): void {
 
   if (addBtn) {
     addBtn.addEventListener("click", () => {
-      currentFrontmatter = "";
+      contentSync.setFrontmatter("");
       updateMetadataPanel("", true);
       const ta = getMetadataTextarea();
       if (ta) ta.focus();
@@ -1141,7 +1051,7 @@ function initEditor(initialContent: string = ""): Editor | null {
         },
       },
       onUpdate: () => {
-        if (isUpdatingFromExtension) return;
+        if (isUpdatingFromExtension || contentSync.isUpdating()) return;
         // Perf (Fix 1): Serialization moved inside debouncedPostEdit — runs only once per 300ms window.
         debouncedPostEdit();
       },
@@ -1181,10 +1091,7 @@ function updateEditorContent(content: string): void {
   if (!editor) return;
 
   // Cancel pending debounced edit
-  if (debounceTimer !== null) {
-    clearTimeout(debounceTimer);
-    debounceTimer = null;
-  }
+  contentSync.cancelDebounce();
 
   try {
     // Save cursor position and scroll offset
@@ -1820,118 +1727,111 @@ window.addEventListener("message", async (event) => {
       if (typeof message.content === "string") {
         const newImageMap = message.imageMap || {};
 
-        const incomingState = serializeStateForEcho(message.content, newImageMap);
-
-        if (incomingState === lastSentState) {
-          lastSentState = null;
+        if (contentSync.consumeEcho(message.content)) {
           currentImageMap = newImageMap;
           imageMapVersion++;
           setImageMap(newImageMap);
           break;
         }
-        lastSentState = null;
 
         currentImageMap = newImageMap;
         imageMapVersion++;
         setImageMap(newImageMap);
 
-        try {
+        contentSync.guardExtensionUpdate(() => {
           isUpdatingFromExtension = true;
+          try {
+            const parsed = contentSync.applyHostUpdate(message.content);
 
-          const parsed = parseContent(message.content);
-          currentFrontmatter = parsed.frontmatter;
-          currentBody = parsed.body;
-          currentFormat = parsed.format;
-          currentRawBlock = parsed.rawBlock ?? null;
+            updateMetadataPanel(parsed.frontmatter, parsed.isValid, parsed.error);
 
-          updateMetadataPanel(parsed.frontmatter, parsed.isValid, parsed.error);
+            const displayBody = transformForDisplay(parsed.body, currentImageMap);
 
-          const displayBody = transformForDisplay(parsed.body, currentImageMap);
-
-          let justInitialized = false;
-          if (!editor) {
-            editor = initEditor(displayBody);
-            if (editor) {
-              linkPopover = initLinkPopover(editor);
-              initTocSidebar();
-              setupFocusMode(editor, vscode);
-              justInitialized = true;
-              // Re-apply font after .tiptap element is created
-              const savedFont = vscode.getState()?.fontFamily;
-              if (savedFont) applyFontFamily(savedFont);
-              // Re-apply zoom after .tiptap element is created
-              applyZoom(currentZoom);
-            }
-          } else {
-            updateEditorContent(displayBody);
-          }
-
-          if (editor) {
-            // Transform table cells: convert text patterns (-, N., [x]) to proper list nodes
-            transformTableCellsAfterParse(editor);
-            // Anchor the baseline to what the editor now holds, AFTER the
-            // table-cell transform, which legitimately changes the document
-            // as part of parsing. From here on, an `edit` is only posted when
-            // the serialized document differs from this (#111). The guard
-            // below drops on a microtask, so anything deferred past it (a
-            // timer, a rAF, a node view finishing an async load) arrives
-            // unguarded; the baseline is what makes that harmless instead of
-            // a silent rewrite of the user's file.
-            //
-            // One empty transaction first. StarterKit's `trailingNode` keeps a
-            // paragraph at the end of the document so there is somewhere to
-            // click after a table or an alert, and it does that from
-            // `appendTransaction`, which ProseMirror does NOT run while the
-            // editor is being constructed, only from the first transaction
-            // onwards. `sample.md` ends in an alert, so the document grew that
-            // paragraph the moment ANYTHING dispatched, and the paragraph
-            // serializes to a trailing newline. That is #111: not a
-            // mysterious load-time edit, but a document that is a different
-            // document after its first transaction, whenever that happens to
-            // arrive. Settling it here means the baseline describes the
-            // document the user will actually be editing.
-            editor.view.dispatch(editor.state.tr.setMeta("addToHistory", false));
-            resetContentBaseline();
-            // Restore collapsed headings from saved state after first init
-            if (justInitialized) {
-              const saved = vscode.getState();
-              if (saved?.collapsedHeadings?.length) {
-                setCollapsedHeadings(editor.view, saved.collapsedHeadings);
+            let justInitialized = false;
+            if (!editor) {
+              editor = initEditor(displayBody);
+              if (editor) {
+                linkPopover = initLinkPopover(editor);
+                initTocSidebar();
+                setupFocusMode(editor, vscode);
+                justInitialized = true;
+                // Re-apply font after .tiptap element is created
+                const savedFont = vscode.getState()?.fontFamily;
+                if (savedFont) applyFontFamily(savedFont);
+                // Re-apply zoom after .tiptap element is created
+                applyZoom(currentZoom);
               }
+            } else {
+              updateEditorContent(displayBody);
             }
-            // Update TOC after content change (skip if just initialized — initTocSidebar already did it)
-            if (!justInitialized) updateTocFromEditor(editor, true);
-            refreshBacklinksIfVisible();
-            // Update search result count if search bar is visible
-            const searchBar = document.getElementById("search-bar");
-            if (searchBar && !searchBar.classList.contains("hidden")) {
-              const searchCount = document.getElementById("search-count");
-              const searchInput = document.getElementById("search-input") as HTMLInputElement | null;
-              if (searchCount) {
-                const info = getMatchInfo(editor);
-                if (info.count > 0) {
-                  searchCount.textContent = `${info.activeIndex}/${info.count}`;
-                  searchInput?.classList.remove("no-results");
-                } else if (searchInput && searchInput.value.length > 0) {
-                  searchCount.textContent = "0";
-                  searchInput.classList.add("no-results");
-                } else {
-                  searchCount.textContent = "";
-                  searchInput?.classList.remove("no-results");
+
+            if (editor) {
+              // Transform table cells: convert text patterns (-, N., [x]) to proper list nodes
+              transformTableCellsAfterParse(editor);
+              // Anchor the baseline to what the editor now holds, AFTER the
+              // table-cell transform, which legitimately changes the document
+              // as part of parsing. From here on, an `edit` is only posted when
+              // the serialized document differs from this (#111). The guard
+              // below drops on a microtask, so anything deferred past it (a
+              // timer, a rAF, a node view finishing an async load) arrives
+              // unguarded; the baseline is what makes that harmless instead of
+              // a silent rewrite of the user's file.
+              //
+              // One empty transaction first. StarterKit's `trailingNode` keeps a
+              // paragraph at the end of the document so there is somewhere to
+              // click after a table or an alert, and it does that from
+              // `appendTransaction`, which ProseMirror does NOT run while the
+              // editor is being constructed, only from the first transaction
+              // onwards. `sample.md` ends in an alert, so the document grew that
+              // paragraph the moment ANYTHING dispatched, and the paragraph
+              // serializes to a trailing newline. That is #111: not a
+              // mysterious load-time edit, but a document that is a different
+              // document after its first transaction, whenever that happens to
+              // arrive. Settling it here means the baseline describes the
+              // document the user will actually be editing.
+              editor.view.dispatch(editor.state.tr.setMeta("addToHistory", false));
+              resetContentBaseline();
+              // Restore collapsed headings from saved state after first init
+              if (justInitialized) {
+                const saved = vscode.getState();
+                if (saved?.collapsedHeadings?.length) {
+                  setCollapsedHeadings(editor.view, saved.collapsedHeadings);
+                }
+              }
+              // Update TOC after content change (skip if just initialized — initTocSidebar already did it)
+              if (!justInitialized) updateTocFromEditor(editor, true);
+              refreshBacklinksIfVisible();
+              // Update search result count if search bar is visible
+              const searchBar = document.getElementById("search-bar");
+              if (searchBar && !searchBar.classList.contains("hidden")) {
+                const searchCount = document.getElementById("search-count");
+                const searchInput = document.getElementById("search-input") as HTMLInputElement | null;
+                if (searchCount) {
+                  const info = getMatchInfo(editor);
+                  if (info.count > 0) {
+                    searchCount.textContent = `${info.activeIndex}/${info.count}`;
+                    searchInput?.classList.remove("no-results");
+                  } else if (searchInput && searchInput.value.length > 0) {
+                    searchCount.textContent = "0";
+                    searchInput.classList.add("no-results");
+                  } else {
+                    searchCount.textContent = "";
+                    searchInput?.classList.remove("no-results");
+                  }
                 }
               }
             }
+          } catch (err) {
+            console.error("[Tiptap] Update failed:", err);
+            showError(
+              `Failed to update content: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          } finally {
+            queueMicrotask(() => {
+              isUpdatingFromExtension = false;
+            });
           }
-        } catch (err) {
-          console.error("[Tiptap] Update failed:", err);
-          showError(
-            `Failed to update content: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        } finally {
-          queueMicrotask(() => {
-            isUpdatingFromExtension = false;
-          });
-        }
+        });
       }
       break;
     case "theme":

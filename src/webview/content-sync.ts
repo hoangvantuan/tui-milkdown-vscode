@@ -13,8 +13,10 @@ import {
   parseContent,
   reconstructContent,
   FrontmatterFormat,
-  ParsedContent,
+  ParseResult,
 } from "./frontmatter";
+
+import type { EditMessage } from "../shared/messages";
 
 export const DEBOUNCE_MS = 300;
 export const MAX_BLOB_RETRIES = 5;
@@ -26,7 +28,7 @@ export interface TimerScheduler {
 
 export interface ContentSyncOptions {
   /** Injected postMessage adapter. In production: vscode.postMessage; in harness: recording poster. */
-  postMessage: (msg: { type: "edit"; content: string }) => void;
+  postMessage: (msg: EditMessage) => void;
   /** Function to serialize the editor body, applying reverse image mappings. */
   getEditorBody?: () => string | null;
   /** Optional hook to check if inline images are pending asynchronous upload. */
@@ -231,7 +233,7 @@ export class ContentSync {
    * Apply an incoming content update from the host.
    * Parses frontmatter and body, storing them in state.
    */
-  public applyHostUpdate(content: string): ParsedContent {
+  public applyHostUpdate(content: string): ParseResult {
     const parsed = parseContent(content);
     this.currentFrontmatter = parsed.frontmatter;
     this.currentBody = parsed.body;
