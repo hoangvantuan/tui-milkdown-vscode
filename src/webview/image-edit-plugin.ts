@@ -1,6 +1,6 @@
 import type { EditorView } from "@tiptap/pm/view";
 import type { WebviewToHostMessage } from "../shared/messages";
-import { IMAGE_NODE_TYPES } from "./main";
+import { IMAGE_NODE_TYPES, lookupOriginalPath, mutateImageMap } from "./image-path-translation";
 import { sameResource } from "../utils/vscode-resource";
 import { cleanImagePath } from "../utils/clean-image-path";
 import { openLightbox } from "./image-lightbox-plugin";
@@ -27,10 +27,10 @@ interface PendingRename {
 const pendingRenames = new Map<string, PendingRename>();
 
 /**
- * Callback main.ts registers so that the rename response is handled in one
- * place that can bump `imageMapVersion`, update ALL image nodes (not just the
+ * Callback registered so that the rename response is handled in one
+ * place that can bump the translation version, update ALL image nodes (not just the
  * clicked one), and re-anchor `contentBaseline`. Without this, the plugin
- * mutates `currentImageMap` without bumping the version counter, and the stale
+ * mutates the map without bumping the version counter, and the stale
  * reverse-map cache in `transformForSave` leaks the webview URI into the file.
  *
  * Parameters: oldSrc (the webview URI nodes currently display), oldPath
@@ -52,7 +52,6 @@ export function setOnImageRenamed(cb: ImageRenamedCallback): void {
 // Store references
 let storedGetView: (() => EditorView | null) | null = null;
 let storedPostMessage: ((msg: WebviewToHostMessage) => void) | null = null;
-let currentImageMap: Record<string, string> = {};
 
 // Overlay elements
 let overlayContainer: HTMLDivElement | null = null;
@@ -408,14 +407,8 @@ function triggerImageEdit(imgEl: HTMLImageElement): void {
 function triggerOpenInTab(imgEl: HTMLImageElement): void {
   if (!storedPostMessage) return;
   const src = imgEl.getAttribute("src") || "";
-  let originalPath = "";
-  for (const [path, webviewUri] of Object.entries(currentImageMap)) {
-    if (webviewUri === src) {
-      originalPath = path;
-      break;
-    }
-  }
-  if (!originalPath) return; // local image not in map — nothing to open
+  const originalPath = lookupOriginalPath(src);
+  if (!originalPath) return; // local image not in map: nothing to open
   storedPostMessage({ type: "openImageInTab", path: originalPath });
 }
 
@@ -439,7 +432,7 @@ function updateEditorNode(nodePos: number, attrs: Record<string, unknown>, newSr
     return;
   }
 
-  // Verify node identity if expectedSrc provided — doc may have been edited during async rename
+  // Verify node identity if expectedSrc provided: doc may have been edited during async rename
   if (expectedSrc && nodeAtPos.attrs.src !== expectedSrc) {
     console.warn("[ImageEdit] Node src changed during async operation; skipping");
     return;
@@ -515,10 +508,6 @@ export function promptForImageUrl(onPicked: (src: string) => void): void {
   });
 }
 
-export function setImageMap(imageMap: Record<string, string>): void {
-  currentImageMap = imageMap;
-}
-
 /**
  * Request URL edit via VSCode extension
  */
@@ -536,20 +525,7 @@ function requestUrlEdit(
   if (isBase64) {
     displayUrl = "";
   } else if (isLocalImage) {
-    // Reverse lookup from imageMap.
-    //
-    // `sameResource`, not `===`. The host builds these URIs with
-    // `asWebviewUri()` and the DOM hands back a percent-encoded spelling of the
-    // same string, so an exact comparison missed EVERY image: the input box
-    // then offered the whole `https://file%2B.vscode-resource...` URL as the
-    // path to edit, and whatever the user typed went into their markdown as an
-    // absolute webview URL. Found by hand-checking the image rename criterion.
-    for (const [originalPath, webviewUri] of Object.entries(currentImageMap)) {
-      if (sameResource(webviewUri, currentUrl)) {
-        displayUrl = originalPath;
-        break;
-      }
-    }
+    displayUrl = lookupOriginalPath(currentUrl) ?? currentUrl;
   }
 
   pendingEdits.set(editId, { callback: onResult, originalPath: displayUrl });
@@ -595,7 +571,7 @@ export function handleImageRenameResponse(
 
   if (webviewUri && onImageRenamedCallback) {
     // Preferred path: main.ts handles the map mutation, version bump, all-node
-    // update (via updateImageNodeSrc), and baseline re-anchor in one step.
+    // update, and baseline re-anchor in one step.
     // `pending.originalSrc` is the webview URI the nodes currently display.
     onImageRenamedCallback(pending.originalSrc, pending.oldPath, newPath, webviewUri);
     return;
@@ -603,14 +579,18 @@ export function handleImageRenameResponse(
 
   // Fallback: no callback registered (should not happen in production).
   if (webviewUri) {
-    if (pending.oldPath) {
-      delete currentImageMap[pending.oldPath];
-    }
-    currentImageMap[newPath] = webviewUri;
+    mutateImageMap((map) => {
+      if (pending.oldPath) {
+        delete map[pending.oldPath];
+      }
+      map[newPath] = webviewUri;
+    });
     updateEditorNode(pending.nodePos, pending.nodeAttrs, webviewUri, pending.originalSrc);
   } else {
     if (pending.oldPath) {
-      delete currentImageMap[pending.oldPath];
+      mutateImageMap((map) => {
+        delete map[pending.oldPath];
+      });
     }
     updateEditorNode(pending.nodePos, pending.nodeAttrs, newPath, pending.originalSrc);
   }

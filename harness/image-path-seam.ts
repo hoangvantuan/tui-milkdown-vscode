@@ -15,18 +15,23 @@
  *   6. HTML img with width: same translation through <img src>.
  *   7. Percent-encoded URI: sameResource matching resolves percent-encoded
  *      webview URIs back to relative path.
+ *   8. Set map then reverse translate: new map replaces state, version bumps.
+ *   9. Mutate map then reverse translate: in-place modification invalidates reverse cache.
+ *  10. Consecutive map replacements: version increments monotonically.
  *
- * Breaking cache invalidation (omitting imageMapVersion++ on rename) causes
- * cases 4, 5, and 6 to output raw webview URIs and fail.
+ * Breaking cache invalidation (omitting imageMapVersion++ on mutation) causes
+ * cases 4, 5, 6, and 9 to output raw webview URIs and fail.
  */
 import { createHarnessEditor } from "./editor";
 import {
+  setImageMap,
+  mutateImageMap,
+  getImageMapVersion,
   transformForDisplay,
   transformForSave,
-  setCurrentImageMap,
-  applyImageRename,
+  applyImageRenameTranslation,
   _testResetReverseCache,
-} from "../src/webview/main";
+} from "../src/webview/image-path-translation";
 
 const WEBVIEW_URI = "https://file+.vscode-resource.vscode-cdn.net/ws/media/icon.png";
 const WEBVIEW_URI_RENAMED = "https://file+.vscode-resource.vscode-cdn.net/ws/media/icon-renamed.png";
@@ -45,7 +50,7 @@ export function runImagePathSeam(): string {
     lines.push("## plain-roundtrip");
     lines.push("# no image map, relative path survives roundtrip unchanged");
     const map = {};
-    setCurrentImageMap(map);
+    setImageMap(map);
     const md = "![alt](media/icon.png)\n";
     const display = transformForDisplay(md, map);
     const { editor, dispose } = createHarnessEditor({ content: display, contentType: "markdown" });
@@ -64,7 +69,7 @@ export function runImagePathSeam(): string {
     lines.push("## roundtrip-with-map");
     lines.push("# relative -> webview URI for display, webview URI -> relative for save");
     const map = { "media/icon.png": WEBVIEW_URI };
-    setCurrentImageMap(map);
+    setImageMap(map);
     const md = "![alt](media/icon.png)\n";
     const display = transformForDisplay(md, map);
     const { editor, dispose } = createHarnessEditor({ content: display, contentType: "markdown" });
@@ -83,7 +88,7 @@ export function runImagePathSeam(): string {
     lines.push("## host-updates-map");
     lines.push("# host sends a new map with a renamed image: version bumps, cache rebuilds");
     const map1 = { "media/icon.png": WEBVIEW_URI };
-    setCurrentImageMap(map1);
+    setImageMap(map1);
     const md1 = "![alt](media/icon.png)\n";
     const display1 = transformForDisplay(md1, map1);
     const { editor, dispose } = createHarnessEditor({ content: display1, contentType: "markdown" });
@@ -93,7 +98,7 @@ export function runImagePathSeam(): string {
       lines.push(`saved: ${saved1.trimEnd()}`);
 
       const map2 = { "media/icon-renamed.png": WEBVIEW_URI_RENAMED };
-      setCurrentImageMap(map2);
+      setImageMap(map2);
       const display2 = transformForDisplay("![alt](media/icon-renamed.png)\n", map2);
       editor.commands.setContent(display2, { contentType: "markdown" });
       const saved2 = transformForSave(editor.getMarkdown(), map2);
@@ -109,7 +114,7 @@ export function runImagePathSeam(): string {
     lines.push("## plugin-rename");
     lines.push("# the #142 shape: old entry removed, new entry added, node updated, relative path out");
     const map = { "media/icon.png": WEBVIEW_URI };
-    setCurrentImageMap(map);
+    setImageMap(map);
     const md = "![alt](media/icon.png)\n";
     const display = transformForDisplay(md, map);
     const { editor, dispose } = createHarnessEditor({ content: display, contentType: "markdown" });
@@ -119,9 +124,9 @@ export function runImagePathSeam(): string {
       lines.push(`saved: ${savedBefore.trimEnd()}`);
 
       // Plugin rename operation: removes old entry, adds new entry, bumps version, updates node
-      applyImageRename(WEBVIEW_URI, "media/icon.png", "media/icon-renamed.png", WEBVIEW_URI_RENAMED, editor);
+      applyImageRenameTranslation(WEBVIEW_URI, "media/icon.png", "media/icon-renamed.png", WEBVIEW_URI_RENAMED, editor);
 
-      const savedAfter = transformForSave(editor.getMarkdown(), map);
+      const savedAfter = transformForSave(editor.getMarkdown());
       lines.push(`saved-after-rename: ${savedAfter.trimEnd()}`);
     } finally {
       dispose();
@@ -134,7 +139,7 @@ export function runImagePathSeam(): string {
     lines.push("## two-nodes-same-image");
     lines.push("# two references to the same image: after rename, both serialize to the new name");
     const map = { "media/icon.png": WEBVIEW_URI };
-    setCurrentImageMap(map);
+    setImageMap(map);
     const md = "![first](media/icon.png)\n\n![second](media/icon.png)\n";
     const display = transformForDisplay(md, map);
     const { editor, dispose } = createHarnessEditor({ content: display, contentType: "markdown" });
@@ -143,9 +148,9 @@ export function runImagePathSeam(): string {
       lines.push(`display: ${display.trimEnd()}`);
       lines.push(`saved: ${savedBefore.trimEnd()}`);
 
-      applyImageRename(WEBVIEW_URI, "media/icon.png", "media/icon-renamed.png", WEBVIEW_URI_RENAMED, editor);
+      applyImageRenameTranslation(WEBVIEW_URI, "media/icon.png", "media/icon-renamed.png", WEBVIEW_URI_RENAMED, editor);
 
-      const savedAfter = transformForSave(editor.getMarkdown(), map);
+      const savedAfter = transformForSave(editor.getMarkdown());
       lines.push(`saved-after-rename: ${savedAfter.trimEnd()}`);
     } finally {
       dispose();
@@ -158,7 +163,7 @@ export function runImagePathSeam(): string {
     lines.push("## html-img-rename");
     lines.push("# HTML img with width: same translation through <img src>");
     const map = { "media/icon.png": WEBVIEW_URI };
-    setCurrentImageMap(map);
+    setImageMap(map);
     const md = '<img src="media/icon.png" alt="A sized image" width="96">\n';
     const display = transformForDisplay(md, map);
     const { editor, dispose } = createHarnessEditor({ content: display, contentType: "markdown" });
@@ -167,9 +172,9 @@ export function runImagePathSeam(): string {
       lines.push(`display: ${display.trimEnd()}`);
       lines.push(`saved: ${savedBefore.trimEnd()}`);
 
-      applyImageRename(WEBVIEW_URI, "media/icon.png", "media/icon-renamed.png", WEBVIEW_URI_RENAMED, editor);
+      applyImageRenameTranslation(WEBVIEW_URI, "media/icon.png", "media/icon-renamed.png", WEBVIEW_URI_RENAMED, editor);
 
-      const savedAfter = transformForSave(editor.getMarkdown(), map);
+      const savedAfter = transformForSave(editor.getMarkdown());
       lines.push(`saved-after-rename: ${savedAfter.trimEnd()}`);
     } finally {
       dispose();
@@ -182,7 +187,7 @@ export function runImagePathSeam(): string {
     lines.push("## percent-encoded-uri");
     lines.push("# percent-encoded webview URI matches host map via sameResource");
     const map = { "media/icon.png": WEBVIEW_URI };
-    setCurrentImageMap(map);
+    setImageMap(map);
     const contentWithEncodedUri = `![alt](${WEBVIEW_URI_ENCODED})\n`;
     const saved = transformForSave(contentWithEncodedUri, map);
     lines.push(`input: ${contentWithEncodedUri.trimEnd()}`);
@@ -190,8 +195,56 @@ export function runImagePathSeam(): string {
     lines.push("");
   }
 
+  // Case 8: Replace map then reverse translate
+  {
+    lines.push("## set-map-reverse");
+    lines.push("# setImageMap replaces the map, version increments, reverse lookup uses new entries");
+    const map = { "media/photo.png": "https://file+.vscode-resource.vscode-cdn.net/ws/media/photo.png" };
+    setImageMap(map);
+    const saved = transformForSave("![photo](https://file+.vscode-resource.vscode-cdn.net/ws/media/photo.png)\n");
+    lines.push(`saved: ${saved.trimEnd()}`);
+    lines.push(`version-bumped: ${getImageMapVersion() > 0}`);
+    lines.push("");
+  }
+
+  // Case 9: Mutate map by function then reverse translate
+  {
+    lines.push("## mutate-map-reverse");
+    lines.push("# mutateImageMap modifies map in place, invalidates reverse cache, new path is translated");
+    setImageMap({ "media/old-pic.png": "https://file+.vscode-resource.vscode-cdn.net/ws/media/old-pic.png" });
+    const primed = transformForSave("![pic](https://file+.vscode-resource.vscode-cdn.net/ws/media/old-pic.png)\n");
+    lines.push(`primed: ${primed.trimEnd()}`);
+
+    mutateImageMap((map) => {
+      delete map["media/old-pic.png"];
+      map["media/new-pic.png"] = "https://file+.vscode-resource.vscode-cdn.net/ws/media/new-pic.png";
+    });
+
+    const saved = transformForSave("![pic](https://file+.vscode-resource.vscode-cdn.net/ws/media/new-pic.png)\n");
+    lines.push(`saved-after-mutate: ${saved.trimEnd()}`);
+    lines.push("");
+  }
+
+  // Case 10: Two consecutive map replacements
+  {
+    lines.push("## consecutive-set-map");
+    lines.push("# two consecutive setImageMap calls increment version monotonically and use latest map");
+    setImageMap({ "media/first.png": "https://file+.vscode-resource.vscode-cdn.net/ws/media/first.png" });
+    const v1 = getImageMapVersion();
+    setImageMap({ "media/second.png": "https://file+.vscode-resource.vscode-cdn.net/ws/media/second.png" });
+    const v2 = getImageMapVersion();
+
+    const savedFirst = transformForSave("![first](https://file+.vscode-resource.vscode-cdn.net/ws/media/first.png)\n");
+    const savedSecond = transformForSave("![second](https://file+.vscode-resource.vscode-cdn.net/ws/media/second.png)\n");
+
+    lines.push(`version-increased: ${v2 > v1}`);
+    lines.push(`first-entry-gone: ${savedFirst.includes("https://file+")}`);
+    lines.push(`second-entry-saved: ${savedSecond.trimEnd()}`);
+    lines.push("");
+  }
+
   _testResetReverseCache();
-  setCurrentImageMap({});
+  setImageMap({});
 
   return lines.join("\n") + "\n";
 }

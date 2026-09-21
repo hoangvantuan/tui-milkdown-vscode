@@ -12,12 +12,8 @@
  * flag (markdownEditorProvider.ts) keeps the resulting document change from
  * echoing back as an `update`. Markdown-relevant extensions are provided by
  * the shared extension factory (extension-factory.ts, #143, #145).
- *
- * Module scope guards `acquireVsCodeApi()` behind a typeof check so that
- * harness/image-path-seam.ts can import this file from Node until #147 moves
- * the image path translation into its own module; until then, add no top-level
- * side effect here that needs the DOM. Persist webview state with
- * `{ ...getState(), key }`.
+ * Module scope calls `acquireVsCodeApi()`, so this file cannot be imported from Node.
+ * Persist webview state with `{ ...getState(), key }`.
  */
 import { Editor, Extension } from "@tiptap/core";
 import { publishTiptapGlobals } from "./tiptap-globals";
@@ -37,7 +33,17 @@ import {
 } from "./frontmatter";
 import { LineHighlight } from "./line-highlight-plugin";
 import { HeadingLevel, headingSlug } from "./heading-level-plugin";
-import { setupImageEditOverlay, handleUrlEditResponse, handleImageRenameResponse, setImageMap, setOnImageRenamed, promptForImageUrl } from "./image-edit-plugin";
+import { setupImageEditOverlay, handleUrlEditResponse, handleImageRenameResponse, setOnImageRenamed, promptForImageUrl } from "./image-edit-plugin";
+import {
+  setImageMap,
+  mutateImageMap,
+  getImageMap,
+  getImageMapVersion,
+  transformForDisplay,
+  transformForSave,
+  updateEditorImageNodeSrc,
+  applyImageRenameTranslation,
+} from "./image-path-translation";
 import { transformTableCellsAfterParse } from "./table-cell-content-parser";
 import { MermaidDiagram, updateMermaidTheme, clearMermaidCache } from "./mermaid-plugin";
 import { TableContextMenu } from "./table-context-menu";
@@ -169,9 +175,7 @@ const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
 // Platform detection: macOS uses Cmd (metaKey) for link-click, Windows/Linux uses Ctrl
 const isMac = /Mac|iPhone|iPod|iPad/.test(navigator.userAgent);
 
-const vscode = typeof acquireVsCodeApi === "function"
-  ? acquireVsCodeApi()
-  : ({ postMessage: () => {}, getState: () => ({}), setState: () => {} } as any);
+const vscode = acquireVsCodeApi();
 
 document.addEventListener("mermaid-copy-error", (e: Event) => {
   const detail = (e as CustomEvent<{ message?: string }>).detail;
@@ -219,144 +223,15 @@ let lastSentState: string | null = null;
  */
 let contentBaseline: string | null = null;
 let highlightCurrentLine = true;
-let currentImageMap: Record<string, string> = {};
-
-// Perf: version counter for imageMap -- incremented whenever currentImageMap changes.
-// Used to invalidate cached reverse map (Fix 2) and replace JSON.stringify in echo check (Fix 3).
-let imageMapVersion = 0;
-
-// Perf (Fix 2): Cached reverse map (uri -> orig path) to avoid rebuilding on every save.
-let cachedReverseImageMap: Map<string, string> | null = null;
-let cachedReverseImageMapVersion = -1;
-
-/**
- * Replace the image map and bump the version counter, the same effect as the
- * host sending a new `update` message. Exported for the harness seam so it can
- * exercise `transformForSave` under a fresh vs. stale cache.
- */
-export function setCurrentImageMap(map: Record<string, string>): void {
-  currentImageMap = map;
-  imageMapVersion++;
-}
-
-/**
- * Forcibly invalidate the cached reverse map. The seam calls this to simulate
- * the bug: mutating `currentImageMap` without bumping the version, which is
- * what the old plugin code did.
- *
- * NOT the production path: production code bumps `imageMapVersion` instead.
- */
-export function _testResetReverseCache(): void {
-  cachedReverseImageMap = null;
-  cachedReverseImageMapVersion = -1;
-}
-
-// Node types that represent images in Tiptap
-export const IMAGE_NODE_TYPES = ["image"];
-
-// Context-aware image path replacement.
-// Only replaces paths within markdown image ![alt](url) and HTML <img src="url"> contexts.
-function lookupImagePath(pathMap: Map<string, string>, url: string): string | undefined {
-  const exact = pathMap.get(url);
-  if (exact !== undefined) return exact;
-  for (const [key, val] of pathMap) {
-    if (sameResource(key, url)) return val;
-  }
-  return undefined;
-}
-
-function replaceImagePaths(
-  content: string,
-  pathMap: Map<string, string>,
-): string {
-  if (pathMap.size === 0) return content;
-
-  // Replace in markdown images: ![alt](url) or ![alt](url "title")
-  let result = content.replace(
-    /!\[([^\]]*)\]\(([^)\s]+)([^)]*)\)/g,
-    (match, alt, url, rest) => {
-      const replacement = lookupImagePath(pathMap, url);
-      return replacement ? `![${alt}](${replacement}${rest})` : match;
-    }
-  );
-
-  // Replace in HTML img tags: <img src="url">
-  result = result.replace(
-    /<img(\s[^>]*?)src=(["'])([^"']+)\2([^>]*?)>/gi,
-    (match, before, quote, url, after) => {
-      const replacement = lookupImagePath(pathMap, url);
-      return replacement ? `<img${before}src=${quote}${replacement}${quote}${after}>` : match;
-    }
-  );
-
-  return result;
-}
-
-export function transformForDisplay(
-  content: string,
-  imageMap: Record<string, string>,
-): string {
-  const entries = Object.entries(imageMap);
-  if (entries.length === 0) return content;
-  return replaceImagePaths(content, new Map(entries));
-}
-
-export function transformForSave(
-  content: string,
-  imageMap: Record<string, string>,
-): string {
-  const entries = Object.entries(imageMap);
-  if (entries.length === 0) return content;
-  // Perf (Fix 2): Rebuild reverse map only when imageMap version changes.
-  if (cachedReverseImageMapVersion !== imageMapVersion || cachedReverseImageMap === null) {
-    cachedReverseImageMap = new Map(entries.map(([orig, uri]) => [uri, orig]));
-    cachedReverseImageMapVersion = imageMapVersion;
-  }
-  return replaceImagePaths(content, cachedReverseImageMap);
-}
 
 // Inline image handling
 const INLINE_IMAGE_REGEX = /!\[([^\]]*)\]\(((?:blob:|data:image\/)[^)]+)\)/g;
 
-export function updateImageNodeSrc(oldSrc: string, newSrc: string, targetEditor?: Editor): boolean {
-  const ed = targetEditor ?? editor;
-  if (!ed) return false;
-
+function updateImageNodeSrc(oldSrc: string, newSrc: string): boolean {
+  if (!editor) return false;
   try {
-    const view = ed.view;
-    if (!view) return false;
-
-    const { state, dispatch } = view;
-
-    const nodesToUpdate: Array<{ pos: number; node: typeof state.doc.firstChild; nodeSize: number }> = [];
-    state.doc.descendants((node, pos) => {
-      if (!IMAGE_NODE_TYPES.includes(node.type.name)) return;
-      const src = node.attrs.src as string;
-      if (src !== oldSrc && !sameResource(src, oldSrc)) return;
-      nodesToUpdate.push({ pos, node, nodeSize: node.nodeSize });
-    });
-
-    if (nodesToUpdate.length === 0) return false;
-
-    nodesToUpdate.sort((a, b) => b.pos - a.pos);
-
-    let tr = state.tr;
-    for (const { pos, node, nodeSize } of nodesToUpdate) {
-      const newNode = node!.type.create(
-        { ...node!.attrs, src: newSrc },
-        node!.content,
-        node!.marks
-      );
-      tr = tr.replaceWith(pos, pos + nodeSize, newNode);
-    }
-
     isUpdatingFromExtension = true;
-    dispatch(tr);
-
-    return true;
-  } catch (err) {
-    console.warn("[ImageSave] Failed to update node:", err);
-    return false;
+    return updateEditorImageNodeSrc(editor, oldSrc, newSrc);
   } finally {
     queueMicrotask(() => {
       isUpdatingFromExtension = false;
@@ -545,9 +420,9 @@ function replaceInlineImage(
   currentBody = result;
 
   if (webviewUri) {
-    currentImageMap[savedPath] = webviewUri;
-    imageMapVersion++;
-    setImageMap(currentImageMap);
+    mutateImageMap((map) => {
+      map[savedPath] = webviewUri;
+    });
   }
 
   postEdit(buildContent(currentBody));
@@ -558,15 +433,15 @@ function replaceInlineImage(
 }
 
 // Perf (Fix 3): Avoid JSON.stringify + Object.keys().sort() on every edit.
-// imageMapVersion tracks mutations to currentImageMap — cheaper than key enumeration.
-function serializeStateForEcho(content: string, _imageMap: Record<string, string>): string {
-  return content + '\0' + imageMapVersion;
+// Image map version tracks mutations to the map: cheaper than key enumeration.
+function serializeStateForEcho(content: string, _imageMap?: Record<string, string>): string {
+  return content + '\0' + getImageMapVersion();
 }
 
 /** The body as this webview would write it, without touching `currentBody`. */
 function serializeEditorBody(): string | null {
   if (!editor) return null;
-  return transformForSave(editor.getMarkdown(), currentImageMap);
+  return transformForSave(editor.getMarkdown());
 }
 
 /** The full document (frontmatter + body) as it would be written out. */
@@ -587,7 +462,7 @@ function buildContent(body: string): string {
 function postEdit(content: string): boolean {
   if (content === contentBaseline) return false;
   contentBaseline = content;
-  lastSentState = serializeStateForEcho(content, currentImageMap);
+  lastSentState = serializeStateForEcho(content);
   vscode.postMessage({ type: "edit", content });
   return true;
 }
@@ -598,49 +473,29 @@ function resetContentBaseline(): void {
   contentBaseline = body === null ? null : buildContent(body);
 }
 
-// Register the rename-completion callback so that image-edit-plugin delegates
-// the map mutation, version bump, all-node update, and baseline re-anchor to
-// this module, which owns `imageMapVersion` and `updateImageNodeSrc`.
-//
-// Without this, the plugin mutated `currentImageMap` directly without bumping
-// `imageMapVersion`, so `transformForSave` reused a stale cached reverse map
-// and the webview URI leaked into the file on disk (#142).
-export function applyImageRename(
+// Rename completion: delegates map mutation and editor node updates to the
+// image translation module, keeping extension sync flags and baseline re-anchoring
+// in this module (#142, #147).
+function handleImageRenamed(
   oldSrc: string,
   oldPath: string,
   newPath: string,
   webviewUri: string,
-  targetEditor?: Editor,
 ): void {
-  // 1. Update the image map and bump the version so the reverse cache is
-  //    invalidated on the next `transformForSave` call.
-  if (oldPath) {
-    delete currentImageMap[oldPath];
+  if (!editor) return;
+  try {
+    isUpdatingFromExtension = true;
+    applyImageRenameTranslation(oldSrc, oldPath, newPath, webviewUri, editor);
+  } finally {
+    queueMicrotask(() => {
+      isUpdatingFromExtension = false;
+    });
   }
-  currentImageMap[newPath] = webviewUri;
-  imageMapVersion++;
-  setImageMap(currentImageMap);
-
-  // 2. Update ALL editor nodes that display the old webview URI. This uses
-  //    `isUpdatingFromExtension = true`, so `onUpdate` does not fire
-  //    `debouncedPostEdit`. The host already wrote the new relative path into
-  //    the document text; a redundant edit from the webview would at best be
-  //    harmless, at worst carry a stale map entry.
-  updateImageNodeSrc(oldSrc, webviewUri, targetEditor);
-
-  // 3. Re-anchor the baseline. The host changed the document (wrote the new
-  //    path) without sending `update`, so `contentBaseline` still describes the
-  //    old text. After the node update above, `serializeEditorBody` produces
-  //    the new relative paths (via the now-correct reverse map). That is what
-  //    the host holds, so anchoring here means `postEdit` will correctly
-  //    suppress the redundant edit.
-  if (!targetEditor) {
-    resetContentBaseline();
-  }
+  resetContentBaseline();
 }
 
 setOnImageRenamed((oldSrc, oldPath, newPath, webviewUri) => {
-  applyImageRename(oldSrc, oldPath, newPath, webviewUri);
+  handleImageRenamed(oldSrc, oldPath, newPath, webviewUri);
 });
 
 const MAX_BLOB_RETRIES = 5;
@@ -1824,15 +1679,11 @@ window.addEventListener("message", async (event) => {
 
         if (incomingState === lastSentState) {
           lastSentState = null;
-          currentImageMap = newImageMap;
-          imageMapVersion++;
           setImageMap(newImageMap);
           break;
         }
         lastSentState = null;
 
-        currentImageMap = newImageMap;
-        imageMapVersion++;
         setImageMap(newImageMap);
 
         try {
@@ -1846,7 +1697,7 @@ window.addEventListener("message", async (event) => {
 
           updateMetadataPanel(parsed.frontmatter, parsed.isValid, parsed.error);
 
-          const displayBody = transformForDisplay(parsed.body, currentImageMap);
+          const displayBody = transformForDisplay(parsed.body);
 
           let justInitialized = false;
           if (!editor) {
@@ -1899,7 +1750,7 @@ window.addEventListener("message", async (event) => {
                 setCollapsedHeadings(editor.view, saved.collapsedHeadings);
               }
             }
-            // Update TOC after content change (skip if just initialized — initTocSidebar already did it)
+            // Update TOC after content change (skip if just initialized: initTocSidebar already did it)
             if (!justInitialized) updateTocFromEditor(editor, true);
             refreshBacklinksIfVisible();
             // Update search result count if search bar is visible
@@ -2022,9 +1873,10 @@ window.addEventListener("message", async (event) => {
         typeof message.savedPath === "string"
       ) {
         if (typeof message.webviewUri === "string") {
-          currentImageMap[message.savedPath] = message.webviewUri;
-          imageMapVersion++;
-          setImageMap(currentImageMap);
+          const { savedPath, webviewUri } = message;
+          mutateImageMap((map) => {
+            map[savedPath] = webviewUri;
+          });
         }
 
         // Replace blob/base64 in editor with saved path
@@ -2174,10 +2026,8 @@ function init() {
 }
 
 
-if (typeof acquireVsCodeApi === "function") {
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
-  } else {
-    init();
-  }
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", init);
+} else {
+  init();
 }

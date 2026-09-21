@@ -45,3 +45,19 @@ saved-after-rename: <img src="media/icon-renamed.png" alt="A sized image" width=
 input: ![alt](https://file%2B.vscode-resource.vscode-cdn.net/ws/media/icon.png)
 saved: ![alt](media/icon.png)
 
+## set-map-reverse
+# setImageMap replaces the map, version increments, reverse lookup uses new entries
+saved: ![photo](media/photo.png)
+version-bumped: true
+
+## mutate-map-reverse
+# mutateImageMap modifies map in place, invalidates reverse cache, new path is translated
+primed: ![pic](media/old-pic.png)
+saved-after-mutate: ![pic](media/new-pic.png)
+
+## consecutive-set-map
+# two consecutive setImageMap calls increment version monotonically and use latest map
+version-increased: true
+first-entry-gone: true
+second-entry-saved: ![second](media/second.png)
+
