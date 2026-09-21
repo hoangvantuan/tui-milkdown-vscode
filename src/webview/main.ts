@@ -10,8 +10,8 @@
  * message dispatched from `pagehide` can still be lost if VS Code disposes
  * the webview host before IPC delivery finishes. The provider's `pendingEdit`
  * flag (markdownEditorProvider.ts) keeps the resulting document change from
- * echoing back as an `update`. harness/editor.ts mirrors the
- * markdown-relevant extension set below: change both together.
+ * echoing back as an `update`. Markdown-relevant extensions are provided by
+ * the shared extension factory (extension-factory.ts, #143, #145).
  *
  * Module scope calls `acquireVsCodeApi()`, so this file cannot be imported
  * from Node. Persist webview state with `{ ...getState(), key }`.
@@ -22,43 +22,7 @@ import type {
   WebviewToHostMessage,
   HostToWebviewMessage,
 } from "../shared/messages";
-import StarterKit from "@tiptap/starter-kit";
-import {
-  MarkdownLink,
-  MarkdownImage,
-  MarkdownParagraph,
-  IMAGE_IS_INLINE,
-} from "./markdown-destination";
-import { Highlight } from "@tiptap/extension-highlight";
-import { Underline } from "@tiptap/extension-underline";
-import { Table, TableRow, TableCell, TableHeader } from "@tiptap/extension-table";
-import { CodeBlockLowlight } from "@tiptap/extension-code-block-lowlight";
-import { TaskList, TaskItem } from "@tiptap/extension-list";
-import { Paragraph } from "@tiptap/extension-paragraph";
-import { Document } from "@tiptap/extension-document";
 import { Placeholder } from "@tiptap/extension-placeholder";
-import { Markdown, MarkdownManager, extractAbsorbedBlankLines } from "@tiptap/markdown";
-import { Marked } from "marked";
-import { createLowlight } from "lowlight";
-import javascript from "highlight.js/lib/languages/javascript";
-import typescript from "highlight.js/lib/languages/typescript";
-import python from "highlight.js/lib/languages/python";
-import xml from "highlight.js/lib/languages/xml";
-import css from "highlight.js/lib/languages/css";
-import json from "highlight.js/lib/languages/json";
-import bash from "highlight.js/lib/languages/bash";
-import yaml from "highlight.js/lib/languages/yaml";
-import markdown from "highlight.js/lib/languages/markdown";
-import sql from "highlight.js/lib/languages/sql";
-import java from "highlight.js/lib/languages/java";
-import cpp from "highlight.js/lib/languages/cpp";
-import go from "highlight.js/lib/languages/go";
-import rust from "highlight.js/lib/languages/rust";
-import php from "highlight.js/lib/languages/php";
-import ruby from "highlight.js/lib/languages/ruby";
-import diff from "highlight.js/lib/languages/diff";
-import shell from "highlight.js/lib/languages/shell";
-import plaintext from "highlight.js/lib/languages/plaintext";
 import "./editor.css";
 import "./themes/index.css";
 import {
@@ -70,12 +34,9 @@ import {
 import { LineHighlight } from "./line-highlight-plugin";
 import { HeadingLevel, headingSlug } from "./heading-level-plugin";
 import { setupImageEditOverlay, handleUrlEditResponse, handleImageRenameResponse, setImageMap, promptForImageUrl } from "./image-edit-plugin";
-import { renderTableToMarkdown } from "./table-markdown-serializer";
 import { transformTableCellsAfterParse } from "./table-cell-content-parser";
 import { MermaidDiagram, updateMermaidTheme, clearMermaidCache } from "./mermaid-plugin";
-import { AlertNode, ALERT_REGEX, ALERT_TYPES, getFirstText, stripAlertPrefix } from "./alert-extension";
 import { TableContextMenu } from "./table-context-menu";
-import { Blockquote } from "@tiptap/extension-blockquote";
 import { setupTocSidebar, updateTocFromEditor } from "./toc-sidebar";
 import { HeadingCollapse, collapsePluginKey, getCollapsedHeadings, setCollapsedHeadings } from "./heading-collapse-plugin";
 import { CodeBlockEnhancement } from "./code-block-plugin";
@@ -84,11 +45,8 @@ import { initFontSelector, type FontSelectorAPI, sanitizeFontName } from "./font
 import { initLightbox } from "./image-lightbox-plugin";
 import { svgToPngBlob } from "./svg-to-png";
 import { FileMention, setFileMentionFiles } from "./file-mention-plugin";
-import { WikiLink, WikiLinkSuggestion, setWikiLinkFiles } from "./wiki-link-plugin";
-import { RawHtmlBlock, RawHtmlInline } from "./raw-html";
+import { WikiLinkSuggestion, setWikiLinkFiles } from "./wiki-link-plugin";
 import { installMarkdownTextEscape } from "./markdown-text-escape";
-import { CustomOrderedList } from "./ordered-list-extension";
-import { ListKeymapExtension } from "./list-keymap-extension";
 import { escapeHtml } from "./file-search-utils";
 import { createBubbleMenuExtension } from "./bubble-menu";
 import { initLinkPopover, type LinkPopoverController } from "./link-popover";
@@ -97,8 +55,7 @@ import { EmojiSuggestion } from "./emoji-plugin";
 import { setupDragHandle } from "./drag-handle-plugin";
 import { setupBacklinksPanel, updateBacklinks, refreshBacklinksIfVisible } from "./backlinks-panel";
 import { setupFocusMode, handleFocusModeTransaction } from "./focus-mode";
-import { htmlMarkExtensions } from "./html-marks";
-import { detailsExtensions } from "./details-extension";
+import { buildMarkdownExtensions } from "./extension-factory";
 
 // Install unified text escape overrides on MarkdownManager (#97, #99, #100, #101).
 installMarkdownTextEscape();
@@ -107,105 +64,6 @@ installMarkdownTextEscape();
 // box the image URL editor uses. Wired here because the plugin must stay free
 // of any host handle.
 setImageSrcProvider(promptForImageUrl);
-
-
-// Fix: @tiptap/markdown v3.19.0 drops `escape` tokens from marked parser,
-// causing escaped characters like \_ to be silently lost during roundtrip.
-const EscapeToken = Extension.create({
-  name: "escapeToken",
-  markdownTokenName: "escape",
-  parseMarkdown(token: any, helpers: any) {
-    return helpers.createTextNode(token.text || "");
-  },
-});
-
-// Issue #95: Patch MarkdownManager prototype to accurately preserve consecutive blank lines.
-// Upstream @tiptap/markdown intercepts root `space` tokens inside `parseTokens` via
-// `createImplicitEmptyParagraphsFromSpace`, completely bypassing `BlankLineHandler.parseMarkdown`.
-// Upstream also used `raw.match(/\n\n/g)` which misses overlapping newlines (e.g. \n\n\n has 1 match),
-// causing consecutive blank lines to erode by one per save.
-const origParseTokens = (MarkdownManager.prototype as any).parseTokens;
-(MarkdownManager.prototype as any).parseTokens = function (tokens: any[], parseImplicitEmptyParagraphs = false) {
-  const prevTokens = (this as any)._currentTokens;
-  const normalizedTokens = parseImplicitEmptyParagraphs ? extractAbsorbedBlankLines(tokens) : tokens;
-  (this as any)._currentTokens = normalizedTokens;
-  try {
-    return origParseTokens.call(this, tokens, parseImplicitEmptyParagraphs);
-  } finally {
-    (this as any)._currentTokens = prevTokens;
-  }
-};
-
-(MarkdownManager.prototype as any).createImplicitEmptyParagraphsFromSpace = function (
-  token: any,
-  previousNonSpaceTokenIndex: number,
-  nextNonSpaceTokenIndex: number,
-) {
-  const newlines = (token.raw?.replace(/\r\n/g, "\n").match(/\n/g) || []).length;
-  if (newlines === 0) return [];
-  const prevToken = previousNonSpaceTokenIndex >= 0 ? (this as any)._currentTokens?.[previousNonSpaceTokenIndex] : null;
-  const prevIsTable = prevToken?.type === "table";
-  let emptyCount = 0;
-  if (nextNonSpaceTokenIndex === -1) {
-    // EOF
-    emptyCount = prevIsTable ? Math.max(0, newlines - 1) : newlines;
-  } else if (previousNonSpaceTokenIndex === -1) {
-    // BOF
-    emptyCount = Math.max(0, newlines - 2);
-  } else {
-    // Between blocks
-    emptyCount = prevIsTable ? Math.max(0, newlines - 3) : Math.max(0, newlines - 2);
-  }
-  return Array.from({ length: emptyCount }, () => ({ type: "paragraph", content: [] }));
-};
-
-// Parse marked `space` tokens (blank lines between blocks) as empty paragraphs.
-// marked preserves exact newline count in space.raw:
-//   "\n\n" (2) = normal paragraph break -> 0 empty paras
-//   "\n\n\n" (3) = 1 blank line -> 1 empty para
-//   "\n\n\n\n" (4) = 2 blank lines -> 2 empty paras
-//
-// Loose list normalization (#91):
-// A loose list (`- a\n\n- b`) is serialized back as a tight list (`- a\n- b`).
-// This behavior originates upstream in @tiptap/extension-list (bulletList /
-// orderedList serializers join child items with '\n', not '\n\n') rather than
-// in our own code, so it cannot be customized here.
-// Per CONTEXT.md, this is an accepted Normalized change: surface syntax is
-// allowed to normalize on first save as long as it reaches a fixed point and
-// remains stable from the second save onward, which it does.
-const BlankLineHandler = Extension.create({
-  name: "blankLineHandler",
-  markdownTokenName: "space",
-  parseMarkdown(token: any, helpers: any) {
-    const newlines = (token.raw?.replace(/\r\n/g, "\n").match(/\n/g) || []).length;
-    const emptyCount = newlines - 2;
-    if (emptyCount <= 0) return [];
-    return Array.from({ length: emptyCount }, () =>
-      helpers.createNode("paragraph", undefined, []),
-    );
-  },
-});
-
-export const CustomUnderline = Underline.extend({
-  parseHTML() {
-    return [
-      {
-        tag: "ins",
-      },
-      {
-        tag: "u",
-      },
-      {
-        style: "text-decoration",
-        consuming: false,
-        getAttrs: (style: any) => (style.includes("underline") ? {} : false),
-      },
-    ];
-  },
-  renderMarkdown(node: any, helpers: any) {
-    return `<ins>${helpers.renderChildren(node)}</ins>`;
-  },
-});
 
 // Fix: allow exiting inline `code` marks with ArrowRight anywhere (not just at paragraph end).
 // Tiptap's built-in Mark.handleExit only fires when cursor is at $from.end() (parent block end),
@@ -316,13 +174,6 @@ document.addEventListener("mermaid-copy-error", (e: Event) => {
     type: "showWarning",
     message: detail?.message || "Failed to copy mermaid diagram",
   });
-});
-
-const lowlight = createLowlight();
-lowlight.register({
-  javascript, typescript, python, xml, css, json,
-  bash, yaml, markdown, sql, java, cpp, go, rust,
-  php, ruby, diff, shell, plaintext,
 });
 
 let editor: Editor | null = null;
@@ -1093,77 +944,6 @@ function applyHeadingSizes(sizes: Record<string, number>): void {
 let currentListIndentation: { style: "space" | "tab"; size: number } = { style: "space", size: 2 };
 let currentTabSize = 2;
 
-/**
- * Expands leading tab indentation and tabs after list markers into spaces according
- * to 4-space tab stops, avoiding marked's list tokenizer bug where `-\ta\n\tcontinuation`
- * preserves extra leading spaces and causes continuation lines to detach on subsequent saves.
- * Preserves literal tabs inside fenced code blocks.
- */
-function expandPrefixTabsInText(src: string): string {
-  const lines = src.split("\n");
-  let inCodeBlock = false;
-  let codeBlockFence = "";
-
-  const result: string[] = [];
-
-  for (const line of lines) {
-    const fenceMatch = line.match(/^(\s*)(```+|~~~+)/);
-    if (fenceMatch) {
-      const fence = fenceMatch[2];
-      if (!inCodeBlock) {
-        inCodeBlock = true;
-        codeBlockFence = fence[0];
-      } else if (fence.startsWith(codeBlockFence)) {
-        inCodeBlock = false;
-        codeBlockFence = "";
-      }
-      result.push(line);
-      continue;
-    }
-
-    if (inCodeBlock) {
-      result.push(line);
-      continue;
-    }
-
-    const match = line.match(/^(\s*)(?:([-*+]|\d+[.)])(\s*))?/);
-    if (!match || !match[0].includes("\t")) {
-      result.push(line);
-      continue;
-    }
-
-    let col = 0;
-    let expanded = "";
-    for (let i = 0; i < match[0].length; i++) {
-      const ch = match[0][i];
-      if (ch === "\t") {
-        const numSpaces = 4 - (col % 4);
-        expanded += " ".repeat(numSpaces);
-        col += numSpaces;
-      } else {
-        expanded += ch;
-        col++;
-      }
-    }
-    result.push(expanded + line.slice(match[0].length));
-  }
-
-  return result.join("\n");
-}
-
-function createCustomMarked(): any {
-  const m = new Marked();
-  class CustomLexer extends (m.Lexer as any) {
-    lex(src: string) {
-      return super.lex(expandPrefixTabsInText(src));
-    }
-  }
-  m.Lexer = CustomLexer as any;
-  return m;
-}
-
-const customMarked = createCustomMarked();
-
 // Editor initialization
 function initEditor(initialContent: string = ""): Editor | null {
   // Publish Tiptap and ProseMirror on window BEFORE any lazy artifact can be
@@ -1191,146 +971,22 @@ function initEditor(initialContent: string = ""): Editor | null {
     const instance = new Editor({
       element: editorEl,
       extensions: [
-        StarterKit.configure({
-          codeBlock: false, // Replaced by CodeBlockLowlight
-          paragraph: false, // Replaced by custom Paragraph below
-          document: false, // Replaced by custom Document below
-          blockquote: false, // Replaced by custom Blockquote with alert detection
-          link: false, // Replaced by MarkdownLink below (destination escaping)
-          underline: false, // Replaced by CustomUnderline below (<ins> serialization)
-          orderedList: false, // Replaced by CustomOrderedList below (#109)
-        }),
-        CustomUnderline,
-        // Link/Image that escape destinations containing spaces, so a file
-        // mention or a pasted image path survives save + reopen.
-        MarkdownLink.configure({
-          openOnClick: false,
-          autolink: true,
-          linkOnPaste: true,
-        }),
-        // Custom Blockquote that detects GitHub-style alerts [!NOTE], [!TIP], etc.
-        Blockquote.extend({
-          parseMarkdown(token: any, helpers: any) {
-            const firstText = getFirstText(token);
-            if (firstText) {
-              const match = firstText.match(ALERT_REGEX);
-              if (match) {
-                const alertType = match[1].toUpperCase();
-                if ((ALERT_TYPES as readonly string[]).includes(alertType)) {
-                  const strippedTokens = stripAlertPrefix(token.tokens);
-                  const children = helpers.parseChildren(strippedTokens);
-                  return helpers.createNode('alert', { type: alertType }, children);
-                }
-              }
-            }
-            // Not an alert → create a regular blockquote
-            return helpers.createNode('blockquote', undefined, helpers.parseChildren(token.tokens || []));
-          },
-        }),
-        Document.extend({
-          // Custom doc serializer: joins children with '\n\n', but each empty paragraph
-          // only adds a single '\n' (one blank line in source) instead of '\n\n' + '' + '\n\n'.
-          renderMarkdown(node: any, h: any) {
-            if (!node.content) return '';
-            const children = Array.isArray(node.content) ? node.content : [];
-            let result = '';
-            for (const child of children) {
-              const isEmpty = child.type === 'paragraph' && (!child.content || child.content.length === 0);
-              if (isEmpty) {
-                result += '\n';
-              } else {
-                if (result.length > 0) result += '\n\n';
-                result += h.renderChildren([child]);
-              }
-            }
-            return result;
-          },
-        }),
-        MarkdownParagraph,
-        MarkdownImage.configure({
-          inline: IMAGE_IS_INLINE,
-          allowBase64: true,
-        }),
-        Highlight,
-        Table.extend({
-          renderMarkdown(node: any, h: any) {
-            return renderTableToMarkdown(node, h);
-          },
-        }).configure({
-          resizable: true,
-        }),
-        TableRow,
-        TableCell,
-        TableHeader,
-        CodeBlockLowlight.extend({
-          // Issue #92: dynamic fence length so nested code blocks (fenced with 3 or more backticks)
-          // roundtrip without corruption. Upstream hardcodes 3 backticks.
-          renderMarkdown(node: any, h: any) {
-            const language = node.attrs?.language || '';
-            const text = node.content ? h.renderChildren(node.content) : '';
-            const backtickMatches = text.match(/`+/g) || [];
-            let maxBackticks = 0;
-            for (const m of backtickMatches) {
-              if (m.length > maxBackticks) maxBackticks = m.length;
-            }
-            const fenceLength = Math.max(3, maxBackticks + 1);
-            const fence = '`'.repeat(fenceLength);
-            return `${fence}${language}\n${text}\n${fence}`;
-          },
-        }).configure({
-          lowlight,
-          enableTabIndentation: true,
+        ...buildMarkdownExtensions({
+          indentation: currentListIndentation,
           tabSize: currentTabSize,
         }),
-        TaskList,
-        TaskItem.configure({
-          nested: true,
-        }),
-        CustomOrderedList,
-        ListKeymapExtension,
         Placeholder.configure({
           placeholder: "Type something...",
         }),
-        Markdown.configure({
-          marked: customMarked,
-          indentation: currentListIndentation,
-          markedOptions: {
-            gfm: true,
-            breaks: false,
-          },
-        }),
-        AlertNode,
-        EscapeToken,
-        BlankLineHandler,
         CodeExitHandler,
         MermaidDiagram,
         TableContextMenu,
         SearchPlugin,
         FileMention,
-        WikiLink,
         WikiLinkSuggestion,
         SlashCommand,
         EmojiSuggestion,
-        RawHtmlBlock,
-        RawHtmlInline,
         createBubbleMenuExtension({ onOpenLink: () => linkPopover?.open() }),
-        // --- wave 8 ownership markers (#85) ---------------------------------
-        // Two 3.0 workers add markdown-relevant extensions at the same time, and
-        // this list plus harness/editor.ts must stay mirror images of each other.
-        // Each worker appends INSIDE its own block and touches no other line, so
-        // the two branches merge without a conflict. The import line a block needs
-        // goes at the top of the file as usual; wave 8 forgot to say so and one
-        // worker reached for require() to obey the rule literally.
-        // the two branches merge without a conflict. Delete the markers once 3.0
-        // has shipped and the mirror is stable again.
-        // --- W1: math + footnotes ---
-        ...require("./math-extension").mathExtensions,
-        ...require("./footnote-extension").footnoteExtensions,
-        // --- end W1 ---
-        // --- W2: html whitelist (details / kbd / sub / sup) ---
-        ...htmlMarkExtensions,
-        ...detailsExtensions,
-        // --- end W2 ---
         ...conditionalExtensions,
       ],
       content: initialContent,
