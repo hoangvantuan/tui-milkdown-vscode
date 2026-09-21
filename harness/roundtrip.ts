@@ -104,6 +104,14 @@ async function runFixture(
 }
 
 async function main(): Promise<number> {
+  // A run that verifies nothing must never exit 0. `main` became async when
+  // seams were allowed to return promises (#150); a seam whose promise never
+  // settles would leave the `.then` below unreached, and node exits 0 on an
+  // empty event loop. The same trap cost `harness/vscode-floor/run.mjs` a green
+  // on a run that checked nothing. Measured: a seam that hangs exits 1 with
+  // this line and 0 without it. The green path calls process.exit(0) itself.
+  process.exitCode = 1;
+
   const update = process.argv.includes("--update");
   const repoRoot = path.resolve(__dirname, "..", "..");
   const corpus = loadCorpus(repoRoot);

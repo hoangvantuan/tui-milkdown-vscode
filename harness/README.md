@@ -96,6 +96,19 @@ Besides the corpus, `npm run roundtrip` runs one golden per seam:
 | `table-align-seam.ts` | `seams/table-align.txt` | `setTableColumnAlignment()`: the separator row produced for left / center / right / none, on a header table and on a body-row-aligned table. 16 of 63 lines when the function is neutered (#118) |
 | `img-width-seam.ts` | `seams/img-width.txt` | How an `<img>` with `width`/`height` parses and serializes now that `MarkdownImage` owns those attributes, and how `align` still does not. Includes the #124 case, a link wrapped around such an image, which was silently dropped before #120 (#120, #124) |
 
+The table lists the wave-7 set; `math-footnote`, `html-render`, `emoji-insert`,
+`codeblock`, `content-sync` and `image-path` were added in waves 9 and 10 and
+are registered in `roundtrip.ts` without a row here yet.
+
+A seam's `run` may return a promise, and the runner awaits it (#150).
+`content-sync-seam.ts` is the one that needs it: it reads the extension-update
+latch one microtask after the call that raised it, and a microtask cannot be
+drained from synchronous code. Two consequences for anyone touching
+`roundtrip.ts`: `main()` sets `process.exitCode = 1` on entry, so a seam whose
+promise never settles cannot exit 0 having checked nothing, and a seam that
+measures a POST COUNT alone will not see a broken latch or a broken debounce,
+because `postEdit`'s baseline gate absorbs the extra post. Read the state.
+
 These five were committed as SKELETONS, with their registration lines in
 `roundtrip.ts`, before the wave-7 worktrees were cut. That is the pattern to
 repeat: a parallel wave that needs several seams should have them registered up
