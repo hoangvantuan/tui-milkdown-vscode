@@ -3,23 +3,14 @@
  *
  * Save, not edit, is the moment for DELETE detection: while typing, a path can
  * be half-erased for a keystroke, and deleting the file then would destroy it
- * for a typo. RENAME detection deliberately does not live here — it moved into
+ * for a typo. RENAME detection deliberately does not live here, it moved into
  * `applyEdit` so a rename takes effect as the user types it.
  *
- * `originalImagePaths` is the whole per-document map plus the key, never the
- * inner map, because this function REPLACES that inner map. Anything holding a
- * reference to the old one would quietly stop detecting.
- *
- * That replacement happens FIRST, before anything that can await a human
- * (#126). The delete of an image another document still uses now asks, and a
- * notification waits as long as it likes; re-baselining after the answer would
- * leave the next save diffing against a map that still holds the removed path,
- * so the same image would be detected — and prompted for — again. It is also
- * why the `originalMap.delete(...)` loop that used to follow a successful
- * delete is gone: it mutated an inner map that had already been discarded.
- *
- * The rebuild runs on every path, including the early returns: images added
- * during this session have to become deletable in the next one.
+ * The ledger's `setBaseline` replaces the inner map synchronously, FIRST,
+ * before anything that can await a human (#126). The old baseline is returned
+ * so detection below diffs against the pre-save state. Because the new
+ * baseline is already in place, a save that arrives while the delete prompt is
+ * open will diff against the fresh state and detect nothing for that image.
  *
  * Two more consequences of that unbounded await, both measured in
  * `test/image-usage.test.ts`. Images nothing else references are trashed
@@ -31,13 +22,13 @@
  */
 import * as vscode from "vscode";
 import {
-  detectImageDeletes,
   executeImageDeletes,
   normalizePath,
   type ImageDelete,
 } from "../utils/image-rename-handler";
 import { populateImageUsage } from "./imageUsage";
-import { extractImagePaths, isRemoteUrl, buildOriginalImageMap } from "./imagePaths";
+import { extractImagePaths, isRemoteUrl } from "./imagePaths";
+import type { ImageLedger } from "./imageLedger";
 
 const DELETE_ANYWAY = "Delete Anyway";
 const KEEP = "Keep";
@@ -45,8 +36,7 @@ const KEEP = "Keep";
 export async function handleDocumentSave(
   savedDoc: vscode.TextDocument,
   document: vscode.TextDocument,
-  docKey: string,
-  originalImagePaths: Map<string, Map<string, string>>,
+  ledger: ImageLedger,
 ): Promise<void> {
   if (savedDoc.uri.toString() !== document.uri.toString()) return;
 
@@ -54,25 +44,21 @@ export async function handleDocumentSave(
   // This handler only handles delete detection and map rebuilding
 
   const config = vscode.workspace.getConfiguration("tuiMarkdown");
-  const originalMap = originalImagePaths.get(docKey);
 
   // Get current paths (filter remote URLs)
   const currentPaths = extractImagePaths(savedDoc.getText()).filter(
     (p) => !isRemoteUrl(p),
   );
 
-  // Re-baseline before any await that can block on the user. `originalMap` is
-  // still held locally, so detection below diffs against the pre-save state.
-  originalImagePaths.set(
-    docKey,
-    buildOriginalImageMap(savedDoc.getText(), savedDoc.uri),
-  );
+  // Re-baseline before any await that can block on the user. The OLD baseline
+  // is returned so detection below diffs against the pre-save state.
+  const oldBaseline = ledger.setBaseline(savedDoc.getText(), savedDoc.uri);
 
-  if (!originalMap || originalMap.size === 0) return;
+  if (oldBaseline.size === 0) return;
   if (!config.get<boolean>("autoDeleteImages", true)) return;
 
   // === Image Delete Detection ===
-  const deletes = detectImageDeletes(originalMap, currentPaths);
+  const deletes = ledger.detectDeletes(oldBaseline, currentPaths);
   if (deletes.length === 0) return;
 
   // Only now is the workspace scan worth its cost: a findFiles plus a read per
@@ -122,8 +108,8 @@ async function trash(
 /**
  * Ask before trashing images another document still renders.
  *
- * The only affirmative answer is the button. Dismissing the notification — or
- * an extension host that never answers one — resolves `undefined`, and that
+ * The only affirmative answer is the button. Dismissing the notification, or
+ * an extension host that never answers one, resolves `undefined`, and that
  * has to mean KEEP: the whole point of #126 is that silence must not destroy
  * a file the user never touched.
  */
