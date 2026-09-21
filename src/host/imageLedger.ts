@@ -17,12 +17,11 @@
  * - `detectRenames` compares new paths against the baseline and returns
  *   rename pairs. It does not mutate the map.
  *
- * - `applyRenameToBaseline` updates the map after a successful rename.
- *   `revertRenameInBaseline` restores the old entry on failure.
- *   Both are synchronous: the async disk work is the caller's job.
+ * - `applyRenames` coordinates optimistic baseline update, disk rename
+ *   execution, failure rollback, and rename lock release.
  *
  * - `renameInProgress` prevents two overlapping rename batches from racing.
- *   `acquireRenameLock` / `releaseRenameLock` are the only way in and out.
+ *   `acquireRenameLock` / `releaseRenameLock` and `applyRenames` manage this.
  *
  * - Two panels can open the same document. The provider shares one ledger per
  *   docKey, not per session.
@@ -31,12 +30,12 @@ import type * as vscode from "vscode";
 import {
   extractImagePaths,
   isRemoteUrl,
-  resolveImagePath,
   buildOriginalImageMap,
 } from "./imagePaths";
 import {
   detectImageRenames as detectImageRenamesRaw,
   detectImageDeletes as detectImageDeletesRaw,
+  executeImageRenames,
   type ImageRename,
   type ImageDelete,
 } from "../utils/image-rename-handler";
@@ -47,6 +46,9 @@ export class ImageLedger {
 
   /** Guard against two overlapping rename batches. */
   private _renameInProgress = false;
+
+  /** Active in-flight renames being executed asynchronously. */
+  private inFlightRenames = new Map<string, ImageRename>();
 
   constructor(content: string, documentUri: vscode.Uri) {
     this.baseline = buildOriginalImageMap(content, documentUri);
@@ -70,6 +72,11 @@ export class ImageLedger {
   setBaseline(content: string, documentUri: vscode.Uri): Map<string, string> {
     const old = this.baseline;
     this.baseline = buildOriginalImageMap(content, documentUri);
+    // If any renames are currently in-flight, ensure they remain reflected in the new baseline
+    for (const rename of this.inFlightRenames.values()) {
+      this.baseline.delete(rename.oldRelative);
+      this.baseline.set(rename.newRelative, rename.newAbsolute);
+    }
     return old;
   }
 
@@ -82,7 +89,7 @@ export class ImageLedger {
   }
 
   // ---------------------------------------------------------------------------
-  // Rename detection
+  // Rename detection & execution
   // ---------------------------------------------------------------------------
 
   /**
@@ -97,6 +104,59 @@ export class ImageLedger {
       (p) => !isRemoteUrl(p),
     );
     return detectImageRenamesRaw(this.baseline, newPaths, documentUri);
+  }
+
+  /**
+   * Execute renames: acquire lock, optimistically update baseline, run executor,
+   * rollback failures, and release lock.
+   * Returns null if another rename is already in progress.
+   */
+  async applyRenames(
+    renames: ImageRename[],
+    executor: (renames: ImageRename[]) => Promise<{
+      succeeded: ImageRename[];
+      failed: Array<{ rename: ImageRename; error: string }>;
+    }> = executeImageRenames,
+  ): Promise<{
+    succeeded: ImageRename[];
+    failed: Array<{ rename: ImageRename; error: string }>;
+  } | null> {
+    if (!this.acquireRenameLock()) {
+      return null;
+    }
+    try {
+      // Optimistic locking: update map BEFORE async rename to prevent race conditions
+      const originalValues = new Map<string, string | undefined>();
+      for (const rename of renames) {
+        this.inFlightRenames.set(rename.newRelative, rename);
+        originalValues.set(
+          rename.oldRelative,
+          this.applyRenameToBaseline(rename),
+        );
+      }
+
+      const result = await executor(renames);
+
+      // Revert failed renames in baseline
+      if (result.failed.length > 0) {
+        for (const { rename } of result.failed) {
+          this.inFlightRenames.delete(rename.newRelative);
+          this.revertRenameInBaseline(
+            rename,
+            originalValues.get(rename.oldRelative),
+          );
+        }
+      }
+
+      for (const rename of result.succeeded) {
+        this.inFlightRenames.delete(rename.newRelative);
+      }
+
+      return result;
+    } finally {
+      this.inFlightRenames.clear();
+      this.releaseRenameLock();
+    }
   }
 
   /**
@@ -166,6 +226,12 @@ export class ImageLedger {
   }
 
   releaseRenameLock(): void {
+    this._renameInProgress = false;
+  }
+
+  dispose(): void {
+    this.baseline.clear();
+    this.inFlightRenames.clear();
     this._renameInProgress = false;
   }
 }

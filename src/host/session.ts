@@ -28,7 +28,6 @@ import { buildImageMap } from "./imagePaths";
 import { buildConfigMessage } from "./config";
 import { normalizeLineEndings } from "./lineEndings";
 import {
-  executeImageRenames,
   updateWorkspaceReferences,
 } from "../utils/image-rename-handler";
 import type { ImageLedger } from "./imageLedger";
@@ -48,6 +47,9 @@ export class EditorSession {
   inFlightEdit: Promise<void> | null = null;
   pendingEdit = false;
   exportInProgress = false;
+  get renameInProgress(): boolean {
+    return this.ledger.renameInProgress;
+  }
   private updateDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   readonly disposables: vscode.Disposable[] = [];
 
@@ -101,34 +103,18 @@ export class EditorSession {
     // Rename files first so webviewUri resolves correctly after edit
     // Skip if another rename is already in progress to prevent race conditions
     const config = vscode.workspace.getConfiguration("tuiMarkdown");
-    if (config.get<boolean>("autoRenameImages", true) && this.ledger.acquireRenameLock()) {
-      try {
-        const renames = this.ledger.detectRenames(
-          normalizedContent,
-          this.document.uri,
-        );
+    if (config.get<boolean>("autoRenameImages", true) && !this.ledger.renameInProgress) {
+      const renames = this.ledger.detectRenames(
+        normalizedContent,
+        this.document.uri,
+      );
 
-        if (renames.length > 0) {
-          // Optimistic locking: Update map BEFORE async rename to prevent race conditions
-          // Store original values to revert on failure
-          const originalValues = new Map<string, string | undefined>();
-          for (const rename of renames) {
-            originalValues.set(
-              rename.oldRelative,
-              this.ledger.applyRenameToBaseline(rename),
-            );
-          }
+      if (renames.length > 0) {
+        const result = await this.ledger.applyRenames(renames);
+        if (result) {
+          const { succeeded, failed } = result;
 
-          const { succeeded, failed } = await executeImageRenames(renames);
-
-          // Revert failed renames in the map
           if (failed.length > 0) {
-            for (const { rename } of failed) {
-              this.ledger.revertRenameInBaseline(
-                rename,
-                originalValues.get(rename.oldRelative),
-              );
-            }
             console.warn("[Image Rename] Failed:", failed);
             vscode.window.showWarningMessage(
               `Failed to rename ${failed.length} image(s).`,
@@ -147,8 +133,6 @@ export class EditorSession {
             );
           }
         }
-      } finally {
-        this.ledger.releaseRenameLock();
       }
     }
 
