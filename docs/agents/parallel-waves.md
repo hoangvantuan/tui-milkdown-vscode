@@ -508,6 +508,50 @@ Luật cho mọi sóng sau: **một lần chạy không kiểm tra được gì 
 harness có thể im lặng và thoát 0, mọi con số xanh nó từng in ra đều không còn là bằng
 chứng.
 
+## LỖI VÀ BÀI HỌC CỦA SÓNG 10
+
+Bảy ticket (`#142` tới `#148`), bảy worker `agy` trên bảy worktree, ba đợt. Năm bài đầu
+trả giá trong sóng, hai bài cuối trả giá ngay sau sóng khi đóng `#150`.
+
+**Chỉ MỘT cửa sổ floor mỗi lúc, và điều phối viên là người xếp hàng.** Cửa sổ bị che thì
+Chromium ngừng cấp animation frame, và cả loạt check phụ thuộc vị trí đỏ cùng lúc: bubble
+menu `present=false`, drag handle không nhúc nhích, mermaid kẹt ở loading. Dấu nhận là
+`visibility=hidden` trong dòng detail. Mất năm lượt floor chạy lại vì việc này. Cơ chế
+chạy được: worker phải `ask` xin màn hình, điều phối viên reply `approved`, và chính điều
+phối viên giữ hàng đợi chứ không để worker tự thoả thuận.
+
+**Đừng dọn survivor bằng pattern chung.** `pkill -f tuimd-floor` của tôi cắt ngang lượt
+floor của một worker khác. Lọc theo `extensionDevelopmentPath` của đúng worktree mình.
+
+**Tin `status` gửi vào dispatch có khi worker không đọc ra.** Một worker ngồi chờ qua
+nhiều vòng hẹn giờ dù tin đã gửi. Khi gấp thì `orca terminal send` thẳng vào terminal.
+
+**Kiểm `git status --short` của worker TRƯỚC khi nhận `worker_done`.** Một worker báo xong
+trong khi bản sửa và báo cáo còn chưa commit.
+
+**Phép thử răng của điều phối viên phải phá cơ chế KHÁC cách worker phá.** Hai lần làm vậy
+lộ ra hai khoảng trống mà báo cáo worker khẳng định là không có: ca test `#146` "flag
+clears on microtask" không phân biệt nhả đồng bộ với nhả ở microtask, và seam `#148` không
+thấy khi bỏ gộp debounce vì gate baseline hấp thụ lần post thừa. Cả hai đã khép ở `#150`.
+
+**Một lượt floor đỏ trên commit của mình, kèm một lượt đối chứng xanh trên commit cha,
+KHÔNG phải bằng chứng cho bất kỳ hướng nào.** Đóng `#150` tôi gặp đúng thế: ba lượt đỏ
+liên tiếp trên commit mới, mỗi lượt một check khác nhau, rồi commit cha xanh 55/55 ngay
+lượt đầu. Đọc xuôi thì đó là "thay đổi làm hỏng", đọc ngược thì là "cửa sổ bị che", và cả
+hai đều là chuyện kể. Thứ cắt được tranh cãi chỉ có một: **đo tiếp trên chính commit đó
+cho tới khi có một lượt xanh.** Lượt 4 xanh 55/55, lượt 5 đỏ đúng cổng visibility và không
+đỏ gì phía dưới. Hai dấu hiệu nhận mặt nhóm "cửa sổ bị che": tập check đỏ ĐỔI giữa các
+lượt (lỗi mã thì đỏ cùng một chỗ mọi lượt), và các check không phụ thuộc vị trí không bao
+giờ nhúc nhích.
+
+**Sửa một `.md` ở GỐC repo sau lượt roundtrip cuối là commit golden cũ.** `harness/corpus.ts`
+quét mọi `*.md` ở gốc làm corpus, nên sửa `CHANGELOG.md` hay `AGENTS.md` ở bước viết tài
+liệu, tức là SAU khi đã chạy đủ bộ kiểm, làm golden trong commit lệch với cây. Commit
+`02449b1` dính đúng thế: nó khai "roundtrip 60 passed" trong khi trên chính nó là 58/60.
+Luật: **thao tác cuối trước `git commit` luôn là `npm run roundtrip`, không phải viết tài
+liệu.** Áp cho cả commit `chore(release)`, vì đổi heading `## [Unreleased]` cũng là đổi
+một fixture.
+
 ## Ràng buộc bắt buộc đưa vào spec mọi worker
 
 1. Cấm sửa MỌI `.md` ở GỐC repo, không riêng `CHANGELOG.md` và `AGENTS.md`:
