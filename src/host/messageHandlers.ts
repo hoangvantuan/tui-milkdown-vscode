@@ -46,10 +46,7 @@ export interface HandlerContext {
   webview: TypedWebview;
   /** Extension-global memento: the remembered theme, font and zoom live here. */
   globalState: vscode.Memento;
-  /** Extension workspace memento: per-document cursor and scroll positions live here. */
-  /** The PROVIDER's map, passed whole with `session.docKey`, never as the inner map. */
-  originalImagePaths: Map<string, Map<string, string>>;
-  /** The provider's clipboard reporter — it de-duplicates the warning per reason. */
+  /** The provider's clipboard reporter, de-duplicates the warning per reason. */
   notifyClipboardError: (
     webview: TypedWebview,
     reason: string,
@@ -202,8 +199,7 @@ const handlers: HandlerTable = {
       msg,
       ctx.document,
       ctx.webview,
-      ctx.originalImagePaths,
-      ctx.session.docKey,
+      ctx.session.ledger,
       (value) => {
         ctx.session.pendingEdit = value;
       },

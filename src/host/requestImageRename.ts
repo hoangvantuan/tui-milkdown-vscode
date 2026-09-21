@@ -13,10 +13,8 @@
  *   push a fresh imageMap; here the webview already knows the new path, since it
  *   is the side that asked for the rename.
  *
- * `originalImagePaths` arrives as the whole per-document map plus `docKey`,
- * never as the inner map: `onDidSaveTextDocument` REPLACES the inner map after
- * every save, so a captured reference would go stale and silence rename
- * detection.
+ * The ledger receives `updateEntry` after a successful rename, replacing the
+ * old "get inner map, delete, set" pattern.
  */
 import * as vscode from "vscode";
 import type { RequestImageRenameMessage } from "../shared/messages";
@@ -25,13 +23,13 @@ import {
   updateWorkspaceReferences,
   hasPathTraversal,
 } from "../utils/image-rename-handler";
+import type { ImageLedger } from "./imageLedger";
 
 export function handleRequestImageRename(
   msg: RequestImageRenameMessage,
   document: vscode.TextDocument,
   webview: TypedWebview,
-  originalImagePaths: Map<string, Map<string, string>>,
-  docKey: string,
+  ledger: ImageLedger,
   setPendingEdit: (value: boolean) => void,
 ): void {
   const renameMsg = msg;
@@ -94,12 +92,8 @@ export function handleRequestImageRename(
         }
       }
 
-      // Update originalImagePaths
-      const originalMap = originalImagePaths.get(docKey);
-      if (originalMap) {
-        originalMap.delete(oldPath);
-        originalMap.set(newPath, newUri.fsPath);
-      }
+      // Update ledger baseline
+      ledger.updateEntry(oldPath, newPath, newUri.fsPath);
 
       // Build webviewUri for new path
       const webviewUri = webview.asWebviewUri(newUri).toString();
