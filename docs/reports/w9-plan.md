@@ -70,12 +70,12 @@ CANDIDATES.md.
 ### Specs
 
 | File | Candidate | Blocked by |
-|------|-----------|------------|
-| spec-extension-factory.md | C1 | None |
-| spec-content-sync.md | C2 | C1 |
-| spec-image-map-bugfix.md | C3 bugfix | None |
-| spec-image-path-translation.md | C3 refactor | C3 bugfix |
-| spec-image-ledger.md | C4 | None |
+|------|-----------|------------|--------|
+| spec-extension-factory.md | C1 | None | #137 |
+| spec-content-sync.md | C2 | C1 | #138 |
+| spec-image-map-bugfix.md | C3 bugfix | None | #139 |
+| spec-image-path-translation.md | C3 refactor | C3 bugfix | #140 |
+| spec-image-ledger.md | C4 | None | #141 |
 
 ### Tickets
 
@@ -83,13 +83,13 @@ See `docs/plans/w9-architecture/tickets.md` for full acceptance criteria.
 
 | # | Title | Wave | Blocked by | GitHub |
 |---|-------|------|------------|--------|
-| 1 | Fix lossy image path after double-click rename | 1 | None | TBD |
-| 2a | Extension factory: harness first | 1 | None | TBD |
-| 3a | Image ledger module | 1 | None | TBD |
-| 2b | Extension factory: main.ts switches | after 2a | 2a | TBD |
-| 3b | EditorSession flags become named behavior | after 3a | 3a | TBD |
-| 5 | Consolidate image path translation module | 2 | 1 | TBD |
-| 4 | Extract content sync module | 2 | 2b | TBD |
+| 1 | Fix lossy image path after double-click rename | 1 | None | #142 |
+| 2a | Extension factory: harness first | 1 | None | #143 |
+| 3a | Image ledger module | 1 | None | #144 |
+| 2b | Extension factory: main.ts switches | after 2a | 2a | #145 |
+| 3b | EditorSession flags become named behavior | after 3a | 3a | #146 |
+| 5 | Consolidate image path translation module | 2 | 1 | #147 |
+| 4 | Extract content sync module | 2 | 2b | #148 |
 
 ### Wave structure
 
@@ -118,6 +118,15 @@ means boundary is wrong.
 - C3 lossy bug: floor probe (coordinator's responsibility) will determine if the bug
   manifests on develop. If the probe does not go red, ticket 1 pivots to "record why
   + refactor" (fallback documented in the ticket).
+
+## Blocking edge verification
+
+```
+#145 (2b): {"blocked_by":1,"blocking":1,"total_blocked_by":1,"total_blocking":1}
+#146 (3b): {"blocked_by":1,"blocking":0,"total_blocked_by":1,"total_blocking":0}
+#147 (5):  {"blocked_by":1,"blocking":0,"total_blocked_by":1,"total_blocking":0}
+#148 (4):  {"blocked_by":1,"blocking":0,"total_blocked_by":1,"total_blocking":0}
+```
 
 ## Coordinator actions before execution
 
