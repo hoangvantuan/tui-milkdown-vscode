@@ -71,7 +71,7 @@ The review noted "counterevidence: cache reverse has existed since c97c9a3 (2026
 
 The lossy path is **confirmed by code reading**. No `imageMapVersion++` exists anywhere outside `main.ts`, and the plugin modifies the shared map object without any way to signal staleness to the cache. The bug requires: (1) rename via double-click, (2) debounced edit fires before the next `update` from host. Both are normal conditions in the rename flow.
 
-**This is a bug. A verification ticket is not needed: the code path is unambiguous. A bug fix should precede any refactoring of the image map module (candidate 3).**
+**A bug per the code trace, with ONE fact still unmeasured.** Step 4 of the trace (the host's document write for a rename raises `onDidChangeTextDocument` while `pendingEdit` is still true, so no `update` reaches the webview) is an inference about VS Code's RPC ordering. If the event lands after the microtask that clears the flag, the host does send an `update`, the version bumps and the stale cache is rebuilt, which would explain why the hand check of 2026-09-19 (cbf5b5e) passed with the cache present. No separate verification ticket: the rename floor probe in #149 settles it, RED on develop means bug fix first (#142), GREEN means #142 takes its documented fallback. The refactor of the image path translation module (candidate 3) comes after either way.
 
 Commands used to generate evidence:
 
