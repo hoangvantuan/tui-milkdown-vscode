@@ -4,6 +4,14 @@ All notable changes to "TUI Markdown Editor" extension.
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-09-22
+
+Two things a person could not reach, and one that froze the editor when they did.
+
+`<details>` has rendered since 3.0 but could only be created by typing raw HTML, so the feature was reported missing by someone who did not have a name for it either. It is a toolbar button and a `/` entry now, and the word they used to look for it, `more`, is one of its keywords.
+
+The code block header was worse: its line-wrap button froze the webview until the tab was closed, and its copy button, language picker and line numbers all did nothing. Those were two defects that hid each other, and the second one only became visible once the first was fixed.
+
 ### Added
 
 - **Collapsible has a way in**: `<details>`/`<summary>` rendered since 3.0 but could only be created by typing raw HTML, so the person who asked for it could not find it and did not have a name for it either. It is now a toolbar button in the block group and a `/` entry titled **Collapsible**. Its keywords include `more`, the word that was actually used to look for it; a menu entry nobody can name is still missing. Both surfaces call one function, `insertDetails` in `details-extension.ts`.
