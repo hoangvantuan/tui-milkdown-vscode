@@ -285,6 +285,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             <button class="toolbar-btn" data-command="codeBlock" title="Code Block" aria-label="Code Block">
               <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m10 10-2 2 2 2"/><path d="m14 14 2-2-2-2"/></svg>
             </button>
+            <button class="toolbar-btn" data-command="details" title="Collapsible (details/summary)" aria-label="Collapsible">
+              <svg viewBox="0 0 24 24"><path d="m4 5 3 3-3 3"/><line x1="11" y1="8" x2="20" y2="8"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="4" y1="19" x2="16" y2="19"/></svg>
+            </button>
             <button class="toolbar-btn" data-command="horizontalRule" title="Page Break" aria-label="Page Break">
               <svg viewBox="0 0 24 24"><path d="M7 15l5 5 5-5"/><path d="M7 9l5-5 5 5"/><line x1="4" y1="12" x2="9" y2="12"/><line x1="15" y1="12" x2="20" y2="12"/></svg>
             </button>

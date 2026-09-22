@@ -715,6 +715,79 @@ async function driveSurfaces(evaluate, session, sessions, beat = () => {}) {
 
   const sleepShort = () => sleep(400);
 
+  // --- A code block header button must leave the editor responsive ----------
+  // The handlers used to write CSS classes onto the <pre>, DOM ProseMirror owns.
+  // The observer saw the write, re-rendered, the widget was rebuilt, its restore
+  // step wrote again: the renderer spun forever and the editor was dead until
+  // the tab was closed. A liveness read after a REAL press/release is the only
+  // thing that catches it; a JS .click() does not reproduce it.
+  const pressAt = async (x, y) => {
+    await session.send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y, button: "none", clickCount: 0 });
+    await session.send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", buttons: 1, clickCount: 1 });
+    await session.send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", buttons: 0, clickCount: 1 });
+  };
+  const aliveIn = async () => {
+    const t0 = Date.now();
+    await evaluate("(() => 'alive')()");
+    return Date.now() - t0;
+  };
+  try {
+    // Control first: the same events on ordinary content. Without it a hang
+    // here could be blamed on the dispatch rather than on the button.
+    const p = await evaluate("(() => {" +
+      "const el = document.querySelector('.tiptap > p');" +
+      "if (!el) return null;" +
+      "el.scrollIntoView({ block: 'center' });" +
+      "const r = el.getBoundingClientRect();" +
+      "return { x: Math.round(r.left + 8), y: Math.round(r.top + r.height / 2) };" +
+    "})()");
+    if (!p) throw new Error("no paragraph for the control");
+    await pressAt(p.x, p.y);
+    const controlMs = await aliveIn();
+
+    const notes = [`control=${controlMs}ms`];
+    let allAlive = true;
+    for (const sel of [".code-wrap-btn", ".code-lines-btn"]) {
+      const target = await evaluate("(() => {" +
+        "const pre = document.querySelector('.tiptap pre');" +
+        "if (!pre) return null;" +
+        "pre.scrollIntoView({ block: 'center' });" +
+        "const b = pre.querySelector('" + sel + "');" +
+        "if (!b) return null;" +
+        "const r = b.getBoundingClientRect();" +
+        "return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };" +
+      "})()");
+      if (!target) { notes.push(`${sel}=not found`); allAlive = false; break; }
+      try {
+        await pressAt(target.x, target.y);
+        notes.push(`${sel}=alive after ${await aliveIn()}ms`);
+      } catch (err) {
+        notes.push(`${sel}=HUNG (${err.message})`);
+        allAlive = false;
+        break;
+      }
+    }
+    // What the click was for, read only if the editor survived to be asked.
+    let applied = "not read";
+    if (allAlive) {
+      try {
+        applied = await evaluate("(() => {" +
+          "const pre = document.querySelector('.tiptap pre');" +
+          "return JSON.stringify({ preClass: pre.className, gutters: document.querySelectorAll('.code-line-numbers').length });" +
+        "})()");
+      } catch (err) { applied = `err:${err.message.slice(0, 40)}`; }
+    }
+    add(
+      "a code block header button click leaves the renderer responsive",
+      allAlive,
+      notes.join(" | ") + " | " + applied,
+    );
+    if (!allAlive) return results;
+  } catch (err) {
+    add("a code block header button click leaves the renderer responsive", false, `threw: ${err.message}`);
+    return results;
+  }
+
   // --- The window is actually on screen -------------------------------------
   // Chromium runs no animation frames for a window it considers not visible,
   // and half these surfaces are positioned from inside one. A covered window
@@ -2034,6 +2107,90 @@ async function driveSurfaces(evaluate, session, sessions, beat = () => {}) {
     await sleepShort();
   } catch (err) {
     add("export button could be driven for both formats", false, `threw: ${err.message}`);
+  }
+
+  // --- Collapsible insert: the VIEW half of the invariant --------------------
+  // `harness/slash-seam.ts` pins what reaches the file (<details>, never
+  // <details open>). It cannot see the other half: the block has to LOOK open,
+  // or the caret lands in a body the UA hides and the entry reads as broken.
+  // Only a live view can answer that, so the assertion here is the pair:
+  // DOM open, document attribute still false. Last on purpose, because it adds
+  // a block to the document every other probe has already measured.
+  //
+  // It also types "more", not "collapsible". That is the word the feature was
+  // reported missing under, so the filter matching it IS the fix.
+  try {
+    const placed = await evaluate("(() => {" +
+      "const root = document.querySelector('.tiptap');" +
+      "if (!root) return 'no .tiptap';" +
+      "const last = root.lastElementChild;" +
+      "if (!last) return 'empty doc';" +
+      "root.focus();" +
+      "const range = document.createRange();" +
+      "range.selectNodeContents(last);" +
+      "range.collapse(false);" +
+      "const sel = window.getSelection();" +
+      "sel.removeAllRanges();" +
+      "sel.addRange(range);" +
+      "return 'ok';" +
+    "})()");
+    if (placed !== "ok") throw new Error(`caret: ${placed}`);
+    for (const type of ["keyDown", "keyUp"]) {
+      await session.send("Input.dispatchKeyEvent", {
+        type, key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13,
+      });
+    }
+    await sleepShort();
+    await session.send("Input.insertText", { text: "/more" });
+    await sleepShort();
+    const menu = await evaluate("(() => {" +
+      "const popup = document.querySelector('.slash-command-popup');" +
+      "if (!popup) return { open: false, items: 0, first: '' };" +
+      "const items = popup.querySelectorAll('.slash-command-item');" +
+      "return {" +
+        "open: true," +
+        "items: items.length," +
+        "first: items.length ? (items[0].textContent || '').slice(0, 20) : ''," +
+      "};" +
+    "})()");
+    for (const type of ["keyDown", "keyUp"]) {
+      await session.send("Input.dispatchKeyEvent", {
+        type, key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13,
+      });
+    }
+    await sleepShort();
+    const inserted = await evaluate("(() => {" +
+      "const all = document.querySelectorAll('.tiptap details');" +
+      "const d = all[all.length - 1];" +
+      "if (!d) return { found: false };" +
+      "const desc = d.pmViewDesc;" +
+      "const sel = window.getSelection();" +
+      "const node = sel && sel.anchorNode;" +
+      "const el = node && (node.nodeType === 1 ? node : node.parentElement);" +
+      "return {" +
+        "found: true," +
+        "domOpen: d.open," +
+        // The document must NOT say open: renderMarkdown writes that attribute
+        // out, and the NodeView never dispatches a transaction to take it back.
+        "docOpen: desc && desc.node ? !!desc.node.attrs.open : null," +
+        "caretInSummary: !!(el && el.closest('summary') && d.contains(el))," +
+        "count: all.length," +
+      "};" +
+    "})()");
+    add(
+      "the Collapsible entry is reachable by the word 'more' and opens what it inserts",
+      // FIRST, not only: fuzzysort still matches other entries on "more". What
+      // the report was about is that the word reaches this entry at the top,
+      // where Enter takes it. Measured: 3 matches, Collapsible first.
+      menu.open && /^Collapsible/.test(menu.first) && inserted.found &&
+        inserted.domOpen === true && inserted.docOpen === false &&
+        inserted.caretInSummary === true,
+      `filtered=${menu.items} first=${JSON.stringify(menu.first)} ` +
+        `detailsInDoc=${inserted.count} domOpen=${inserted.domOpen} ` +
+        `documentSaysOpen=${inserted.docOpen} caretInSummary=${inserted.caretInSummary}`,
+    );
+  } catch (err) {
+    add("the Collapsible entry is reachable by the word 'more' and opens what it inserts", false, `threw: ${err.message}`);
   }
 
   return results;

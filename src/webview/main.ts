@@ -66,6 +66,7 @@ import { setupDragHandle } from "./drag-handle-plugin";
 import { ContentSync } from "./content-sync";
 import { setupBacklinksPanel, updateBacklinks, refreshBacklinksIfVisible } from "./backlinks-panel";
 import { setupFocusMode, handleFocusModeTransaction } from "./focus-mode";
+import { insertDetails } from "./details-extension";
 import { buildMarkdownExtensions } from "./extension-factory";
 
 // Install unified text escape overrides on MarkdownManager (#97, #99, #100, #101).
@@ -997,6 +998,10 @@ const TOOLBAR_COMMANDS: Record<string, (ed: Editor) => void> = {
   blockquote: (ed) => ed.chain().focus().toggleBlockquote().run(),
   codeBlock: (ed) => ed.chain().focus().toggleCodeBlock().run(),
   horizontalRule: (ed) => ed.chain().focus().setHorizontalRule().run(),
+  // Insert-only, like insertTable and horizontalRule. Wrapping the selection
+  // would have to invent the `detailsSummary` the schema requires first, so it
+  // is a separate command, not this one.
+  details: (ed) => { insertDetails(ed); },
   insertTable: (ed) => ed.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
   addColumnBefore: (ed) => ed.chain().focus().addColumnBefore().run(),
   addColumnAfter: (ed) => ed.chain().focus().addColumnAfter().run(),
