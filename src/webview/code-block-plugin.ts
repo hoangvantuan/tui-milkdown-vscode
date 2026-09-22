@@ -4,6 +4,17 @@ import { Decoration, DecorationSet, EditorView } from "@tiptap/pm/view";
 
 const codeBlockKey = new PluginKey("code-block-enhancement");
 
+/**
+ * Ask the plugin to rebuild its decorations after a view-state change.
+ *
+ * A transaction carrying only this meta changes no content, so `ContentSync`
+ * serializes the same string and posts no `edit`: line wrap and line numbers
+ * stay view state and never reach the file.
+ */
+function requestViewStateRedraw(view: EditorView): void {
+  view.dispatch(view.state.tr.setMeta(codeBlockKey, "view-state"));
+}
+
 // Clipboard SVG icon (Lucide-style, stroke-based)
 const CLIPBOARD_SVG = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/></svg>`;
 
@@ -89,7 +100,14 @@ function closeDropdown(): void {
 function resolveCodeBlockPos(header: HTMLElement, view: EditorView): number | null {
   // The header widget is inserted at pos+1 (inside codeBlock).
   // Its next sibling or parent should be the codeBlock's DOM node.
-  const codeBlockDom = header.parentElement?.querySelector("pre") || header.nextElementSibling;
+  // closest, not parentElement.querySelector: the widget sits at pos + 1, which
+  // puts it INSIDE the <code> element, so the <pre> is an ANCESTOR of the header
+  // and never a descendant of its parent. Measured in a live webview:
+  // headerParent="CODE.language-js", parentElement.querySelector("pre")=null,
+  // nextElementSibling=SPAN (a lowlight token). The old chain therefore resolved
+  // a position inside the highlighted text, which is why copy came back empty
+  // and the language picker changed nothing.
+  const codeBlockDom = header.closest("pre") || header.parentElement?.querySelector("pre");
   if (!codeBlockDom) return null;
   try {
     const pos = view.posAtDOM(codeBlockDom, 0);
@@ -170,40 +188,26 @@ function showLangDropdown(badge: HTMLElement, header: HTMLElement, view: EditorV
 }
 
 /**
- * Update or remove line numbers gutter inside codeBlock <pre>.
+ * Build the line-number gutter as DETACHED DOM, for the widget to own.
+ *
+ * It used to be inserted into the <pre> after the fact, which is a write into
+ * DOM ProseMirror owns: the observer saw it, re-rendered, the widget was
+ * rebuilt, it wrote again, and the editor spun forever. Everything the header
+ * shows now lives inside the widget element, so ProseMirror creates and
+ * destroys it like any other decoration and never sees a foreign mutation.
  */
-function updateLineNumbersGutter(
-  pre: HTMLElement,
-  view: EditorView,
-  header: HTMLElement,
-  show: boolean,
-): void {
-  let gutter = pre.querySelector<HTMLElement>(".code-line-numbers");
-  if (!show) {
-    gutter?.remove();
-    return;
-  }
-
-  if (!gutter) {
-    gutter = document.createElement("div");
-    gutter.className = "code-line-numbers";
-    gutter.setAttribute("aria-hidden", "true");
-    gutter.setAttribute("contenteditable", "false");
-    if (header.nextSibling) {
-      pre.insertBefore(gutter, header.nextSibling);
-    } else {
-      pre.appendChild(gutter);
-    }
-  }
-
-  const nodePos = resolveCodeBlockPos(header, view);
-  const freshNode = nodePos !== null ? view.state.doc.nodeAt(nodePos) : null;
-  const lineCount = (freshNode?.textContent || "").split("\n").length;
+function buildLineNumbersGutter(codeText: string): HTMLElement {
+  const gutter = document.createElement("div");
+  gutter.className = "code-line-numbers";
+  gutter.setAttribute("aria-hidden", "true");
+  gutter.setAttribute("contenteditable", "false");
+  const lineCount = codeText.split("\n").length;
   let html = "";
   for (let i = 1; i <= lineCount; i++) {
     html += `<span>${i}</span>`;
   }
   gutter.innerHTML = html;
+  return gutter;
 }
 
 /**
@@ -215,6 +219,7 @@ function createHeaderWidget(
   initialLang: string,
   view: EditorView,
   blockKey: string,
+  codeText: string,
 ): HTMLElement {
   const el = document.createElement("div");
   el.className = "code-block-header";
@@ -251,11 +256,8 @@ function createHeaderWidget(
   wrapBtn.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
-    const pre = el.parentElement?.querySelector("pre") || el.closest("pre") || el.parentElement;
-    if (!pre) return;
-    const isWrap = pre.classList.toggle("code-wrap");
-    wrapBtn.classList.toggle("active", isWrap);
-    setCodeBlockViewState(blockKey, { wrap: isWrap });
+    setCodeBlockViewState(blockKey, { wrap: !getCodeBlockViewState(blockKey).wrap });
+    requestViewStateRedraw(view);
   });
   actions.appendChild(wrapBtn);
 
@@ -270,12 +272,8 @@ function createHeaderWidget(
   linesBtn.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
-    const pre = el.parentElement?.querySelector("pre") || el.closest("pre") || el.parentElement;
-    if (!pre) return;
-    const hasLines = pre.classList.toggle("has-line-numbers");
-    linesBtn.classList.toggle("active", hasLines);
-    updateLineNumbersGutter(pre, view, el, hasLines);
-    setCodeBlockViewState(blockKey, { lineNumbers: hasLines });
+    setCodeBlockViewState(blockKey, { lineNumbers: !getCodeBlockViewState(blockKey).lineNumbers });
+    requestViewStateRedraw(view);
   });
   actions.appendChild(linesBtn);
 
@@ -319,24 +317,14 @@ function createHeaderWidget(
 
   el.appendChild(actions);
 
-  // Restore active view state on render
+  // Restore active view state. Only the widget's OWN DOM is touched here: the
+  // classes that used to be written onto the <pre> are a node decoration now,
+  // built in buildDecorations from the same state.
   const viewState = getCodeBlockViewState(blockKey);
-  if (viewState.wrap) {
-    wrapBtn.classList.add("active");
-    queueMicrotask(() => {
-      const pre = el.parentElement?.querySelector("pre") || el.closest("pre") || el.parentElement;
-      pre?.classList.add("code-wrap");
-    });
-  }
+  if (viewState.wrap) wrapBtn.classList.add("active");
   if (viewState.lineNumbers) {
     linesBtn.classList.add("active");
-    queueMicrotask(() => {
-      const pre = el.parentElement?.querySelector("pre") || el.closest("pre") || el.parentElement;
-      if (pre) {
-        pre.classList.add("has-line-numbers");
-        updateLineNumbersGutter(pre, view, el, true);
-      }
-    });
+    el.appendChild(buildLineNumbersGutter(codeText));
   }
 
   return el;
@@ -360,12 +348,27 @@ function buildDecorations(
 
       const blockKey = `cb-${blockIndex++}`;
       const langAttr = node.attrs.language || "";
+      const viewState = getCodeBlockViewState(blockKey);
+      const codeText = node.textContent;
+      const stateKey = `${viewState.wrap ? "w" : ""}${viewState.lineNumbers ? "n" : ""}`;
       const widget = Decoration.widget(
         pos + 1,
-        () => createHeaderWidget(langAttr, view, blockKey),
-        { side: -1, key: `cb-header-${blockKey}-${langAttr}-${node.textContent.length}` }
+        () => createHeaderWidget(langAttr, view, blockKey, codeText),
+        { side: -1, key: `cb-header-${blockKey}-${langAttr}-${codeText.length}-${stateKey}` }
       );
       decorations.push(widget);
+
+      // The <pre> classes belong to ProseMirror, not to a click handler. Written
+      // from outside they were a foreign mutation: observer, re-render, widget
+      // rebuilt, written again, forever. As a node decoration they are part of
+      // what ProseMirror renders, so nothing ever fights over them.
+      const classes = [
+        viewState.wrap ? "code-wrap" : "",
+        viewState.lineNumbers ? "has-line-numbers" : "",
+      ].filter(Boolean).join(" ");
+      if (classes) {
+        decorations.push(Decoration.node(pos, pos + node.nodeSize, { class: classes }));
+      }
     }
   });
 
@@ -402,7 +405,8 @@ export const CodeBlockEnhancement = Extension.create({
             return DecorationSet.empty;
           },
           apply(tr, value) {
-            if (!tr.docChanged && value !== DecorationSet.empty) return value;
+            const redraw = tr.getMeta(codeBlockKey) !== undefined;
+            if (!tr.docChanged && !redraw && value !== DecorationSet.empty) return value;
             if (!viewRef) return DecorationSet.empty;
             return buildDecorations(tr.doc, viewRef);
           },

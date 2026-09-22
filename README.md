@@ -21,7 +21,7 @@
 
 Full WYSIWYG markdown editing with Tiptap + `@tiptap/markdown` (GFM support via MarkedJS). Format text using the glassmorphic toolbar or keyboard shortcuts, including underline with `Ctrl/Cmd+U`, which is saved as `<ins>text</ins>` so it still renders underlined on GitHub and in the VS Code preview. `Ctrl/Cmd+Shift+M` toggles between WYSIWYG and source view in both directions.
 
-- **Slash Commands**: type `/` at the start of an empty line for a filtered list of blocks to insert (headings, lists, table, code block, Mermaid diagram, the five GitHub alerts, image, quote, horizontal rule)
+- **Slash Commands**: type `/` at the start of an empty line for a filtered list of blocks to insert (headings, lists, table, code block, Mermaid diagram, the five GitHub alerts, image, collapsible, quote, horizontal rule)
 - **Selection Bubble Menu**: Bold, Italic, Code, Link and Highlight appear where you selected text
 - **Inline Link Editor**: editing a link happens in a popover at the cursor, not in a dialog at the top of the window
 - **Emoji Picker**: type `:` for fuzzy-filtered emoji; the character is inserted as unicode, so the file keeps what you would have typed by hand
@@ -35,6 +35,7 @@ Full WYSIWYG markdown editing with Tiptap + `@tiptap/markdown` (GFM support via 
 - **Math**: `$inline$` and `$$block$$` formulas render with KaTeX; the source on disk stays plain `$...$`
 - **Line Numbers and Wrap**: per code block, from the block header
 - **HTML that renders**: `<details>`/`<summary>` collapse as they do on GitHub, and `<kbd>`, `<sub>`, `<sup>` render as themselves
+- **Collapsible**: insert a `<details>`/`<summary>` block from the toolbar or `/`; opening one to read it never writes ` open` into your file
 
 ### Tables
 

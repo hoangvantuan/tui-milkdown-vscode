@@ -51,7 +51,7 @@ An Obsidian-style `[[...]]` link to another Markdown file, inserted by typing `[
 _Avoid_: internal link, wikilink, double-bracket link
 
 **Slash command**:
-A popup opened by typing `/` at the start of an empty paragraph, offering blocks to insert (heading, list, table, code, diagram, alert). It changes only what is inserted, never how it is saved.
+A popup opened by typing `/` at the start of an empty paragraph, offering blocks to insert (heading, list, table, code, diagram, alert, collapsible). It changes only what is inserted, never how it is saved.
 _Avoid_: Notion menu, block menu, command palette
 
 **Alert**:
@@ -61,6 +61,10 @@ _Avoid_: callout, admonition, note box
 **Raw HTML**:
 HTML written directly in the Markdown source (`<details>`, `<kbd>`, `<img width>`, comments). The editor keeps it verbatim and writes it back unchanged; whether a given tag is also rendered is a separate, per-tag decision.
 _Avoid_: inline HTML, embedded HTML, HTML passthrough
+
+**Collapsible**:
+A `<details>`/`<summary>` block the editor renders as a disclosure that opens and closes. Whether it is open is what the reader is looking at, never what the file says.
+_Avoid_: more, details block, spoiler, accordion, disclosure
 
 **Metadata panel**:
 The collapsible YAML frontmatter editor shown above the document body.

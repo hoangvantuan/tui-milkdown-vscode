@@ -13,6 +13,7 @@
  *   - Mermaid diagram
  *   - Five GitHub alert blocks: [!NOTE], [!TIP], [!IMPORTANT], [!WARNING], [!CAUTION]
  *   - Image
+ *   - Collapsible (<details>/<summary>)
  *   - Quote
  *   - Horizontal rule (per #114 correction: replaces #84 "page break", serializes ---)
  */
@@ -24,6 +25,7 @@ import Suggestion, {
 import { PluginKey } from "@tiptap/pm/state";
 import fuzzysort from "fuzzysort";
 import { SuggestionPopup } from "./suggestion-popup";
+import { insertDetails } from "./details-extension";
 
 /**
  * How the Image entry obtains a path. `main.ts` wires this to the same input
@@ -235,6 +237,30 @@ export const SLASH_COMMAND_ITEMS: SlashCommandItem[] = [
       } else {
         editor.chain().focus().setImage({ src: "" }).run();
       }
+    },
+  },
+  {
+    id: "details",
+    title: "Collapsible",
+    description: "Collapsible <details> block",
+    // "more" is in here because that is the word the person who reported the
+    // feature missing used for it. A menu entry nobody can name is still missing.
+    keywords: [
+      "details",
+      "summary",
+      "collapse",
+      "collapsible",
+      "expand",
+      "fold",
+      "toggle",
+      "spoiler",
+      "accordion",
+      "more",
+      "<details>",
+    ],
+    icon: `<svg ${SVG_ATTRS}><path d="m4 5 3 3-3 3"/><line x1="11" y1="8" x2="20" y2="8"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="4" y1="19" x2="16" y2="19"/></svg>`,
+    command: (editor, range) => {
+      insertDetails(editor, range);
     },
   },
   {

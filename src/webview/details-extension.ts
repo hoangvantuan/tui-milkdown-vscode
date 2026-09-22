@@ -1,10 +1,11 @@
 /**
  * Dedicated Details/Summary extension (issue #132).
  *
- * Provides WYSIWYG collapsible <details>/<summary> nodes.
+ * Provides WYSIWYG collapsible <details>/<summary> nodes, and the one insert
+ * command both surfaces that offer them use (`insertDetails`, at the bottom).
  */
 
-import { Node, mergeAttributes } from "@tiptap/core";
+import { Node, mergeAttributes, type Editor, type Range } from "@tiptap/core";
 
 export const DetailsSummary = Node.create({
   name: "detailsSummary",
@@ -25,7 +26,13 @@ export const DetailsSummary = Node.create({
   },
 
   renderMarkdown(node: any, helpers: any) {
-    return `<summary>${helpers.renderChildren(node)}</summary>`;
+    // `node.content ?? []`, never the bare node: a node with no children has
+    // NO `content` key at all, and `renderChildren` then falls through its
+    // array check and renders the node it was handed, which renders its own
+    // children again. An empty <summary> is reachable by hand and from the
+    // Collapsible menu entry, and it blew the stack on save (same guard as
+    // extension-factory.ts:373).
+    return `<summary>${helpers.renderChildren(node.content ?? [])}</summary>`;
   },
 });
 
@@ -150,3 +157,62 @@ export const Details = Node.create({
 });
 
 export const detailsExtensions = [DetailsSummary, Details];
+
+/**
+ * Insert an empty collapsible block and leave the caret in its summary.
+ *
+ * Shared by the slash menu entry and the toolbar button, so "Collapsible"
+ * means one thing on both surfaces.
+ *
+ * Why the DOM is touched directly instead of inserting with `open: true`:
+ * a fresh node is closed, the UA hides every child that is not the
+ * <summary>, and the caret would land in a body paragraph nobody can see.
+ * Setting `open` as an ATTRIBUTE would fix the view and put ` open` into the
+ * user's file, which the NodeView above can then never take back out, since
+ * it deliberately never dispatches a transaction for the toggle. So the
+ * disclosure is opened the same way a reader's click opens it: as a DOM
+ * mutation that `ignoreMutation` swallows. View open, document unchanged.
+ */
+export function insertDetails(editor: Editor, range?: Range): boolean {
+  const chain = editor.chain().focus();
+  if (range) chain.deleteRange(range);
+
+  const inserted = chain
+    .insertContent({
+      type: "details",
+      attrs: { open: false },
+      content: [{ type: "detailsSummary" }, { type: "paragraph" }],
+    })
+    .run();
+  if (!inserted) return false;
+
+  const pos = findInsertedDetails(editor);
+  if (pos === null) return true;
+
+  // +2, not +1: pos is the <details> node, pos + 1 is the <summary> node, and
+  // the caret belongs inside it. The summary is visible whether or not the
+  // disclosure is open, which is the whole reason it gets the caret.
+  editor.commands.setTextSelection(pos + 2);
+
+  const dom = editor.view.nodeDOM(pos);
+  if (dom instanceof HTMLElement) dom.setAttribute("open", "");
+
+  return true;
+}
+
+/**
+ * Where insertContent left the new node. It puts the selection at the end of
+ * what it inserted, so the usual case is a caret inside the body paragraph and
+ * the node is an ancestor. The fallback covers a selection that landed just
+ * after the block instead.
+ */
+function findInsertedDetails(editor: Editor): number | null {
+  const { $from } = editor.state.selection;
+  for (let depth = $from.depth; depth > 0; depth--) {
+    if ($from.node(depth).type.name === "details") return $from.before(depth);
+  }
+  if ($from.nodeBefore?.type.name === "details") {
+    return $from.pos - $from.nodeBefore.nodeSize;
+  }
+  return null;
+}
