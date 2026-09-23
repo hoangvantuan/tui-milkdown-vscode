@@ -1220,6 +1220,28 @@ body.dark-theme .tiptap .alert {
 body.dark-theme .tiptap .alert:hover {
   background: rgba(var(--alert-rgb, 0, 0, 0), 0.11);
 }
+/* A title written after the marker (`> [!NOTE] Title`) replaces the type
+   name; the icon still says which type it is. */
+.tiptap .alert[data-alert-title]::before {
+  content: attr(data-alert-title);
+}
+/* Notion: an untitled callout shows its icon beside the text, with no label.
+   A titled one keeps its title, which is content the user wrote. */
+body.theme-notion .tiptap .alert:not([data-alert-title]),
+body.theme-notion-dark .tiptap .alert:not([data-alert-title]) {
+  padding-left: 40px;
+}
+body.theme-notion .tiptap .alert:not([data-alert-title])::before,
+body.theme-notion-dark .tiptap .alert:not([data-alert-title])::before {
+  content: '';
+  position: absolute;
+  left: 14px;
+  top: calc(8px + (26px * var(--editor-font-scale, 1) - 16px) / 2);
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+}
 /* The current-line box drawn inside an already tinted block is a box in a
    box; the alert's own tint is enough to show where the caret is. */
 .tiptap .alert .line-highlight::after {

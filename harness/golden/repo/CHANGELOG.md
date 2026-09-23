@@ -12,18 +12,23 @@ The heading underline and the code block's top bar were accent gradients running
 
 Notion and Notion Dark are the two new themes. Everything that makes them look like Notion (flat callouts, tighter code block corners, no heading rule) is a CSS variable the shared stylesheet reads, so no existing theme changed to make room for them.
 
+One fix is not about looks: a title written after an alert's marker, the Obsidian and GitLab form, was quietly moved into the body on the first save. It is kept now, and shown as the alert's label.
+
 ### Added
 
+- **Notion themes show an untitled alert as an icon beside the text**, with no label, the way a Notion callout looks. A titled alert keeps its title, since that is text the user wrote.
 - **Notion and Notion Dark themes**: a flat page with no grain or vignette, Notion's text and surface colors, 4px code blocks without the accent bar, and alerts drawn as callouts (tinted background, no borders). The shape changes are CSS variables that `editor.css` reads with the old values as defaults (`--code-radius`, `--code-accent-bar`, `--alert-border`, `--alert-border-left`, `--alert-radius`, `--alert-header-divider`, `--heading-rule-alpha`), so the theme files stay variable-only and no other theme moves.
 
 ### Changed
 
+- **An empty alert saves as its marker line alone**: a freshly inserted alert used to write `> [!NOTE]` followed by two empty `>` lines, an artifact of how the header was joined to an empty paragraph. It now writes `> [!NOTE]`, which parses back to the same empty alert. An empty alert saved the old way is normalized once, on its next save. Non-empty alerts are unchanged, including the `>` line between the marker and the body (`alerts.md` did not move).
 - **The H1/H2 underline is a solid hairline**: it was an accent-colored gradient that faded to transparent and read as a smudge on dark themes. It is now a 1px line in the theme's neutral border color across the full width.
 - **Code blocks redrawn**: the accent bar at the top is a solid 2px line instead of a gradient fading to transparent, the block has a faint 1px border, the header is a neutral tint rather than an accent one, the language name gets an accent dot, and focus shows a soft 3px ring instead of a hard 1px outline. The header's geometry is unchanged, because the line-number gutter's offset depends on it.
 - **Alerts slimmed down**: a 3px left bar and a light tint, with no outline around the block, no divider under the title, tighter padding and square left corners. The current-line highlight is no longer drawn inside an alert, where it made a box inside a box. Hover no longer widens the bar, which shifted the text by a pixel.
 
 ### Fixed
 
+- **A title after an alert's marker was moved into the body on the first save**: `> [!NOTE] Before you upgrade` came back as `> [!NOTE]` with `Before you upgrade` as the first body line, which changes what the file means in Obsidian and GitLab, where that line is the callout's title. The parser stripped the marker and let the rest of the line fall through. The title is now a node attribute held as the raw markdown string, written back byte for byte (inline markup included) and shown in place of the type name. `harness/fixtures/synthetic/alerts-title.md` is red before the fix. The title is kept and displayed, not yet editable in the view.
 - **The alert's left bar was faint on every dark theme**: the dark rule set `border-color`, a shorthand, so it also overwrote the left bar's color with the 20% tint. It now restores `border-left-color` to the alert's own color.
 
 ## \[3.1.0\] - 2026-09-22

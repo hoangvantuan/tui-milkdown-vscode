@@ -31,7 +31,7 @@ Full WYSIWYG markdown editing with Tiptap + `@tiptap/markdown` (GFM support via 
 
 - **Syntax Highlighting** — 19 languages via lowlight, with language badge dropdown and copy button
 - **Mermaid Diagrams** — Live SVG preview with view/edit toggle, theme sync, fullscreen lightbox (zoom/pan), and copy-as-PNG (2x retina)
-- **GitHub Alerts** — `[!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]` render as styled alert boxes
+- **GitHub Alerts** — `[!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]` render as styled alert boxes; a title after the marker (`> [!NOTE] Before you upgrade`) replaces the label and is kept on save
 - **Math**: `$inline$` and `$$block$$` formulas render with KaTeX; the source on disk stays plain `$...$`
 - **Line Numbers and Wrap**: per code block, from the block header
 - **HTML that renders**: `<details>`/`<summary>` collapse as they do on GitHub, and `<kbd>`, `<sub>`, `<sup>` render as themselves

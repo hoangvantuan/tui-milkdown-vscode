@@ -87,7 +87,7 @@ src/
     ├── ordered-list-extension.ts # CustomOrderedList: tokenizer override counting the marker separator (#109)
     ├── list-keymap-extension.ts # Tab/Shift-Tab list behaviour and typed-marker absorption (#107)
     ├── frontmatter.ts        # YAML parsing & validation utilities
-    ├── alert-extension.ts    # GitHub-style alert blocks ([!NOTE], [!TIP], etc.)
+    ├── alert-extension.ts    # GitHub-style alert blocks ([!NOTE], [!TIP], etc.); an optional title after the marker is a raw-string attribute
     ├── mermaid-plugin.ts     # Mermaid diagram rendering (SVG preview, view/edit mode, caching)
     ├── mermaid-bridge.ts     # Lazy-loads the mermaid artifact with the page nonce (retry/latch semantics)
     ├── artifact-bridge.ts    # The same load semantics, reusable: loadArtifact("katex" | "dragHandle" | "emoji") (#85)
