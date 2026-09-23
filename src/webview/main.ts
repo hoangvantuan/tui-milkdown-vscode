@@ -32,7 +32,7 @@ import {
   type FrontmatterFormat,
 } from "./frontmatter";
 import { LineHighlight } from "./line-highlight-plugin";
-import { HeadingLevel, headingSlug } from "./heading-level-plugin";
+import { headingSlug } from "./heading-slug";
 import { setupImageEditOverlay, handleUrlEditResponse, handleImageRenameResponse, setOnImageRenamed, promptForImageUrl } from "./image-edit-plugin";
 import {
   setImageMap,
@@ -733,23 +733,60 @@ function clampZoom(value: number): number {
   return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, rounded));
 }
 
+/** Keeps the scroll range in step with the scaled editor; see scaleEditor. */
+let zoomResizeObserver: ResizeObserver | null = null;
+
 /**
- * Apply zoom scale to editor content only (the .tiptap element).
+ * Scale the editor content (the .tiptap element) with a `transform`, not CSS
+ * `zoom`. VS Code launches Chromium with StandardizedBrowserZoom disabled, and
+ * under that legacy `zoom` a rect read inside `.tiptap` is real/zoom while
+ * clientX/Y, elementFromPoint and every rect outside it are real. Every
+ * overlay here measures a rect inside and places itself outside, so at any
+ * zoom but 1.0 the drag handle, the bubble menu and the popups all stood off
+ * their targets by that factor. A transform keeps ONE coordinate space: every
+ * rect is on-screen pixels, so none of those consumers needed a change.
  *
- * Toolbar, TOC, metadata panel and popups are untouched. CSS `zoom` is
- * transparent to JS coordinate APIs (getBoundingClientRect, clientX/Y,
- * posAtCoords), so plugins stay correct as long as their overlays attach to
- * `#editor-container` (the non-zoomed parent) rather than `.tiptap`.
+ * A transform does not move layout, which is what the rest of this function
+ * pays for. The width (editor.css, `.tiptap.is-zoomed`) is chosen in layout px
+ * so the scaled box fills the container the way CSS `zoom` did. The scroll
+ * range is the other half: layout keeps the unscaled height, so a bottom
+ * margin of height * (zoom - 1) makes the scrollable height the scaled one,
+ * negative when zooming out. #editor becomes a flow-root while zoomed so that
+ * margin stays inside it rather than collapsing through. The observer
+ * re-measures whenever the content grows (typing, an image loading, a mermaid
+ * render); the margin does not change the size it observes, so it cannot loop.
+ *
+ * Nothing is written at 1.0, so the default view is exactly what it was.
+ */
+function scaleEditor(tiptapEl: HTMLElement, value: number): void {
+  zoomResizeObserver?.disconnect();
+  zoomResizeObserver = null;
+  const zoomed = value !== ZOOM_DEFAULT;
+  tiptapEl.classList.toggle("is-zoomed", zoomed);
+  tiptapEl.parentElement?.classList.toggle("has-zoomed-editor", zoomed);
+  if (!zoomed) {
+    tiptapEl.style.removeProperty("--editor-zoom");
+    tiptapEl.style.removeProperty("margin-bottom");
+    return;
+  }
+  tiptapEl.style.setProperty("--editor-zoom", String(value));
+  const compensate = () => {
+    tiptapEl.style.marginBottom = `${tiptapEl.offsetHeight * (value - 1)}px`;
+  };
+  compensate();
+  zoomResizeObserver = new ResizeObserver(compensate);
+  zoomResizeObserver.observe(tiptapEl);
+}
+
+/**
+ * Apply zoom scale to editor content only (the .tiptap element), through
+ * scaleEditor. Toolbar, TOC, metadata panel and popups are untouched, and
+ * overlays attach to `#editor-container` (the unscaled parent) rather than
+ * `.tiptap`.
  */
 function applyZoom(value: number): void {
   const tiptapEl = document.querySelector(".tiptap") as HTMLElement | null;
-  if (tiptapEl) {
-    if (value === ZOOM_DEFAULT) {
-      tiptapEl.style.removeProperty("zoom");
-    } else {
-      tiptapEl.style.zoom = String(value);
-    }
-  }
+  if (tiptapEl) scaleEditor(tiptapEl, value);
   const display = document.getElementById("btn-zoom-reset");
   if (display) display.textContent = `${Math.round(value * 100)}%`;
   const outBtn = document.getElementById("btn-zoom-out") as HTMLButtonElement | null;
@@ -810,7 +847,6 @@ function initEditor(initialContent: string = ""): Editor | null {
   try {
     // Build conditional extensions
     const conditionalExtensions = [
-      HeadingLevel,
       HeadingCollapse,
       CodeBlockEnhancement,
       ...(highlightCurrentLine ? [LineHighlight] : []),
@@ -1545,9 +1581,8 @@ function scrollToHeading(slug: string): void {
   const { doc } = editor.state;
   doc.descendants((node, pos) => {
     if (node.type.name !== "heading") return;
-    // The slug rule lives in heading-level-plugin.ts, next to the anchor button
-    // that writes these strings. Two copies of it is how a copied anchor and the
-    // heading it points at stop matching.
+    // The slug rule lives in heading-slug.ts, and only there. Two copies of it
+    // is how an anchor link and the heading it points at stop matching.
     if (headingSlug(node.textContent) === slug) {
       editor!.commands.setTextSelection(pos + 1);
       const dom = editor!.view.nodeDOM(pos);

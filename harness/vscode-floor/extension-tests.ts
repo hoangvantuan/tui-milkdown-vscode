@@ -726,7 +726,15 @@ export async function run(): Promise<void> {
   const samplePath = process.env.TUI_FLOOR_SAMPLE;
 
   try {
-    record("vscode version", true, vscode.version);
+    // Compared, not just printed: it used to record `true` whatever it read,
+    // and three runs in a row passed it while reading 1.138.0 on a floor of
+    // 1.85.0, because the cached build had been updated in place.
+    const expected = process.env.TUI_FLOOR_EXPECT_VERSION;
+    record(
+      "vscode version is the floor",
+      !!expected && vscode.version === expected,
+      `running ${vscode.version}, expected ${expected ?? "(TUI_FLOOR_EXPECT_VERSION unset)"}`,
+    );
 
     const extension = vscode.extensions.getExtension(EXTENSION_ID);
     if (!record("extension resolves", !!extension, extension ? extension.extensionPath : "not found")) {
