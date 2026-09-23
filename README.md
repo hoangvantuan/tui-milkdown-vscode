@@ -128,7 +128,7 @@ WYSIWYG export via headless Chromium (`puppeteer-core`). Requires Chrome, Edge, 
 
 ## Themes
 
-12 built-in themes with curated typography and color palettes:
+14 built-in themes with curated typography and color palettes:
 
 | Theme | Style | Character |
 |-------|-------|-----------|
@@ -144,6 +144,8 @@ WYSIWYG export via headless Chromium (`puppeteer-core`). Requires Chrome, Edge, 
 | Catppuccin Mocha | Dark | Rich, deep |
 | Paper | Light | Serif, book-like |
 | Midnight | Dark | Deep navy (#0d1117) |
+| Notion | Light | Flat white page, callout-style alerts |
+| Notion Dark | Dark | Notion's #191919 page, flat code blocks |
 
 ## Tech Stack
 

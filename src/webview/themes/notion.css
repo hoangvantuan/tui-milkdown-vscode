@@ -1,0 +1,30 @@
+/* Notion Theme — Flat white page, warm grey text, callout-style alerts */
+.theme-notion {
+  --accent-primary: #2383e2;
+  --accent-rgb: 35, 131, 226;
+  --toolbar-bg-rgb: 255, 255, 255;
+  --border-rgb: 55, 53, 47;
+  --toolbar-fg: #37352f;
+  --canvas-bg: #f7f7f5;
+  --noise-opacity: 0;
+  --vignette-opacity: 0;
+  --selection-bg: rgba(35, 131, 226, 0.2);
+}
+.theme-notion .tiptap {
+  --crepe-color-background: #ffffff;
+  --crepe-color-on-background: #37352f;
+  --crepe-color-surface: #f7f6f3;
+  --crepe-color-outline: #9b9a97;
+  --crepe-color-primary: #2383e2;
+  --crepe-color-inline-code: #eb5757;
+  --crepe-color-highlight: #fbf3db;
+  --crepe-font-default: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --crepe-font-code: SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --heading-rule-alpha: 0;
+  --code-radius: 4px;
+  --code-accent-bar: 0;
+  --alert-border: 0;
+  --alert-border-left: 0;
+  --alert-border-left-hover: 0;
+  --alert-radius: 4px;
+}

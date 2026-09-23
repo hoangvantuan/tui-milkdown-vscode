@@ -4,6 +4,20 @@ All notable changes to "TUI Markdown Editor" extension.
 
 ## [Unreleased]
 
+### Added
+
+- **Notion and Notion Dark themes**: a flat page with no grain or vignette, Notion's text and surface colors, 4px code blocks without the accent bar, and alerts drawn as callouts (tinted background, no borders). The shape changes are CSS variables that `editor.css` reads with the old values as defaults (`--code-radius`, `--code-accent-bar`, `--alert-border`, `--alert-border-left`, `--alert-radius`, `--alert-header-divider`, `--heading-rule-alpha`), so the theme files stay variable-only and no other theme moves.
+
+### Changed
+
+- **The H1/H2 underline is a solid hairline**: it was an accent-colored gradient that faded to transparent and read as a smudge on dark themes. It is now a 1px line in the theme's neutral border color across the full width.
+- **Code blocks redrawn**: the accent bar at the top is a solid 2px line instead of a gradient fading to transparent, the block has a faint 1px border, the header is a neutral tint rather than an accent one, the language name gets an accent dot, and focus shows a soft 3px ring instead of a hard 1px outline. The header's geometry is unchanged, because the line-number gutter's offset depends on it.
+- **Alerts redrawn**: a 3px left bar, a slightly stronger tint, and no divider under the title. Hover no longer widens the bar, which shifted the text by a pixel.
+
+### Fixed
+
+- **The alert's left bar was faint on every dark theme**: the dark rule set `border-color`, a shorthand, so it also overwrote the left bar's color with the 20% tint. It now restores `border-left-color` to the alert's own color.
+
 ## [3.1.0] - 2026-09-22
 
 Two things a person could not reach, and one that froze the editor when they did.
