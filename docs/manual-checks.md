@@ -134,6 +134,13 @@ sai ba phiên bản trước của probe này đã mắc.
 Floor check `bubble menu still tracks the selection at a non-100% zoom`. Ở `zoom=1.2`:
 `dx=0 dy=44`, menu vẫn gắn `#editor-container` chứ không gắn `.tiptap`.
 
+Con số `dx=0 dy=44` đó từng xanh trên một menu đứng lệch vùng chọn. Editor khi ấy zoom
+bằng CSS `zoom`, VS Code tắt StandardizedBrowserZoom, nên rect trong `.tiptap` bị chia
+cho zoom còn rect của menu thì không, và hai bên lệch cùng một hệ số. Từ 3.3.0 zoom là
+`transform: scale()` (`scaleEditor` trong `main.ts`), và probe hỏi trang xem ngay dưới
+menu có phải chữ đang chọn không: `selectedTextBelowMenuAt=8`. Probe này đỏ trên CSS
+zoom (`selectedTextBelowMenuAt=null`) rồi mới xanh trên transform.
+
 Một bài học nằm trong chính probe này: bản đầu đo một vùng chọn nằm **cao hơn viewport
 834px** rồi đọc việc floating-ui lật menu sang phía kia thành "menu trôi". So sánh với
 một mốc nằm ngoài màn hình thì không đo được gì. Nay nó cuộn mốc vào tầm nhìn trước.

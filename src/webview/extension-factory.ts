@@ -279,7 +279,7 @@ const LOWLIGHT_LANGUAGES: Record<string, any> = {
  * Build the complete set of markdown-relevant Tiptap extensions.
  *
  * Returns an array suitable for `new Editor({ extensions: [...] })`.
- * UI-only extensions (Placeholder, LineHighlight, HeadingLevel, etc.) are
+ * UI-only extensions (Placeholder, LineHighlight, HeadingCollapse, etc.) are
  * NOT included; each consumer adds those itself.
  */
 export function buildMarkdownExtensions(config: ExtensionFactoryConfig = {}): any[] {

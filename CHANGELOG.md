@@ -4,6 +4,17 @@ All notable changes to "TUI Markdown Editor" extension.
 
 ## [Unreleased]
 
+### Fixed
+
+- **At any zoom other than 100%, the drag handle and the bubble menu stood off their targets.** The zoom was CSS `zoom` on the editor, and VS Code starts Chromium with `StandardizedBrowserZoom` disabled, so under the older semantics a position read inside the editor is divided by the zoom while the pointer's is not. Every overlay reads a position inside the editor and places itself outside it, so at 120% the drag handle stood beside the heading above the paragraph under the pointer, and the bubble menu floated clear of its selection. The zoom is `transform: scale()` now, which keeps one coordinate space. The drag handle and the bubble menu are measured at 120% by the floor check; the `@`, `[[`, `/` and emoji popups, the footnote preview, the link editor, the code language picker, search, focus mode and the TOC's scrolling read positions the same way and get the same correction with no change of their own, but were not each measured at a zoom. A transform moves no layout, so the editor also sets the column width to fill the window as before and keeps the scroll range ending at the text. Nothing changes at 100%.
+- The floor checks for the drag handle and the bubble menu at a zoom had been green on this all along: they compared two positions off by the same factor. They now ask the page what is under the pointer, went red on the CSS zoom, and are green on the transform. New checks cover the column fitting its container and the scroll range ending at the text, at 50% and 150% with 100% as the control, the collapse arrow at 150%, and a real click at 150% putting the caret in the block and the row under the pointer.
+- **The VS Code floor check could run on a VS Code that was not the floor.** Its cached 1.85.0 had been replaced in place by 1.138.0 (on macOS it shares the bundle id of a normal VS Code install, and the updater wrote into it), and `vscode version is the floor` recorded a pass whatever version it read. The cache is now checked against the floor and unpacked again when it differs, and the check compares the version.
+- **A heading's collapse arrow can be clicked again.** Since the drag handle arrived in 3.0 it was drawn in the same strip left of the heading as the arrow, on top of it, so a click on the arrow grabbed the handle and nothing collapsed. The handle now sits one gutter further out, for every block, so the handles still line up in one column. The floor check presses the arrow for real at 100% and again at 150% zoom, where the gutter scales with the arrow it has to clear. The cost is room: in an editor narrower than about 500px, more so when zoomed out, the handle's left edge can be clipped by a few pixels. That was taken over the alternative, a handle that shrinks back over the arrow when space runs out, because a clipped handle still works and a covered arrow does not.
+
+### Removed
+
+- **The H1-H6 level badges beside headings.** They shared that strip with the collapse arrow and the drag handle, and the three drew on top of each other. The level still shows in the toolbar's heading dropdown whenever the caret is in a heading. `headingSlug()`, which lived in the badge plugin's file, moved to `heading-slug.ts`.
+
 ## [3.2.0] - 2026-09-23
 
 Two lines that faded into a smudge, and a theme that was asked for by name.

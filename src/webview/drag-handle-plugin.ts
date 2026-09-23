@@ -6,8 +6,11 @@
  *
  * Upstream DragHandlePlugin appends its wrapper div to editor.view.dom.parentElement,
  * which is #editor: already inside #editor-container and already outside the element
- * that carries the CSS `zoom`. AGENTS.md's rule for floating UI is therefore satisfied
+ * that carries the zoom's scale. AGENTS.md's rule for floating UI is therefore satisfied
  * with no intervention, so attachHandleToContainer() only reports; see its comment.
+ *
+ * The handle sits one gutter further out than upstream places it, so a heading's
+ * collapse arrow keeps the strip beside the text; see HANDLE_GUTTER_PX.
  */
 import { type Editor, getExtensionField } from "@tiptap/core";
 import type DragHandleType from "@tiptap/extension-drag-handle";
@@ -17,6 +20,45 @@ declare global {
   interface Window {
     __tuiDragHandleBundle?: { DragHandle: typeof DragHandleType };
   }
+}
+
+/**
+ * Screen pixels between a block's left edge and the handle's right edge, at
+ * zoom 1.0. Upstream places the handle flush against the block (`left-start`),
+ * which is exactly the strip where heading-collapse-plugin draws its arrow
+ * (`left: -15px` in editor.css). The two overlapped, and since upstream's
+ * wrapper carries `z-index: 10` against the arrow's 2, a press on the arrow
+ * went to the handle and no heading could be collapsed with the mouse. 15 is
+ * that strip, plus a 2px gap.
+ */
+const HANDLE_GUTTER_PX = 17;
+
+/**
+ * floating-ui middleware moving the handle one gutter to the left. It shifts x
+ * AFTER floating-ui has measured the block, so the reference box (the risk
+ * attachHandleToContainer's comment is about) is untouched, and the floor
+ * checks' vertical line-up cannot see it.
+ *
+ * Written inline rather than as `offset()` from @floating-ui/dom: that package
+ * is only a transitive dependency, not one package.json declares, and a
+ * middleware is a plain `{ name, fn }` object.
+ *
+ * Scaled by the editor's zoom because the arrow lives inside the scaled
+ * .tiptap and the handle does not: the arrow renders at -15 * zoom screen px.
+ * The zoom is read as on-screen width over layout width, the same measurement
+ * the image resize handle makes, so it holds whatever applies the scale
+ * (scaleEditor in main.ts). Read on every placement, which upstream runs when
+ * the pointer reaches a new block or re-enters the editor.
+ */
+function headingGutter(editor: Editor) {
+  return {
+    name: "tuiHeadingGutter",
+    fn: ({ x, y }: { x: number; y: number }) => {
+      const dom = editor.view.dom as HTMLElement;
+      const zoom = dom.offsetWidth ? dom.getBoundingClientRect().width / dom.offsetWidth : 1;
+      return { x: x - HANDLE_GUTTER_PX * zoom, y };
+    },
+  };
 }
 
 const registeredEditors = new WeakSet<Editor>();
@@ -39,7 +81,7 @@ export function isHandleInContainer(): boolean {
  * instruction to relocate it. The relocation is unnecessary: upstream appends
  * the handle to `editor.view.dom.parentElement`, which is #editor, already
  * inside #editor-container and already outside the element that carries the
- * CSS `zoom`. The rule was satisfied before anything moved.
+ * zoom's scale. The rule was satisfied before anything moved.
  *
  * Measured rather than argued: with no relocation the floor check reports the
  * handle following the block under the pointer at zoom 1.0 and at zoom 1.2,
@@ -67,6 +109,9 @@ export async function registerDragHandle(editor: Editor): Promise<boolean> {
     if (editor.isDestroyed) return false;
 
     const configured = bundle.DragHandle.configure({
+      // Upstream spreads this over its default ({ placement: "left-start",
+      // strategy: "absolute" }), so only the middleware is added here.
+      computePositionConfig: { middleware: [headingGutter(editor)] },
       render() {
         const element = document.createElement("div");
         element.className = "drag-handle";

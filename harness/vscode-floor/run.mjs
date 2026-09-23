@@ -246,7 +246,18 @@ async function ensureVsCode(version) {
   const unpacked = path.join(cacheRoot, "app");
   if (fs.existsSync(unpacked)) {
     const existing = executableIn(unpacked);
-    if (existing) return existing;
+    const holds = existing ? versionIn(existing) : null;
+    if (existing && holds === version) return existing;
+    // The cache is not read-only to everything else on the machine. On macOS
+    // the floor build shares the bundle id com.microsoft.VSCode with the
+    // user's own VS Code, and Squirrel's ShipIt log shows two installs into
+    // THIS tree, with `--disable-updates` already passed below; the tree read
+    // 1.138.0 where the floor is 1.85.0. What triggered those installs is not
+    // established.
+    // The archive is untouched, so unpack it again rather than run a floor
+    // check on a build that is not the floor.
+    console.log(`cached VS Code under ${unpacked} is ${holds ?? "unreadable"}, not ${version}: unpacking again`);
+    fs.rmSync(unpacked, { recursive: true, force: true });
   }
   fs.mkdirSync(cacheRoot, { recursive: true });
   const url = `https://update.code.visualstudio.com/${version}/${platformSlug()}/stable`;
@@ -270,7 +281,25 @@ async function ensureVsCode(version) {
   }
   const executable = executableIn(unpacked);
   if (!executable) throw new Error(`no VS Code executable found under ${unpacked}`);
+  const holds = versionIn(executable);
+  if (holds !== version) throw new Error(`${archive} unpacks to VS Code ${holds}, not ${version}`);
   return executable;
+}
+
+/**
+ * The version a VS Code tree says it is, from its own product.json: the file
+ * `vscode.version` reports at runtime. `null` when it cannot be read.
+ */
+function versionIn(executable) {
+  const product =
+    process.platform === "darwin"
+      ? path.join(path.dirname(path.dirname(executable)), "Resources", "app", "product.json")
+      : path.join(path.dirname(executable), "resources", "app", "product.json");
+  try {
+    return JSON.parse(fs.readFileSync(product, "utf8")).version ?? null;
+  } catch {
+    return null;
+  }
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -579,11 +608,26 @@ async function driveTransientKeystroke(base, session, contextId) {
  * the handle does not attach to one, so the probe compared a handle beside a
  * paragraph against a diagram nobody was pointing at.
  *
- * The loop therefore re-reads the rect each attempt and only accepts a reading
+ * The loop therefore re-measures each attempt and only accepts a reading
  * where the pointer is genuinely over a `.tiptap > p`. What the caller asserts
  * is unchanged: the handle must line up with the block under the pointer.
+ *
+ * Every position here is asked of the page with elementFromPoint, the same
+ * coordinates the pointer uses, and never read from a rect inside `.tiptap`.
+ * While the editor was zoomed with CSS zoom those rects were real/zoom under
+ * VS Code's legacy zoom (AGENTS.md, the zoom bullet), and comparing them with
+ * the handle, which sits outside the zoom, is how the zoom check agreed with
+ * a misplaced handle. The zoom is a transform now and the rects are honest,
+ * but a probe that asks the page what is under the pointer cannot be fooled
+ * by the next thing that makes them lie.
+ *
+ * `selector` and `tag` pick another top-level block instead of a paragraph; the heading
+ * gutter check hovers the `h1`, and gets the same re-measuring for free.
  */
-async function hoverParagraphForHandle(evaluate, session, sleepShort, beat = () => {}, attempts = 14) {
+async function hoverParagraphForHandle(
+  evaluate, session, sleepShort, beat = () => {},
+  { selector = ".tiptap > p", tag = "P", attempts = 14 } = {},
+) {
   let spot = null;
   let handle = { present: false, inContainer: false };
   for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -595,30 +639,54 @@ async function hoverParagraphForHandle(evaluate, session, sleepShort, beat = () 
       // Direct children of .tiptap only. A nested <p> can sit inside a mermaid
       // preview or an alert, and hovering its centre then lands on the wrapper
       // rather than on the paragraph.
-      const paragraphs = Array.from(document.querySelectorAll('.tiptap > p'));
-      if (paragraphs.length === 0) return null;
-      const fits = (r) =>
-        r.top >= 0 && r.left >= 0 && r.height > 0 &&
-        r.bottom <= (window.innerHeight || 0) && r.right <= (window.innerWidth || 0);
-      let target = paragraphs.find((el) => fits(el.getBoundingClientRect()));
+      const blocks = Array.from(document.querySelectorAll(${JSON.stringify(selector)}));
+      if (blocks.length === 0) return null;
+      const container = document.getElementById('editor-container');
+      const cr = container.getBoundingClientRect();
+      // Found by asking what is UNDER the pointer, never from a rect read
+      // inside .tiptap (see the doc comment above). The column is centred in
+      // the container, so a vertical line through the container's middle
+      // crosses every block.
+      const x = Math.round(cr.left + cr.width / 2);
+      const scan = () => {
+        const rows = new Map();
+        const y0 = Math.max(0, Math.ceil(cr.top) + 2);
+        const y1 = Math.min(window.innerHeight || 0, Math.floor(cr.bottom) - 2);
+        for (let y = y0; y <= y1; y += 2) {
+          const hit = document.elementFromPoint(x, y);
+          const b = hit && hit.closest ? hit.closest('.tiptap > *') : null;
+          if (!b) continue;
+          const row = rows.get(b);
+          if (!row) rows.set(b, { top: y, bottom: y, clippedTop: y === y0 });
+          else if (row.bottom >= y - 2) row.bottom = y;
+        }
+        return rows;
+      };
+      const visible = (rows) => blocks.find((b) => {
+        const row = rows.get(b);
+        return row && !row.clippedTop && row.bottom < Math.floor(cr.bottom) - 4 && row.bottom - row.top >= 6;
+      });
+      let rows = scan();
+      let target = visible(rows);
       const scrolled = !target;
       if (!target) {
-        target = paragraphs[0];
-        target.scrollIntoView({ block: 'center' });
+        blocks[0].scrollIntoView({ block: 'center' });
+        rows = scan();
+        target = visible(rows);
       }
-      const r = target.getBoundingClientRect();
-      const container = document.getElementById('editor-container');
+      if (!target) return { x: -1, y: -1 };
+      const row = rows.get(target);
       return {
-        x: Math.round(r.left + r.width / 2),
-        y: Math.round(r.top + r.height / 2),
-        blockTop: Math.round(r.top),
-        blockHeight: Math.round(r.height),
-        label: 'P:' + (target.textContent || '').trim().slice(0, 18),
+        x,
+        y: Math.round((row.top + row.bottom) / 2),
+        blockTop: row.top,
+        blockHeight: row.bottom - row.top,
+        label: ${JSON.stringify(tag + ":")} + (target.textContent || '').trim().slice(0, 18),
         scrollTop: container ? Math.round(container.scrollTop) : 0,
         scrolled,
       };
     })()`);
-    if (!spot) throw new Error("no paragraph to hover");
+    if (!spot) throw new Error(`no ${selector} to hover`);
     if (spot.y < 0 || spot.x < 0) throw new Error(`paragraph off screen at ${spot.x},${spot.y}`);
     // Upstream listens to `mousemove` through handleDOMEvents, and one event at
     // a standstill is not a move, so the pointer crosses the block.
@@ -634,24 +702,31 @@ async function hoverParagraphForHandle(evaluate, session, sleepShort, beat = () 
       const POINTER_Y = ${spot.y};
       const el = document.querySelector('.drag-handle');
       const container = document.getElementById('editor-container');
-      const root = document.querySelector('.tiptap');
       if (!el) return { present: false, inContainer: false, top: null };
       const r = el.getBoundingClientRect();
       const cs = getComputedStyle(el);
       const describe = (b) => b ? b.tagName + ':' + (b.textContent || '').trim().slice(0, 18) : null;
       const hit = document.elementFromPoint(POINTER_X, POINTER_Y);
+      // The block the handle stands beside, asked of the page at a point to
+      // its right, in the same coordinates the pointer uses. This used to be
+      // the block whose rect centre was nearest the handle's, which compared
+      // the handle (outside the zoom) against rects inside it and so, under
+      // the CSS zoom the editor used to have, agreed with a misplaced handle
+      // at every zoom but 1.0.
       const mid = r.top + r.height / 2;
-      let best = null; let bestD = Infinity;
-      for (const b of Array.from(document.querySelectorAll('.tiptap > *'))) {
-        const br = b.getBoundingClientRect();
-        const d = Math.abs(br.top + br.height / 2 - mid);
-        if (d < bestD) { bestD = d; best = b; }
+      const beside = document.elementFromPoint(r.right + 40, mid);
+      const best = beside && beside.closest ? beside.closest('.tiptap > *') : null;
+      let gapToBlock = null;
+      for (let gx = Math.ceil(r.right); gx <= r.right + 120; gx += 1) {
+        const at = document.elementFromPoint(gx, mid);
+        if (at && at.closest && at.closest('.tiptap > *')) { gapToBlock = Math.round(gx - r.right); break; }
       }
       return {
         present: true,
         top: Math.round(r.top),
         left: Math.round(r.left),
-        zoom: root ? getComputedStyle(root).zoom : null,
+        zoom: (document.getElementById('btn-zoom-reset') || {}).textContent || null,
+        gapToBlock,
         // Upstream coalesces its mousemove handler into requestAnimationFrame
         // AND latches the id until that frame runs, so a window nothing is
         // painting leaves the handle frozen wherever it last stood, and no
@@ -669,8 +744,7 @@ async function hoverParagraphForHandle(evaluate, session, sleepShort, beat = () 
         offsetParent: el.offsetParent ? (el.offsetParent.id || el.offsetParent.tagName) : null,
         underPointer: describe(hit && hit.closest ? hit.closest('.tiptap > *') : null),
         handleRow: describe(best),
-        // AGENTS.md: CSS zoom on .tiptap is transparent to the coordinate APIs,
-        // so anything positioned by script must sit outside the zoomed element.
+        // Outside the zoomed .tiptap, so the handle is not scaled twice.
         inContainer: !!el.closest('#editor-container') && !el.closest('.tiptap'),
       };
     })()`);
@@ -680,7 +754,7 @@ async function hoverParagraphForHandle(evaluate, session, sleepShort, beat = () 
     // in between (ProseMirror pulling the caret back into view is the usual
     // cause) the handle is left beside whatever block has moved into its old
     // row, and the reading measures the scroll, not the handle.
-    const onParagraph = typeof handle.underPointer === "string" && handle.underPointer.startsWith("P:");
+    const onParagraph = typeof handle.underPointer === "string" && handle.underPointer.startsWith(`${tag}:`);
     const stillSteady = handle.containerScrollTop === spot.scrollTop;
     // The handle is placed in an animation frame AFTER the move, so a reading
     // taken the instant the pointer is right can still show it at its previous
@@ -1031,8 +1105,8 @@ async function driveSurfaces(evaluate, session, sessions, beat = () => {}) {
         caretIn,
         open: true,
         items: popup.querySelectorAll('.slash-command-item').length,
-        // AGENTS.md: popups attach to #editor-container, never .tiptap, because
-        // CSS zoom on .tiptap is transparent to the JS coordinate APIs.
+        // AGENTS.md: popups attach to #editor-container, never .tiptap, so the
+        // editor's zoom does not scale them a second time.
         inContainer: !!popup.closest('#editor-container') && !popup.closest('.tiptap'),
       };
     })()`);
@@ -1369,11 +1443,19 @@ async function driveSurfaces(evaluate, session, sessions, beat = () => {}) {
   }
 
   // --- Bubble menu at a zoom level other than 100% (#116) -------------------
-  // AGENTS.md: CSS `zoom` on `.tiptap` is transparent to the JS coordinate
-  // APIs, which is why every popup in this codebase attaches to
-  // #editor-container. #116 asked for this to be checked by hand at a non-100%
-  // zoom, and nobody did. The numbers are all in the detail line because the
-  // interesting failure is a menu that drifts, not one that vanishes.
+  // #116 asked for this to be checked by hand at a non-100% zoom, and nobody
+  // did. The numbers are all in the detail line because the interesting
+  // failure is a menu that drifts, not one that vanishes.
+  //
+  // The first version compared the menu's rect with the selection's range
+  // rect, and passed on a menu that stood off its selection: the editor was
+  // zoomed with CSS zoom, under VS Code's legacy zoom a rect inside .tiptap
+  // was real/zoom, the menu is outside the zoom, and the two agreed because
+  // both were off by the same factor (AGENTS.md, the zoom bullet). The
+  // assertion asks the page what is just below the menu, in pointer
+  // coordinates: the selected text must be there. It went red on the CSS zoom
+  // and green on the transform that replaced it. dx/dy stay in the detail for
+  // comparison with older logs.
   try {
     await evaluate(`(() => {
       const btn = document.getElementById('btn-zoom-in');
@@ -1408,8 +1490,18 @@ async function driveSurfaces(evaluate, session, sessions, beat = () => {}) {
       const r = sel && sel.rangeCount ? sel.getRangeAt(0).getBoundingClientRect() : null;
       const m = menu ? menu.getBoundingClientRect() : null;
       const round = (n) => (n == null ? null : Math.round(n));
+      const strong = root ? root.querySelector('strong') : null;
+      let textBelowMenuAt = null;
+      if (m && strong) {
+        const cx = m.left + m.width / 2;
+        for (let d = 0; d <= 60; d += 1) {
+          const at = document.elementFromPoint(cx, m.bottom + d);
+          if (at && strong.contains(at)) { textBelowMenuAt = d; break; }
+        }
+      }
       return {
-        zoom: getComputedStyle(root).zoom,
+        zoom: (document.getElementById('btn-zoom-reset') || {}).textContent || null,
+        textBelowMenuAt,
         present: !!menu,
         visible: menu ? getComputedStyle(menu).display !== 'none' : false,
         selCenterX: round(r ? r.left + r.width / 2 : null),
@@ -1425,8 +1517,9 @@ async function driveSurfaces(evaluate, session, sessions, beat = () => {}) {
     const dy = z.selTop != null && z.menuTop != null ? Math.abs(z.selTop - z.menuTop) : null;
     add(
       "bubble menu still tracks the selection at a non-100% zoom",
-      z.present && z.visible && z.inContainer && dx != null && dx <= 80 && dy != null && dy <= 120,
+      z.present && z.visible && z.inContainer && z.textBelowMenuAt != null && z.textBelowMenuAt <= 24,
       `zoom=${z.zoom} present=${z.present} visible=${z.visible} attachedToEditorContainer=${z.inContainer} ` +
+        `selectedTextBelowMenuAt=${z.textBelowMenuAt} ` +
         `selCenterX=${z.selCenterX} menuCenterX=${z.menuCenterX} dx=${dx} ` +
         `selTop=${z.selTop} menuTop=${z.menuTop} dy=${dy}`,
     );
@@ -1598,6 +1691,16 @@ async function driveSurfaces(evaluate, session, sessions, beat = () => {}) {
   // would drift from its block BY A FACTOR, so the error is invisible at zoom
   // 1.0. Same shape as the bubble-menu zoom check, and the same reason it
   // exists.
+  //
+  // This check was green for months on a handle that WAS off its block: it
+  // compared the handle's rect with block rects read inside .tiptap, and under
+  // the CSS zoom the editor then used those were real/zoom, so both sides were
+  // wrong by the same factor. Every position is now asked of the page in
+  // pointer coordinates (see hoverParagraphForHandle), and the reading went
+  // red on the CSS zoom before the transform made it green. The pointer
+  // first leaves the editor, as it does when a person clicks the zoom button,
+  // because upstream re-places the handle only when the pointer reaches a
+  // different block.
   try {
     await evaluate(`(() => {
       const btn = document.getElementById('btn-zoom-in');
@@ -1605,17 +1708,24 @@ async function driveSurfaces(evaluate, session, sessions, beat = () => {}) {
       return 'ok';
     })()`);
     await sleep(500);
+    const outside = await evaluate(`(() => {
+      const r = document.getElementById('editor-container').getBoundingClientRect();
+      return { x: Math.round(r.left + 2), y: Math.round(r.top + 2) };
+    })()`);
+    await session.send("Input.dispatchMouseEvent", {
+      type: "mouseMoved", x: outside.x, y: outside.y, button: "none", clickCount: 0,
+    });
+    await sleepShort();
     const { spot, handle } = await hoverParagraphForHandle(evaluate, session, sleepShort, beat);
-    // The handle sits beside the block, so a vertical offset within one block
-    // height is correct placement; a zoom bug moves it by a multiple of that.
-    const dy = handle.present && handle.top != null ? Math.abs(handle.top - spot.blockTop) : null;
     const followsAtZoom =
       handle.underPointer != null && handle.handleRow != null && handle.underPointer === handle.handleRow;
+    // Beside the block, not over its text and not stranded out in the margin.
+    const besideIt = handle.gapToBlock != null && handle.gapToBlock >= 2 && handle.gapToBlock <= 40;
     add(
       "drag handle still tracks its block at a non-100% zoom",
-      handle.present && handle.inContainer && followsAtZoom,
+      handle.present && handle.inContainer && followsAtZoom && besideIt,
       `zoom=${handle.zoom} present=${handle.present} attachedToEditorContainer=${handle.inContainer} ` +
-        `blockTop=${spot.blockTop} handleTop=${handle.top ?? null} dy=${dy} ` +
+        `blockTop=${spot.blockTop} handleTop=${handle.top ?? null} gapToBlock=${handle.gapToBlock} ` +
         `blockHeight=${spot.blockHeight} placed=${handle.placed} styleTop=${handle.handleStyleTop} ` +
         `visibility=${handle.visibility} underPointer=${JSON.stringify(handle.underPointer)} ` +
         `handleLinesUpWith=${JSON.stringify(handle.handleRow)}`,
@@ -1625,6 +1735,233 @@ async function driveSurfaces(evaluate, session, sessions, beat = () => {}) {
   } catch (err) {
     add("drag handle still tracks its block at a non-100% zoom", false, `threw: ${err.message}`);
   }
+
+
+  // --- A heading's collapse arrow is not under the drag handle ---------------
+  // The collapse arrow sits in the 15px strip left of a heading. The handle
+  // used to be placed flush against the block, in that same strip, and its
+  // wrapper's z-index 10 beat the arrow's 2: it covered the arrow, and a press
+  // on it went to the handle, so once the handle had loaded no heading could
+  // be collapsed with the mouse. Asserted three ways:
+  // the rects do not meet, the element under the arrow's centre IS the arrow,
+  // and a real press/release there collapses the heading (and a second one
+  // opens it again, because the H1 is the only heading and its section is the
+  // whole document). A hidden handle cannot overlap anything, so the reading
+  // also requires it visible beside the H1.
+  //
+  // Read at 100% and again at 150%. The first version also read at 150% and
+  // went red on that alone, the arrow's centre hitting DIV.tiptap: the editor
+  // was zoomed with CSS zoom, and under VS Code's legacy zoom a rect inside
+  // .tiptap was real/zoom while elementFromPoint and CDP input are real. Since
+  // the zoom became a transform (scaleEditor in main.ts) every rect is on-screen
+  // pixels, so the same reading holds at both, and the 150% one is what shows
+  // the handle's gutter scaling with the arrow it has to clear.
+  const readHeadingGutter = () => evaluate("(() => {" +
+    "const h = document.querySelector('.tiptap > h1');" +
+    "const handle = document.querySelector('.drag-handle');" +
+    "const arrow = h && h.querySelector('.heading-collapse-toggle');" +
+    "if (!h || !handle || !arrow) return { found: false, heading: !!h, handle: !!handle, arrow: !!arrow };" +
+    "const box = (el) => { const r = el.getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom }; };" +
+    "const meets = (a, b) => a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;" +
+    "const name = (el) => !el ? null : el.closest('.drag-handle') ? 'drag-handle' : el.tagName + (typeof el.className === 'string' && el.className ? '.' + el.className.split(' ')[0] : '');" +
+    "const hr = box(handle); const ar = box(arrow);" +
+    "const cx = (ar.l + ar.r) / 2; const cy = (ar.t + ar.b) / 2;" +
+    "const hit = document.elementFromPoint(cx, cy);" +
+    "return {" +
+      "found: true," +
+      "handleVisible: getComputedStyle(handle).visibility !== 'hidden'," +
+      "handleLeft: Math.round(hr.l), handleRight: Math.round(hr.r)," +
+      "arrowLeft: Math.round(ar.l), headingLeft: Math.round(h.getBoundingClientRect().left)," +
+      "overArrow: meets(hr, ar)," +
+      "hit: name(hit)," +
+      "hitIsArrow: !!(hit && hit.classList && hit.classList.contains('heading-collapse-toggle'))," +
+      "arrowAt: { x: Math.round(cx), y: Math.round(cy) }," +
+      "zoom: (document.getElementById('btn-zoom-reset') || {}).textContent || null" +
+    "};" +
+  "})()");
+  const collapsedNow = () =>
+    evaluate("(() => !!document.querySelector('.tiptap > h1.heading-collapsed-indicator'))()");
+  const describeGutter = (handle, g) =>
+    `handleLinesUpWith=${JSON.stringify(handle.handleRow)} underPointer=${JSON.stringify(handle.underPointer)} ` +
+    `visibility=${handle.visibility} ` +
+    (g.found
+      ? `zoom=${g.zoom} handleVisible=${g.handleVisible} handle=[${g.handleLeft},${g.handleRight}] ` +
+        `arrowLeft=${g.arrowLeft} headingLeft=${g.headingLeft} ` +
+        `overArrow=${g.overArrow} hitAtArrow=${g.hit}`
+      : `missing: ${JSON.stringify(g)}`);
+  const gutterClear = (handle, g) =>
+    typeof handle.underPointer === "string" && handle.underPointer.startsWith("H1:") &&
+    handle.underPointer === handle.handleRow &&
+    g.found && g.handleVisible && !g.overArrow && g.hitIsArrow;
+  const H1 = { selector: ".tiptap > h1", tag: "H1" };
+  // From 100%, `steps` clicks of zoom in (positive) or zoom out (negative);
+  // 0 resets. Returns the label the toolbar shows, which is what a reading
+  // should report as its zoom.
+  const zoomBy = (steps) => evaluate(`(() => {
+    document.getElementById('btn-zoom-reset')?.click();
+    const btn = document.getElementById(${steps > 0 ? "'btn-zoom-in'" : "'btn-zoom-out'"});
+    for (let i = 0; i < ${Math.abs(steps)}; i += 1) btn?.click();
+    return (document.getElementById('btn-zoom-reset') || {}).textContent || null;
+  })()`);
+  for (const [name, steps] of [
+    ["a heading's collapse arrow is clear of the drag handle and takes the click", 0],
+    ["a heading's collapse arrow is clear of the drag handle and takes the click at 150% zoom", 5],
+  ]) {
+    try {
+      if (steps !== 0) {
+        await zoomBy(steps);
+        await sleep(500);
+        // Upstream re-places the handle only when the pointer reaches a
+        // different block, so it leaves the editor first, as it does when a
+        // person clicks the zoom button.
+        const outside = await evaluate(`(() => {
+          const r = document.getElementById('editor-container').getBoundingClientRect();
+          return { x: Math.round(r.left + 2), y: Math.round(r.top + 2) };
+        })()`);
+        await session.send("Input.dispatchMouseEvent", {
+          type: "mouseMoved", x: outside.x, y: outside.y, button: "none", clickCount: 0,
+        });
+        await sleepShort();
+      }
+      const { handle } = await hoverParagraphForHandle(evaluate, session, sleepShort, beat, H1);
+      const g = await readHeadingGutter();
+      let pressed = "not pressed";
+      let collapsedByPress = false;
+      let reopened = false;
+      if (g.found) {
+        await pressAt(g.arrowAt.x, g.arrowAt.y);
+        await sleepShort();
+        collapsedByPress = await collapsedNow();
+        if (collapsedByPress) {
+          await pressAt(g.arrowAt.x, g.arrowAt.y);
+          await sleepShort();
+          reopened = !(await collapsedNow());
+        }
+        pressed = `collapsedByPress=${collapsedByPress} reopenedBySecondPress=${reopened}`;
+      }
+      add(name, gutterClear(handle, g) && collapsedByPress && reopened, describeGutter(handle, g) + ` ${pressed}`);
+    } catch (err) {
+      add(name, false, `threw: ${err.message}`);
+    }
+    if (steps !== 0) {
+      await zoomBy(0);
+      await sleep(400);
+    }
+  }
+
+  // --- The zoomed editor fits its container and scrolls to its own end ------
+  // The zoom is a transform (scaleEditor in main.ts), and a transform moves no
+  // layout: left alone, the column keeps its unscaled width and height. At
+  // 150% that is a column wider than the container, cut off by its
+  // overflow-x: hidden; at 50% it is a scroll range that runs on past the end
+  // of the text into blank space. scaleEditor pays for both, with a width in
+  // layout px and a bottom margin of height * (zoom - 1), and this reads the
+  // result as a person sees it: the visible column inside the container and
+  // centred, and the scroll range ending where the column ends plus the
+  // container's bottom padding. The 100% reading is the control: nothing is
+  // scaled there, so a red at 100% means this formula is wrong, not the zoom.
+  // Measured in on-screen pixels, which a transform keeps in one space.
+  for (const [label, steps] of [["100%", 0], ["50%", -5], ["150%", 5]]) {
+    const name = `the editor fits its container and scrolls to its own end at ${label} zoom`;
+    try {
+      const shown = await zoomBy(steps);
+      await sleep(500);
+      const f = await evaluate(`(() => {
+        const c = document.getElementById('editor-container');
+        const t = document.querySelector('.tiptap');
+        if (!c || !t) return null;
+        const cs = getComputedStyle(c);
+        const cr = c.getBoundingClientRect();
+        const tr = t.getBoundingClientRect();
+        const innerLeft = cr.left + c.clientLeft + parseFloat(cs.paddingLeft);
+        const innerRight = cr.left + c.clientLeft + c.clientWidth - parseFloat(cs.paddingRight);
+        // The column's bottom in scroll-content coordinates, so the reading
+        // does not depend on where the view happens to be scrolled.
+        const columnEnd = tr.bottom - (cr.top + c.clientTop) + c.scrollTop;
+        return {
+          leftGap: Math.round(tr.left - innerLeft),
+          rightGap: Math.round(innerRight - tr.right),
+          columnWidth: Math.round(tr.width),
+          scrollHeight: c.scrollHeight,
+          expectedScrollHeight: Math.round(Math.max(columnEnd + parseFloat(cs.paddingBottom), c.clientHeight)),
+          clientHeight: c.clientHeight,
+          visibility: document.visibilityState,
+        };
+      })()`);
+      if (!f) throw new Error("no #editor-container or .tiptap");
+      const fits = f.leftGap >= -1 && f.rightGap >= -1 && Math.abs(f.leftGap - f.rightGap) <= 2;
+      const endsAtColumn = Math.abs(f.scrollHeight - f.expectedScrollHeight) <= 2;
+      add(
+        name,
+        shown === label && fits && endsAtColumn,
+        `zoom=${shown} leftGap=${f.leftGap} rightGap=${f.rightGap} columnWidth=${f.columnWidth} ` +
+          `scrollHeight=${f.scrollHeight} expectedScrollHeight=${f.expectedScrollHeight} ` +
+          `clientHeight=${f.clientHeight} visibility=${f.visibility}`,
+      );
+    } catch (err) {
+      add(name, false, `threw: ${err.message}`);
+    }
+  }
+
+  // --- A click at 150% puts the caret where the pointer is ------------------
+  // Every other zoom probe measures an overlay. This one measures ProseMirror's
+  // own hit test, which turns the pointer into a document position from
+  // elementFromPoint and the caret APIs and checks the result against rects it
+  // reads inside the editor: the one path the one-coordinate-space claim for
+  // the transform covers without an overlay in between. The block is found by
+  // asking the page what is under the pointer (hoverParagraphForHandle), the
+  // press is a real CDP press and release, and the caret must land in that
+  // block, inside its row, and not to the right of the pointer (a caret snaps
+  // to the nearest character boundary or to the end of a shorter line, never
+  // past the click).
+  //
+  // On the CSS zoom this went red on the row alone: the caret DID land in the
+  // pointed block, because the native caret APIs were right, but its rect read
+  // [225,244] against a row of [332,370], real/1.5. That rect is what
+  // ProseMirror scrolls by and what an overlay at the caret is placed from.
+  {
+    const name = "a click at 150% zoom puts the caret in the block under the pointer";
+    try {
+      const shown = await zoomBy(5);
+      await sleep(500);
+      const { spot } = await hoverParagraphForHandle(evaluate, session, sleepShort, beat);
+      await pressAt(spot.x, spot.y);
+      await sleepShort();
+      const c = await evaluate(`(() => {
+        const sel = window.getSelection();
+        if (!sel || sel.rangeCount === 0) return { caret: false };
+        const node = sel.anchorNode;
+        const el = node && (node.nodeType === 1 ? node : node.parentElement);
+        const block = el && el.closest ? el.closest('.tiptap > *') : null;
+        const range = sel.getRangeAt(0).cloneRange();
+        range.collapse(true);
+        const rects = range.getClientRects();
+        const r = rects.length ? rects[0] : range.getBoundingClientRect();
+        return {
+          caret: true,
+          collapsed: sel.isCollapsed,
+          block: block ? block.tagName + ':' + (block.textContent || '').trim().slice(0, 18) : null,
+          caretX: Math.round(r.left),
+          caretTop: Math.round(r.top),
+          caretBottom: Math.round(r.bottom),
+        };
+      })()`);
+      const rowTop = spot.blockTop - 2;
+      const rowBottom = spot.blockTop + spot.blockHeight + 2;
+      const inRow = c.caretTop >= rowTop - 4 && c.caretBottom <= rowBottom + 4 && c.caretBottom > c.caretTop;
+      add(
+        name,
+        shown === "150%" && c.caret && c.collapsed && c.block === spot.label && inRow && c.caretX <= spot.x + 12,
+        `zoom=${shown} pointer=${spot.x},${spot.y} pointedAt=${JSON.stringify(spot.label)} ` +
+          `caretIn=${JSON.stringify(c.block)} collapsed=${c.collapsed} caretX=${c.caretX} ` +
+          `caret=[${c.caretTop},${c.caretBottom}] row=[${spot.blockTop},${spot.blockTop + spot.blockHeight}]`,
+      );
+    } catch (err) {
+      add(name, false, `threw: ${err.message}`);
+    }
+  }
+  await zoomBy(0);
+  await sleep(400);
 
 
   // --- KaTeX fonts actually load (#131) -------------------------------------
@@ -2468,6 +2805,7 @@ async function main() {
         TUI_FLOOR_RESULT: resultFile,
         TUI_FLOOR_SAMPLE: sample,
         TUI_FLOOR_SENTINEL: EDIT_SENTINEL,
+        TUI_FLOOR_EXPECT_VERSION: version,
       }),
     },
   );
@@ -2599,8 +2937,8 @@ async function main() {
   if (webview) {
     checks.push({
       name: "document content rendered in the webview",
-      // The heading text carries the collapse arrow and the level badge
-      // that heading-collapse-plugin / heading-level-plugin render inside it.
+      // The heading text carries the collapse arrow that
+      // heading-collapse-plugin renders inside it.
       ok:
         (webview.heading ?? "").includes("Heading One") &&
         webview.tableRows >= 3 &&

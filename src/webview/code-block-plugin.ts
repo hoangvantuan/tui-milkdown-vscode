@@ -380,7 +380,7 @@ function buildDecorations(
  * - Language badge with dropdown selector (top-left)
  * - Copy button with feedback (top-right, visible on hover)
  *
- * Uses ProseMirror Decoration.widget pattern (same as heading-level-plugin).
+ * Uses ProseMirror Decoration.widget pattern (same as heading-collapse-plugin).
  * Only rebuilds decorations on document changes (not selection changes).
  */
 export const CodeBlockEnhancement = Extension.create({

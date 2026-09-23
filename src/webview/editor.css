@@ -739,6 +739,23 @@ body.dark-theme #editor-container::before {
   padding-left: clamp(24px, 5vw, 80px);
   padding-right: clamp(24px, 5vw, 80px);
 }
+/* Zoom other than 100%, set by scaleEditor in main.ts, which says why it is a
+   transform and not CSS zoom. The width is in layout px, chosen so the SCALED
+   box fills the container as the unzoomed one does: twice the text per line at
+   50%, half at 200%, and never wider than the container. It can exceed the
+   container while zooming out, where auto margins stop centring, so the left
+   margin centres the layout box explicitly and the scale about its top centre
+   keeps the visible box centred too. */
+.tiptap.is-zoomed {
+  --zoomed-width: min(1280px, calc(100% / var(--editor-zoom)));
+  width: var(--zoomed-width);
+  max-width: none;
+  margin-left: calc((100% - var(--zoomed-width)) / 2);
+  margin-right: 0;
+  transform: scale(var(--editor-zoom));
+  transform-origin: top center;
+}
+#editor.has-zoomed-editor:not(.hidden) { display: flow-root; }
 /* Table wrapper: horizontal scroll for wide tables */
 .tiptap .tableWrapper {
   overflow-x: auto;
@@ -812,32 +829,9 @@ body.theme-catppuccin-mocha { --overlay-bg: #11111b; --overlay-fg: #cdd6f4; }
   fill: currentColor;
 }
 
-/* Heading level badges (H1, H2, etc.) */
-.heading-level-badge {
-  position: absolute;
-  left: -15px;
-  top: 3px;
-  font-size: 11px;
-  font-weight: 500;
-  opacity: 0.5;
-  user-select: none;
-  pointer-events: none;
-  font-family: var(--vscode-editor-font-family, monospace);
-  transition: opacity 0.15s ease-out;
-}
-/* Light themes */
-body.theme-frame .heading-level-badge,
-body.theme-nord .heading-level-badge,
-body.theme-crepe .heading-level-badge,
-body.theme-catppuccin-latte .heading-level-badge {
-  color: rgba(0, 0, 0, 0.6);
-}
-/* Dark themes (body.dark-theme set by applyTheme) */
-body.dark-theme .heading-level-badge {
-  color: rgba(255, 255, 255, 0.5);
-}
-
-/* Heading collapse toggle arrow — overlaps badge, shown on hover */
+/* Heading collapse toggle arrow, shown on hover. It owns the 15px strip left
+   of the heading: HANDLE_GUTTER_PX in drag-handle-plugin.ts places the drag
+   handle outside it, so change the two together. */
 .heading-collapse-toggle {
   position: absolute;
   left: -15px;
@@ -855,22 +849,16 @@ body.dark-theme .heading-level-badge {
   color: rgba(0, 0, 0, 0.5);
   font-family: var(--vscode-editor-font-family, monospace);
 }
-/* Hover heading: hide badge, show arrow */
+/* Hover heading: show arrow */
 .tiptap :is(h1,h2,h3,h4,h5,h6):hover .heading-collapse-toggle {
   opacity: 0.6;
-}
-.tiptap :is(h1,h2,h3,h4,h5,h6):hover .heading-level-badge {
-  opacity: 0;
 }
 .heading-collapse-toggle:hover {
   opacity: 1 !important;
 }
-/* Collapsed state: always show arrow, always hide badge */
+/* Collapsed state: always show arrow */
 .heading-collapsed-indicator .heading-collapse-toggle {
   opacity: 0.6;
-}
-.heading-collapsed-indicator .heading-level-badge {
-  opacity: 0 !important;
 }
 body.dark-theme .heading-collapse-toggle {
   color: rgba(255, 255, 255, 0.5);
@@ -2549,7 +2537,7 @@ body.theme-notion-dark { --overlay-bg: #d4d4d4; --overlay-fg: #191919; }
 @media print {
   #toolbar, #toolbar-hover-zone, #search-bar, #metadata-panel,
   #toc-sidebar, .toc-toggle-btn, #reading-progress,
-  .heading-collapse-toggle, .heading-level-badge,
+  .heading-collapse-toggle,
   .code-copy-btn, .image-edit-overlay, #lightbox-overlay, #word-count {
     display: none !important;
   }
