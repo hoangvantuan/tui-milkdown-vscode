@@ -4,6 +4,14 @@ All notable changes to "TUI Markdown Editor" extension.
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-09-23
+
+Two lines that faded into a smudge, and a theme that was asked for by name.
+
+The heading underline and the code block's top bar were accent gradients running out to transparent, which on a dark page reads as a stain rather than a rule. Both are solid now, and the code block and alert styles were redrawn around them. Redrawing the alerts turned up a real defect: on every dark theme their left bar had been washed out to a 20% tint by a `border-color` shorthand.
+
+Notion and Notion Dark are the two new themes. Everything that makes them look like Notion (flat callouts, tighter code block corners, no heading rule) is a CSS variable the shared stylesheet reads, so no existing theme changed to make room for them.
+
 ### Added
 
 - **Notion and Notion Dark themes**: a flat page with no grain or vignette, Notion's text and surface colors, 4px code blocks without the accent bar, and alerts drawn as callouts (tinted background, no borders). The shape changes are CSS variables that `editor.css` reads with the old values as defaults (`--code-radius`, `--code-accent-bar`, `--alert-border`, `--alert-border-left`, `--alert-radius`, `--alert-header-divider`, `--heading-rule-alpha`), so the theme files stay variable-only and no other theme moves.
@@ -12,7 +20,7 @@ All notable changes to "TUI Markdown Editor" extension.
 
 - **The H1/H2 underline is a solid hairline**: it was an accent-colored gradient that faded to transparent and read as a smudge on dark themes. It is now a 1px line in the theme's neutral border color across the full width.
 - **Code blocks redrawn**: the accent bar at the top is a solid 2px line instead of a gradient fading to transparent, the block has a faint 1px border, the header is a neutral tint rather than an accent one, the language name gets an accent dot, and focus shows a soft 3px ring instead of a hard 1px outline. The header's geometry is unchanged, because the line-number gutter's offset depends on it.
-- **Alerts redrawn**: a 3px left bar, a slightly stronger tint, and no divider under the title. Hover no longer widens the bar, which shifted the text by a pixel.
+- **Alerts slimmed down**: a 3px left bar and a light tint, with no outline around the block, no divider under the title, tighter padding and square left corners. The current-line highlight is no longer drawn inside an alert, where it made a box inside a box. Hover no longer widens the bar, which shifted the text by a pixel.
 
 ### Fixed
 
