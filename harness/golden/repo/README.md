@@ -31,7 +31,7 @@ Full WYSIWYG markdown editing with Tiptap + `@tiptap/markdown` (GFM support via 
 
 - **Syntax Highlighting** — 19 languages via lowlight, with language badge dropdown and copy button
 - **Mermaid Diagrams** — Live SVG preview with view/edit toggle, theme sync, fullscreen lightbox (zoom/pan), and copy-as-PNG (2x retina)
-- **GitHub Alerts** — `[!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]` render as styled alert boxes
+- **GitHub Alerts** — `[!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]` render as styled alert boxes; a title after the marker (`> [!NOTE] Before you upgrade`) replaces the label and is kept on save
 - **Math**: `$inline$` and `$$block$$` formulas render with KaTeX; the source on disk stays plain `$...$`
 - **Line Numbers and Wrap**: per code block, from the block header
 - **HTML that renders**: `<details>`/`<summary>` collapse as they do on GitHub, and `<kbd>`, `<sub>`, `<sup>` render as themselves
@@ -130,22 +130,24 @@ WYSIWYG export via headless Chromium (`puppeteer-core`). Requires Chrome, Edge, 
 
 ## Themes
 
-12 built-in themes with curated typography and color palettes:
+14 built-in themes with curated typography and color palettes:
 
-| Theme                | Style | Character             |
-| -------------------- | ----- | --------------------- |
-| Frame                | Light | Clean, modern default |
-| Frame Dark           | Dark  | Blue-tinted, sharp    |
-| Nord                 | Light | Soft Arctic palette   |
-| Nord Dark            | Dark  | Official Nord colors  |
-| Crepe                | Light | Warm serif reading    |
-| Crepe Dark           | Dark  | Warm serif, inverted  |
-| Catppuccin Latte     | Light | Pastel warmth         |
-| Catppuccin Frappé    | Dark  | Subdued, muted        |
-| Catppuccin Macchiato | Dark  | Medium contrast       |
-| Catppuccin Mocha     | Dark  | Rich, deep            |
-| Paper                | Light | Serif, book-like      |
-| Midnight             | Dark  | Deep navy (#0d1117)   |
+| Theme                | Style | Character                               |
+| -------------------- | ----- | --------------------------------------- |
+| Frame                | Light | Clean, modern default                   |
+| Frame Dark           | Dark  | Blue-tinted, sharp                      |
+| Nord                 | Light | Soft Arctic palette                     |
+| Nord Dark            | Dark  | Official Nord colors                    |
+| Crepe                | Light | Warm serif reading                      |
+| Crepe Dark           | Dark  | Warm serif, inverted                    |
+| Catppuccin Latte     | Light | Pastel warmth                           |
+| Catppuccin Frappé    | Dark  | Subdued, muted                          |
+| Catppuccin Macchiato | Dark  | Medium contrast                         |
+| Catppuccin Mocha     | Dark  | Rich, deep                              |
+| Paper                | Light | Serif, book-like                        |
+| Midnight             | Dark  | Deep navy (#0d1117)                     |
+| Notion               | Light | Flat white page, callout-style alerts   |
+| Notion Dark          | Dark  | Notion's #191919 page, flat code blocks |
 
 
 ## Tech Stack

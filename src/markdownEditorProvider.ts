@@ -367,6 +367,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
                     <option value="catppuccin-mocha">Catppuccin Mocha</option>
                     <option value="paper">Paper</option>
                     <option value="midnight">Midnight</option>
+                    <option value="notion">Notion</option>
+                    <option value="notion-dark">Notion Dark</option>
                   </select>
                 </div>
                 <div class="appearance-row">
