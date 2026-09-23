@@ -2,7 +2,13 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
-## [Unreleased]
+## [3.3.0] - 2026-09-23
+
+Three things drawn on top of each other beside a heading, and overlays that stood beside their targets at any zoom but 100%.
+
+The heading level badge, the collapse arrow and the drag handle all drew in the same strip left of a heading, and since 3.0 the handle covered the arrow, so no heading could be collapsed with the mouse. The badge is gone and the handle sits one gutter further out.
+
+The editor's zoom was CSS `zoom`, which VS Code runs under the older semantics, where a position read inside the editor is divided by the zoom and the pointer's is not. It is a transform now, so the drag handle and the bubble menu stay on their targets when zoomed. The floor checks that should have caught it compared two positions off by the same factor; they ask the page what is under the pointer now.
 
 ### Fixed
 
