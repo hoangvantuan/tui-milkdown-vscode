@@ -930,10 +930,18 @@ body.dark-theme .heading-collapsed-indicator {
   border-radius: 2px;
 }
 .tiptap pre {
+  /* One geometry for the frame, the header and the line-number gutter. The
+     gutter lives inside the header widget but is positioned against the
+     <pre>, so its offset is derived from these rather than hard-coded. */
+  --code-pad-y: 12px;
+  --code-pad-x: 16px;
+  --code-header-h: 32px;
+  --code-header-gap: 10px;
+  --code-gutter-w: 36px;
   position: relative;
   background: var(--crepe-color-surface, #f7f7f7);
   border-radius: var(--code-radius, 8px);
-  padding: 16px 20px;
+  padding: var(--code-pad-y) var(--code-pad-x);
   overflow-x: auto;
   border: 1px solid rgba(var(--border-rgb, 0, 0, 0), 0.08);
   transition: border-color 0.2s ease-out, box-shadow 0.2s ease-out;
@@ -1032,11 +1040,12 @@ body.dark-theme .tiptap pre code .hljs-meta { color: #d29922; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
+  height: var(--code-header-h);
+  padding: 0 8px 0 12px;
   background: rgba(var(--border-rgb, 0, 0, 0), 0.03);
   border-bottom: 1px solid rgba(var(--border-rgb, 0, 0, 0), 0.08);
   border-radius: var(--code-radius, 8px) var(--code-radius, 8px) 0 0;
-  margin: -16px -20px 12px -20px;
+  margin: calc(-1 * var(--code-pad-y)) calc(-1 * var(--code-pad-x)) var(--code-header-gap);
   user-select: none;
 }
 body.dark-theme .code-block-header {
@@ -1300,7 +1309,8 @@ body.dark-theme .tiptap .alert::before {
 }
 .tiptap table pre {
   margin: 2px 0;
-  padding: 6px 10px;
+  --code-pad-y: 6px;
+  --code-pad-x: 10px;
 }
 /* Cell selection highlight (ProseMirror adds .selectedCell automatically) */
 .tiptap table td,
@@ -3091,16 +3101,20 @@ body.dark-theme .code-lines-btn.active {
   word-break: break-all;
 }
 
-/* Code block line numbers */
+/* Code block line numbers. The header sits inside the padding, so it has to
+   reach back over the gutter too or it starts indented. */
 .tiptap pre.has-line-numbers {
-  padding-left: 54px;
+  padding-left: calc(var(--code-pad-x) + var(--code-gutter-w));
+}
+.tiptap pre.has-line-numbers .code-block-header {
+  margin-left: calc(-1 * (var(--code-pad-x) + var(--code-gutter-w)));
 }
 
 .code-line-numbers {
   position: absolute;
-  top: 48px;
-  left: 12px;
-  width: 32px;
+  top: calc(var(--code-header-h) + var(--code-header-gap));
+  left: 0;
+  width: calc(var(--code-pad-x) + var(--code-gutter-w) - 12px);
   display: flex;
   flex-direction: column;
   text-align: right;
@@ -3109,8 +3123,11 @@ body.dark-theme .code-lines-btn.active {
   color: var(--crepe-color-on-surface, #888);
   opacity: 0.45;
   font-family: var(--crepe-font-code, monospace);
-  font-size: 0.9em;
-  line-height: 1.5;
+  font-size: 0.8em;
+  /* The code's own line box, not a ratio of the smaller font: 1.5 x 0.9em
+     was 21.6px against 24px lines, so the numbers drifted up a line every
+     eight or so */
+  line-height: calc(24px * var(--editor-font-scale, 1));
 }
 
 .code-line-numbers span {
