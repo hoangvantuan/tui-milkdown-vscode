@@ -155,7 +155,9 @@ type ThemeName =
   | "catppuccin-macchiato"
   | "catppuccin-mocha"
   | "paper"
-  | "midnight";
+  | "midnight"
+  | "notion"
+  | "notion-dark";
 
 const THEMES: ThemeName[] = [
   "frame",
@@ -170,6 +172,8 @@ const THEMES: ThemeName[] = [
   "catppuccin-mocha",
   "paper",
   "midnight",
+  "notion",
+  "notion-dark",
 ];
 const DEBOUNCE_MS = 300;
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -659,7 +663,7 @@ function showError(message: string): void {
 const DARK_THEMES: ReadonlySet<ThemeName> = new Set([
   "frame-dark", "nord-dark", "crepe-dark",
   "catppuccin-frappe", "catppuccin-macchiato", "catppuccin-mocha",
-  "midnight",
+  "midnight", "notion-dark",
 ]);
 
 function setTheme(themeName: ThemeName, saveGlobal = true): void {

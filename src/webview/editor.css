@@ -930,39 +930,50 @@ body.dark-theme .heading-collapsed-indicator {
   border-radius: 2px;
 }
 .tiptap pre {
+  /* One geometry for the frame, the header and the line-number gutter. The
+     gutter lives inside the header widget but is positioned against the
+     <pre>, so its offset is derived from these rather than hard-coded. */
+  --code-pad-y: 12px;
+  --code-pad-x: 16px;
+  --code-header-h: 32px;
+  --code-header-gap: 10px;
+  --code-gutter-w: 36px;
   position: relative;
   background: var(--crepe-color-surface, #f7f7f7);
-  border-radius: 8px;
-  padding: 16px 20px;
+  border-radius: var(--code-radius, 8px);
+  padding: var(--code-pad-y) var(--code-pad-x);
   overflow-x: auto;
-  border: 1px solid transparent;
+  border: 1px solid rgba(var(--border-rgb, 0, 0, 0), 0.08);
   transition: border-color 0.2s ease-out, box-shadow 0.2s ease-out;
 }
-/* Gradient accent bar at top via ::after (preserves border-radius) */
+/* Solid accent bar at top via ::after (preserves border-radius). It used to
+   be a gradient fading to transparent, the same smudge the heading rule was. */
 .tiptap pre::after {
   content: '';
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  height: 3px;
-  border-radius: 8px 8px 0 0;
-  background: linear-gradient(90deg, rgba(var(--accent-rgb, 59, 130, 246), 0.7), rgba(var(--accent-rgb, 59, 130, 246), 0.2) 70%, transparent);
+  height: 2px;
+  border-radius: var(--code-radius, 8px) var(--code-radius, 8px) 0 0;
+  background: rgba(var(--accent-rgb, 59, 130, 246), 0.55);
   pointer-events: none;
-  transition: opacity 0.2s ease-out;
+  opacity: var(--code-accent-bar, 1);
+  transition: opacity 0.2s ease-out, background 0.2s ease-out;
 }
 .tiptap pre:hover::after {
-  background: linear-gradient(90deg, rgba(var(--accent-rgb, 59, 130, 246), 0.9), rgba(var(--accent-rgb, 59, 130, 246), 0.4) 70%, transparent);
+  background: rgba(var(--accent-rgb, 59, 130, 246), 0.85);
 }
 .tiptap pre:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border-color: rgba(var(--border-rgb, 0, 0, 0), 0.14);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 body.dark-theme .tiptap pre:hover {
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
 }
 .tiptap pre:focus-within {
-  border-color: var(--crepe-color-primary);
-  box-shadow: 0 0 0 1px var(--crepe-color-primary);
+  border-color: rgba(var(--accent-rgb, 59, 130, 246), 0.5);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb, 59, 130, 246), 0.12);
 }
 .tiptap pre code {
   color: inherit;
@@ -1029,22 +1040,24 @@ body.dark-theme .tiptap pre code .hljs-meta { color: #d29922; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
-  background: rgba(var(--accent-rgb, 59, 130, 246), 0.04);
-  border-bottom: 1px solid rgba(var(--border-rgb, 0, 0, 0), 0.06);
-  border-radius: 8px 8px 0 0;
-  margin: -16px -20px 12px -20px;
+  height: var(--code-header-h);
+  padding: 0 8px 0 12px;
+  background: rgba(var(--border-rgb, 0, 0, 0), 0.03);
+  border-bottom: 1px solid rgba(var(--border-rgb, 0, 0, 0), 0.08);
+  border-radius: var(--code-radius, 8px) var(--code-radius, 8px) 0 0;
+  margin: calc(-1 * var(--code-pad-y)) calc(-1 * var(--code-pad-x)) var(--code-header-gap);
   user-select: none;
 }
 body.dark-theme .code-block-header {
-  background: rgba(var(--accent-rgb, 59, 130, 246), 0.06);
-  border-bottom-color: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.025);
+  border-bottom-color: rgba(255, 255, 255, 0.07);
 }
 .code-lang-badge {
   font-size: 11px;
-  font-weight: 500;
-  color: var(--crepe-color-on-surface, #666);
-  opacity: 0.7;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--crepe-color-on-background, #666);
+  opacity: 0.6;
   text-transform: lowercase;
   font-family: var(--crepe-font-code, monospace);
   cursor: pointer;
@@ -1058,6 +1071,16 @@ body.dark-theme .code-block-header {
 .code-lang-badge:hover { opacity: 1; background: rgba(0, 0, 0, 0.06); }
 body.dark-theme .code-lang-badge:hover { background: rgba(255, 255, 255, 0.1); }
 .code-lang-badge svg { opacity: 0.5; flex-shrink: 0; }
+/* Accent dot before the language name: CSS only, no DOM written */
+.code-lang-badge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  margin-right: 3px;
+  border-radius: 50%;
+  background: rgba(var(--accent-rgb, 59, 130, 246), 0.8);
+  flex-shrink: 0;
+}
 .code-lang-dropdown {
   position: absolute;
   z-index: 1000;
@@ -1118,19 +1141,26 @@ body.dark-theme .code-copy-btn:hover { background: rgba(255, 255, 255, 0.1); }
 }
 
 /* ─── Premium Alert Blocks ─── */
+/* Shape knobs a theme file may set (Notion does): --alert-border,
+   --alert-border-left, --alert-border-left-hover, --alert-radius,
+   --alert-header-divider. Likewise --code-radius and --code-accent-bar for
+   code blocks, and --heading-rule-alpha for the H1/H2 hairline. Theme files
+   stay variable-only; the rules live here. */
 .tiptap .alert {
   position: relative;
-  border: 1px solid rgba(var(--alert-rgb, 0, 0, 0), 0.15);
-  border-left: 4px solid var(--alert-color, #888);
-  border-radius: 8px;
-  padding: 14px 16px 12px 16px;
+  /* Left bar only: a full outline plus the bar read as a heavy frame */
+  border: var(--alert-border, 0) solid rgba(var(--alert-rgb, 0, 0, 0), 0.18);
+  border-left: var(--alert-border-left, 3px) solid var(--alert-color, #888);
+  border-radius: var(--alert-radius, 0 6px 6px 0);
+  padding: 8px 14px;
   margin: 16px 0;
-  background: rgba(var(--alert-rgb, 0, 0, 0), 0.04);
-  transition: border-color 0.2s ease-out, box-shadow 0.2s ease-out;
+  background: rgba(var(--alert-rgb, 0, 0, 0), 0.05);
+  transition: background 0.2s ease-out, box-shadow 0.2s ease-out;
 }
+/* Hover changes no width: widening the left bar shifted the text by 1px */
 .tiptap .alert:hover {
-  border-left-width: 5px;
-  box-shadow: 0 2px 8px rgba(var(--alert-rgb, 0, 0, 0), 0.08);
+  border-left-width: var(--alert-border-left-hover, 3px);
+  background: rgba(var(--alert-rgb, 0, 0, 0), 0.07);
 }
 .tiptap .alert p:first-child { margin-top: 0; }
 .tiptap .alert p:last-child { margin-bottom: 0; }
@@ -1138,12 +1168,12 @@ body.dark-theme .code-copy-btn:hover { background: rgba(255, 255, 255, 0.1); }
   display: block;
   font-weight: 600;
   font-size: calc(13px * var(--editor-font-scale, 1));
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
   line-height: 16px;
-  margin-bottom: 8px;
-  padding-bottom: 6px;
+  margin-bottom: 4px;
+  padding-bottom: 0;
   padding-left: 22px;
-  border-bottom: 1px solid rgba(var(--alert-rgb, 0, 0, 0), 0.1);
+  border-bottom: var(--alert-header-divider, 0) solid rgba(var(--alert-rgb, 0, 0, 0), 0.1);
   color: var(--alert-color, #888);
   background-repeat: no-repeat;
   background-position: 0 0;
@@ -1189,15 +1219,45 @@ body.dark-theme .code-copy-btn:hover { background: rgba(255, 255, 255, 0.1); }
   content: "Caution";
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23f85149' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86'/%3E%3Cline x1='12' y1='8' x2='12' y2='12'/%3E%3Cline x1='12' y1='16' x2='12.01' y2='16'/%3E%3C/svg%3E");
 }
+/* border-color is a shorthand: without the second line it also fades the
+   left bar, which is why the bar read as a faint outline on dark themes */
 body.dark-theme .tiptap .alert {
   background: rgba(var(--alert-rgb, 0, 0, 0), 0.08);
-  border-color: rgba(var(--alert-rgb, 0, 0, 0), 0.2);
+  border-color: rgba(var(--alert-rgb, 0, 0, 0), 0.25);
+  border-left-color: var(--alert-color, #888);
+}
+body.dark-theme .tiptap .alert:hover {
+  background: rgba(var(--alert-rgb, 0, 0, 0), 0.11);
+}
+/* A title written after the marker (`> [!NOTE] Title`) replaces the type
+   name; the icon still says which type it is. */
+.tiptap .alert[data-alert-title]::before {
+  content: attr(data-alert-title);
+}
+/* Notion: an untitled callout shows its icon beside the text, with no label.
+   A titled one keeps its title, which is content the user wrote. */
+body.theme-notion .tiptap .alert:not([data-alert-title]),
+body.theme-notion-dark .tiptap .alert:not([data-alert-title]) {
+  padding-left: 40px;
+}
+body.theme-notion .tiptap .alert:not([data-alert-title])::before,
+body.theme-notion-dark .tiptap .alert:not([data-alert-title])::before {
+  content: '';
+  position: absolute;
+  left: 14px;
+  top: calc(8px + (26px * var(--editor-font-scale, 1) - 16px) / 2);
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+}
+/* The current-line box drawn inside an already tinted block is a box in a
+   box; the alert's own tint is enough to show where the caret is. */
+.tiptap .alert .line-highlight::after {
+  background: transparent !important;
 }
 body.dark-theme .tiptap .alert::before {
   border-bottom-color: rgba(var(--alert-rgb, 0, 0, 0), 0.15);
-}
-body.dark-theme .tiptap .alert:hover {
-  box-shadow: 0 2px 12px rgba(var(--alert-rgb, 0, 0, 0), 0.15);
 }
 
 .tiptap a {
@@ -1249,7 +1309,8 @@ body.dark-theme .tiptap .alert:hover {
 }
 .tiptap table pre {
   margin: 2px 0;
-  padding: 6px 10px;
+  --code-pad-y: 6px;
+  --code-pad-x: 10px;
 }
 /* Cell selection highlight (ProseMirror adds .selectedCell automatically) */
 .tiptap table td,
@@ -2415,11 +2476,15 @@ body.dark-theme .lightbox-svg-wrapper {
   text-decoration: line-through;
   animation: strikethrough-sweep 0.3s ease-out;
 }
+/* A solid neutral hairline, full width. The old accent gradient faded to
+   transparent and read as a smudge on dark themes. Drawn as a background
+   rather than a border because .heading-collapsed-indicator replaces it with
+   its own dashed border-bottom, and a heading border would outrank that. */
 .tiptap h1,
 .tiptap h2 {
-  background-image: linear-gradient(90deg, rgba(var(--accent-rgb, 59, 130, 246), 0.15), rgba(var(--accent-rgb, 59, 130, 246), 0.05) 60%, transparent);
+  background-image: linear-gradient(rgba(var(--border-rgb, 0, 0, 0), var(--heading-rule-alpha, 0.12)), rgba(var(--border-rgb, 0, 0, 0), var(--heading-rule-alpha, 0.12)));
   background-position: 0 100%;
-  background-size: 100% 2px;
+  background-size: 100% 1px;
   background-repeat: no-repeat;
   padding-bottom: 8px;
 }
@@ -2439,6 +2504,8 @@ body.dark-theme .tiptap tbody tr:nth-child(even) {
 /* ─── Phase 6: New Theme Overlay Vars ─── */
 body.theme-paper { --overlay-bg: #3d3929; --overlay-fg: #faf8f5; }
 body.theme-midnight { --overlay-bg: #c9d1d9; --overlay-fg: #0d1117; }
+body.theme-notion { --overlay-bg: #37352f; --overlay-fg: #ffffff; }
+body.theme-notion-dark { --overlay-bg: #d4d4d4; --overlay-fg: #191919; }
 
 /* ─── Phase 7: Accessibility & Polish ─── */
 /* Word count indicator */
@@ -3034,16 +3101,20 @@ body.dark-theme .code-lines-btn.active {
   word-break: break-all;
 }
 
-/* Code block line numbers */
+/* Code block line numbers. The header sits inside the padding, so it has to
+   reach back over the gutter too or it starts indented. */
 .tiptap pre.has-line-numbers {
-  padding-left: 54px;
+  padding-left: calc(var(--code-pad-x) + var(--code-gutter-w));
+}
+.tiptap pre.has-line-numbers .code-block-header {
+  margin-left: calc(-1 * (var(--code-pad-x) + var(--code-gutter-w)));
 }
 
 .code-line-numbers {
   position: absolute;
-  top: 48px;
-  left: 12px;
-  width: 32px;
+  top: calc(var(--code-header-h) + var(--code-header-gap));
+  left: 0;
+  width: calc(var(--code-pad-x) + var(--code-gutter-w) - 12px);
   display: flex;
   flex-direction: column;
   text-align: right;
@@ -3052,8 +3123,11 @@ body.dark-theme .code-lines-btn.active {
   color: var(--crepe-color-on-surface, #888);
   opacity: 0.45;
   font-family: var(--crepe-font-code, monospace);
-  font-size: 0.9em;
-  line-height: 1.5;
+  font-size: 0.8em;
+  /* The code's own line box, not a ratio of the smaller font: 1.5 x 0.9em
+     was 21.6px against 24px lines, so the numbers drifted up a line every
+     eight or so */
+  line-height: calc(24px * var(--editor-font-scale, 1));
 }
 
 .code-line-numbers span {

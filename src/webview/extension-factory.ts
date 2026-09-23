@@ -321,9 +321,11 @@ export function buildMarkdownExtensions(config: ExtensionFactoryConfig = {}): an
           if (match) {
             const alertType = match[1].toUpperCase();
             if ((ALERT_TYPES as readonly string[]).includes(alertType)) {
-              const strippedTokens = stripAlertPrefix(token.tokens);
+              const { tokens: strippedTokens, title } = stripAlertPrefix(token.tokens);
               const children = helpers.parseChildren(strippedTokens);
-              return helpers.createNode("alert", { type: alertType }, children);
+              // block+ content: a title-only alert still needs one paragraph
+              if (children.length === 0) children.push(helpers.createNode("paragraph"));
+              return helpers.createNode("alert", title ? { type: alertType, title } : { type: alertType }, children);
             }
           }
         }

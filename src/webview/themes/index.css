@@ -11,6 +11,8 @@
 @import "./catppuccin-mocha.css";
 @import "./paper.css";
 @import "./midnight.css";
+@import "./notion.css";
+@import "./notion-dark.css";
 
 /* Raw HTML block & inline styles (issue #96) */
 .tiptap .raw-html-block {

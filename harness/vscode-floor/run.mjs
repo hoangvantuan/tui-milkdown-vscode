@@ -983,12 +983,21 @@ async function driveSurfaces(evaluate, session, sessions, beat = () => {}) {
   // Typed into a NEW empty paragraph at the end, because the plugin only fires
   // at the start of an empty one. `Input.insertText` rather than a DOM write:
   // the suggestion plugin watches ProseMirror transactions, not the DOM.
+  //
+  // The caret goes into the last TOP-LEVEL PARAGRAPH, not the last element.
+  // A DOM range reaches ProseMirror only through its selectionchange handler,
+  // and only inside content it can map; a range in the footnote definition
+  // was dropped, the caret stayed in the table cell the previous probe left
+  // it in, and the `/` landed as "/Column B". Which block ends the document
+  // depends on the drag probes, which act by coordinates, so a CSS change to
+  // code block height turned this red. `caretIn` reports where it landed.
   try {
     const placed = await evaluate(`(() => {
       const root = document.querySelector('.tiptap');
       if (!root) return 'no .tiptap';
-      const last = root.lastElementChild;
-      if (!last) return 'empty doc';
+      const paras = root.querySelectorAll(':scope > p');
+      const last = paras[paras.length - 1];
+      if (!last) return 'no top-level paragraph';
       root.focus();
       const range = document.createRange();
       range.selectNodeContents(last);
@@ -999,6 +1008,9 @@ async function driveSurfaces(evaluate, session, sessions, beat = () => {}) {
       return 'ok';
     })()`);
     if (placed !== "ok") throw new Error(`caret: ${placed}`);
+    // selectionchange is dispatched asynchronously; let ProseMirror read it
+    // before the Enter, or the key goes to the old selection
+    await sleepShort();
     for (const type of ["keyDown", "keyUp"]) {
       await session.send("Input.dispatchKeyEvent", {
         type, key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13,
@@ -1008,9 +1020,15 @@ async function driveSurfaces(evaluate, session, sessions, beat = () => {}) {
     await session.send("Input.insertText", { text: "/" });
     await sleepShort();
     const menu = await evaluate(`(() => {
+      const sel = window.getSelection();
+      const n = sel && sel.anchorNode;
+      const el = n ? (n.nodeType === 1 ? n : n.parentElement) : null;
+      const block = el && el.closest('.tiptap > *');
+      const caretIn = block ? block.tagName.toLowerCase() + ':' + JSON.stringify((el.textContent || '').slice(0, 24)) : 'nowhere';
       const popup = document.querySelector('.slash-command-popup');
-      if (!popup) return { open: false, items: 0, inContainer: false };
+      if (!popup) return { open: false, items: 0, inContainer: false, caretIn };
       return {
+        caretIn,
         open: true,
         items: popup.querySelectorAll('.slash-command-item').length,
         // AGENTS.md: popups attach to #editor-container, never .tiptap, because
@@ -1021,7 +1039,7 @@ async function driveSurfaces(evaluate, session, sessions, beat = () => {}) {
     add(
       "slash command opens a filtered block menu",
       menu.open && menu.items >= 10 && menu.inContainer,
-      `open=${menu.open} items=${menu.items} attachedToEditorContainer=${menu.inContainer}`,
+      `open=${menu.open} items=${menu.items} attachedToEditorContainer=${menu.inContainer} caretIn=${menu.caretIn}`,
     );
     for (const type of ["keyDown", "keyUp"]) {
       await session.send("Input.dispatchKeyEvent", {
