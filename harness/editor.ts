@@ -7,7 +7,7 @@
  *
  * Extensions from initEditor that are deliberately NOT loaded here because
  * they have no effect on markdown parsing or serialization:
- *   - Placeholder, LineHighlight, HeadingLevel, HeadingCollapse,
+ *   - Placeholder, LineHighlight, HeadingCollapse,
  *     CodeBlockEnhancement, TableContextMenu, SearchPlugin (UI/decoration only)
  *   - MermaidDiagram (decoration + SVG rendering only; mermaid code blocks are
  *     ordinary codeBlock nodes with language="mermaid", handled by

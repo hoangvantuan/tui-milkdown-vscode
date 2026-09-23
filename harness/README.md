@@ -497,7 +497,7 @@ verification in the running extension:
 
 - image lightbox (zoom controls, positioning),
 - table context menu (positioning at cursor),
-- heading level badges and collapse toggles (positioned overlays),
+- heading collapse toggles (positioned overlays),
 - mermaid SVG preview rendering and its fullscreen viewer,
 - search highlight scrolling and theme legibility.
 
@@ -630,6 +630,17 @@ that is already running. Either way the checks would describe the wrong
 process, which is why `floor VS Code build launched` is reported first and
 separately.
 
+The cached build is checked before every run, because it is not read-only to
+the rest of the machine. On macOS the floor build shares the bundle id
+`com.microsoft.VSCode` with the user's own VS Code, and Squirrel's ShipIt log
+shows two installs into the cached tree even with `--disable-updates` passed;
+it read 1.138.0 where the floor is 1.85.0, and three runs passed on it.
+`ensureVsCode` reads the version from the tree's `product.json` and unpacks
+the archive again when it is not the floor, and the check
+`vscode version is the floor` compares `vscode.version` inside the host with
+`TUI_FLOOR_EXPECT_VERSION`. It used to record `true` whatever it read, which
+is how those three runs passed.
+
 It needs a display (VS Code opens a real window and closes it again) and
 about 120 MB of download the first time per version, which is why it is a
 separate command rather than part of `npm run roundtrip`. Run it when a
@@ -653,7 +664,7 @@ first CI run.
   `acquireVsCodeApi()` at module scope). If you edit those in main.ts, update
   the mirrors in the same change, or the harness stops representing the real
   editor.
-- UI-only extensions (line highlight, heading badges, collapse, code block
+- UI-only extensions (line highlight, heading collapse, code block
   toolbar, table context menu, search, file mention and wiki link
   autocomplete popups, mermaid preview) are deliberately not loaded into the
   markdown corpus run: they have no effect on markdown parsing or
