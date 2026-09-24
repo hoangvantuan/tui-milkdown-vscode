@@ -2,6 +2,15 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## \[3.4.0\] - 2026-09-24
+
+A heading's collapse arrow and drag handle sit level with the heading's text, and with each other.
+
+### Fixed
+
+- **The collapse arrow rode above the heading's text.** It was placed a fixed 3px below the heading's top edge, so the larger the heading the higher it sat: on an H1 its middle was well above the line's. It is now centred on the heading's first line at every level and every configured heading size; a heading that wraps keeps the arrow on its first line.
+- **The drag handle beside a heading stood above the arrow.** The handle is aligned with the top of its block, which beside a paragraph is the middle of the first line, but beside an H1 put it 7px above the arrow at 100% and 17px at 150%. Beside a heading it is now centred on the first line too. Other blocks are unchanged: a code block, table or alert has a header or padding, so its first line is not where a heading's is.
+
 ## \[3.3.0\] - 2026-09-23
 
 Three things drawn on top of each other beside a heading, and overlays that stood beside their targets at any zoom but 100%.
