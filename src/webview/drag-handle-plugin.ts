@@ -49,14 +49,29 @@ const HANDLE_GUTTER_PX = 17;
  * the image resize handle makes, so it holds whatever applies the scale
  * (scaleEditor in main.ts). Read on every placement, which upstream runs when
  * the pointer reaches a new block or re-enters the editor.
+ *
+ * On a heading it also moves y, so the handle is centred on the heading's
+ * first line, level with the collapse arrow (editor.css centres the arrow on
+ * `1lh`). Upstream's `left-start` aligns the handle's top with the block's, so
+ * a 24px handle beside a 38px H1 line sat above the arrow. Headings only: the
+ * arrow is the thing to line up with, and code blocks, tables and alerts have
+ * padding or headers that make "the first line" something other than `1lh`.
+ * The block is not reachable from here (upstream hands floating-ui a virtual
+ * element), so `heading` is the DOM onNodeChange recorded, which upstream
+ * calls synchronously just before it repositions.
  */
-function headingGutter(editor: Editor) {
+function headingGutter(editor: Editor, heading: { current: HTMLElement | null }) {
   return {
     name: "tuiHeadingGutter",
-    fn: ({ x, y }: { x: number; y: number }) => {
+    fn: ({ x, y, rects }: { x: number; y: number; rects: { floating: { height: number } } }) => {
       const dom = editor.view.dom as HTMLElement;
       const zoom = dom.offsetWidth ? dom.getBoundingClientRect().width / dom.offsetWidth : 1;
-      return { x: x - HANDLE_GUTTER_PX * zoom, y };
+      let dy = 0;
+      if (heading.current?.isConnected) {
+        const lineBox = parseFloat(getComputedStyle(heading.current).lineHeight) * zoom;
+        if (Number.isFinite(lineBox)) dy = (lineBox - rects.floating.height) / 2;
+      }
+      return { x: x - HANDLE_GUTTER_PX * zoom, y: y + dy };
     },
   };
 }
@@ -108,10 +123,20 @@ export async function registerDragHandle(editor: Editor): Promise<boolean> {
     const bundle = await loadArtifact<{ DragHandle: typeof DragHandleType }>("dragHandle");
     if (editor.isDestroyed) return false;
 
+    const heading: { current: HTMLElement | null } = { current: null };
     const configured = bundle.DragHandle.configure({
       // Upstream spreads this over its default ({ placement: "left-start",
       // strategy: "absolute" }), so only the middleware is added here.
-      computePositionConfig: { middleware: [headingGutter(editor)] },
+      computePositionConfig: { middleware: [headingGutter(editor, heading)] },
+      // Upstream reports the OUTER node, a direct child of the doc, but its
+      // typings omit the position, so it is found among the doc's children.
+      onNodeChange({ node }) {
+        heading.current = null;
+        if (node?.type.name !== "heading") return;
+        editor.state.doc.forEach((child, offset) => {
+          if (child === node) heading.current = editor.view.nodeDOM(offset) as HTMLElement | null;
+        });
+      },
       render() {
         const element = document.createElement("div");
         element.className = "drag-handle";

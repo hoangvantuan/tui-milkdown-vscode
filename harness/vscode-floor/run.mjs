@@ -1756,6 +1756,12 @@ async function driveSurfaces(evaluate, session, sessions, beat = () => {}) {
   // the zoom became a transform (scaleEditor in main.ts) every rect is on-screen
   // pixels, so the same reading holds at both, and the 150% one is what shows
   // the handle's gutter scaling with the arrow it has to clear.
+  //
+  // Both are also centred on the heading's FIRST line, and on each other.
+  // The arrow used to sit at a fixed top: 3px and the handle top-aligned with
+  // the block, so beside an H1 neither was level with the text, nor with each
+  // other once the arrow was centred. `lineMid` is the heading's top plus half
+  // its computed line-height, scaled by the zoom; all three must agree to 1px.
   const readHeadingGutter = () => evaluate("(() => {" +
     "const h = document.querySelector('.tiptap > h1');" +
     "const handle = document.querySelector('.drag-handle');" +
@@ -1767,12 +1773,16 @@ async function driveSurfaces(evaluate, session, sessions, beat = () => {}) {
     "const hr = box(handle); const ar = box(arrow);" +
     "const cx = (ar.l + ar.r) / 2; const cy = (ar.t + ar.b) / 2;" +
     "const hit = document.elementFromPoint(cx, cy);" +
+    "const ed = document.querySelector('.tiptap');" +
+    "const z = ed.offsetWidth ? ed.getBoundingClientRect().width / ed.offsetWidth : 1;" +
+    "const lineMid = h.getBoundingClientRect().top + parseFloat(getComputedStyle(h).lineHeight) * z / 2;" +
     "return {" +
       "found: true," +
       "handleVisible: getComputedStyle(handle).visibility !== 'hidden'," +
       "handleLeft: Math.round(hr.l), handleRight: Math.round(hr.r)," +
       "arrowLeft: Math.round(ar.l), headingLeft: Math.round(h.getBoundingClientRect().left)," +
       "overArrow: meets(hr, ar)," +
+      "arrowMid: Math.round(cy * 10) / 10, handleMid: Math.round((hr.t + hr.b) / 2 * 10) / 10, lineMid: Math.round(lineMid * 10) / 10," +
       "hit: name(hit)," +
       "hitIsArrow: !!(hit && hit.classList && hit.classList.contains('heading-collapse-toggle'))," +
       "arrowAt: { x: Math.round(cx), y: Math.round(cy) }," +
@@ -1787,12 +1797,14 @@ async function driveSurfaces(evaluate, session, sessions, beat = () => {}) {
     (g.found
       ? `zoom=${g.zoom} handleVisible=${g.handleVisible} handle=[${g.handleLeft},${g.handleRight}] ` +
         `arrowLeft=${g.arrowLeft} headingLeft=${g.headingLeft} ` +
-        `overArrow=${g.overArrow} hitAtArrow=${g.hit}`
+        `overArrow=${g.overArrow} hitAtArrow=${g.hit} ` +
+        `midY arrow=${g.arrowMid} handle=${g.handleMid} line=${g.lineMid}`
       : `missing: ${JSON.stringify(g)}`);
   const gutterClear = (handle, g) =>
     typeof handle.underPointer === "string" && handle.underPointer.startsWith("H1:") &&
     handle.underPointer === handle.handleRow &&
-    g.found && g.handleVisible && !g.overArrow && g.hitIsArrow;
+    g.found && g.handleVisible && !g.overArrow && g.hitIsArrow &&
+    Math.abs(g.arrowMid - g.lineMid) <= 1 && Math.abs(g.handleMid - g.lineMid) <= 1;
   const H1 = { selector: ".tiptap > h1", tag: "H1" };
   // From 100%, `steps` clicks of zoom in (positive) or zoom out (negative);
   // 0 resets. Returns the label the toolbar shows, which is what a reading
