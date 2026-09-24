@@ -831,11 +831,28 @@ body.theme-catppuccin-mocha { --overlay-bg: #11111b; --overlay-fg: #cdd6f4; }
 
 /* Heading collapse toggle arrow, shown on hover. It owns the 15px strip left
    of the heading: HANDLE_GUTTER_PX in drag-handle-plugin.ts places the drag
-   handle outside it, so change the two together. */
+   handle outside it, so change the two together.
+   It is centred on the heading's FIRST line, whatever the level or the user's
+   heading size. `1lh` resolves against the element that declares it, and the
+   toggle has its own 11px line-height, so the heading measures its line box
+   and hands it down. The property must be registered: an unregistered custom
+   property inherits the token `1lh`, which the toggle would then re-resolve
+   against itself. `lh` needs Chromium 109, the 1.85 floor ships 114. */
+@property --heading-line-box {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+.tiptap :is(h1,h2,h3,h4,h5,h6) {
+  --heading-line-box: 1lh;
+}
 .heading-collapse-toggle {
   position: absolute;
   left: -15px;
-  top: 3px;
+  top: 0;
+  height: var(--heading-line-box);
+  display: inline-flex;
+  align-items: center;
   cursor: pointer;
   font-size: 11px;
   font-weight: 500;
