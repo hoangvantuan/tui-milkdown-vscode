@@ -1,0 +1,16 @@
+# mermaid schedule seam: a scheduled render survives a plugin view reset, and dies with the editor
+
+jsdom has no mermaid bootstrap, so an ATTEMPTED render ends in error=true.
+loading=1 after the debounce means nothing fired: that is the bug.
+
+[control] no late plugin registration
+  after scan:     scheduled=true loading=1 error=false rendered=false
+  after debounce: scheduled=true loading=0 error=true rendered=false
+
+[race] editor.registerPlugin() after the scan, before the debounce elapses
+  after scan:     scheduled=true loading=1 error=false rendered=false
+  after debounce: scheduled=true loading=0 error=true rendered=false
+
+[destroyed] editor destroyed after the scan, before the debounce elapses
+  after scan:     scheduled=true loading=1 error=false rendered=false
+  after debounce: scheduled=true loading=1 error=false rendered=false connected=false

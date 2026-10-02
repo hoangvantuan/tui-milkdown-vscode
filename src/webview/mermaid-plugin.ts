@@ -10,6 +10,13 @@
  * - View mode (default): code block is hidden, only SVG preview is shown
  * - Edit mode (double-click on preview): code block + preview shown (stacked)
  * - Click outside / cursor leaves: returns to view mode
+ *
+ * Scheduling: the first render of each diagram is debounced (RENDER_DEBOUNCE_MS)
+ * and the timer lives in `pendingTimers`, declared in addProseMirrorPlugins so it
+ * is shared across plugin VIEWS. ProseMirror recreates every plugin view on any
+ * `editor.registerPlugin()` (the drag handle does one lazily, on first pointer
+ * entry), and a timer cancelled by that teardown left the diagram at
+ * "Rendering…" until the next edit. See the comment on `destroy()` below.
  */
 import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
@@ -451,8 +458,15 @@ export const MermaidDiagram = Extension.create({
                                 if (prev) clearTimeout(prev);
 
                                 const timer = setTimeout(() => {
-                                    renderMermaid(widget, code);
                                     pendingTimers.delete(endPos);
+                                    // The widget is gone when the editor was destroyed, or
+                                    // when a document change rebuilt the widgets after this
+                                    // timer escaped `apply`'s clear (it is shared across
+                                    // plugin views, see destroy()). Either way there is
+                                    // nothing to draw into, and loading the artifact for a
+                                    // dead page would be the worse mistake.
+                                    if (!widget.isConnected) return;
+                                    renderMermaid(widget, code);
                                 }, RENDER_DEBOUNCE_MS);
 
                                 pendingTimers.set(endPos, timer);
@@ -473,8 +487,24 @@ export const MermaidDiagram = Extension.create({
 
                         destroy() {
                             document.removeEventListener("dblclick", handleDblClick);
-                            for (const timer of pendingTimers.values()) clearTimeout(timer);
-                            pendingTimers.clear();
+                            // Deliberately NOT cancelling pending renders. `destroy` runs
+                            // for two reasons, and only one of them ends the page: the
+                            // editor being destroyed, or ANY `editor.registerPlugin()`,
+                            // which reconfigures the state and makes ProseMirror destroy
+                            // and recreate every plugin view. The drag handle registers
+                            // its plugin lazily, on the first pointer entry into the
+                            // editor, so at document open this fired inside the 500ms
+                            // render debounce whenever the pointer was already over the
+                            // editor; the render was cancelled here, and the recreated
+                            // view skipped the widget because `data-mermaid-src` is
+                            // written when a render is scheduled, not when it lands. The
+                            // diagram sat at "Rendering…" until the next edit. The timer
+                            // callback checks `widget.isConnected` instead, which tells
+                            // the two cases apart: a recreated view keeps the widget DOM,
+                            // a destroyed editor removes it. `pendingTimers` outlives this
+                            // view on purpose (declared in addProseMirrorPlugins), so the
+                            // next view's `apply` can still cancel these on a doc change.
+                            // harness/mermaid-schedule-seam.ts measures all three cases.
                         },
                     };
                 },
