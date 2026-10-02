@@ -2,6 +2,14 @@
 
 All notable changes to "TUI Markdown Editor" extension.
 
+## [3.4.1] - 2026-10-02
+
+A mermaid diagram no longer waits for a keystroke when the pointer is over the editor as the document opens.
+
+### Fixed
+
+- **A diagram could sit at "Rendering…" until the next edit when the pointer was already over the editor as a document opened.** The drag handle loads its plugin on the first pointer entry into the editor, and registering a plugin makes ProseMirror destroy and recreate every plugin view. The mermaid plugin's first render is scheduled behind a 500ms debounce, and its view's teardown cancelled that render; the recreated view then skipped the diagram, because it marks a diagram as handled when a render is scheduled rather than when it lands. Any document opened with the pointer inside the editor area lost every initial render this way, and the diagrams only appeared after a keystroke. A scheduled render now outlives the plugin view and is dropped only when its diagram has left the document. `harness/mermaid-schedule-seam.ts` measures the control, the race and the destroyed editor.
+
 ## [3.4.0] - 2026-09-24
 
 A heading's collapse arrow and drag handle sit level with the heading's text, and with each other.
